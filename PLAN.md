@@ -132,17 +132,130 @@ Design constraints:
   insertions and deletions.
 - Locality: reads and writes are limited to a radius around the organism.
   Optionally, cost grows with distance (memory-hierarchy analog).
-- Ops needed at minimum: move/arithmetic on registers, conditional skip,
-  relative jump, template search, read byte, write byte, allocate (claim free
-  bytes), divide (spawn child from a claimed region), absorb (take energy
-  from the local cell), and some form of interaction with other organisms
-  (§5.5).
 - Every op has an energy cost. Costs are the main tuning surface and should
   be in a table, not scattered in code.
+- All ops are total: no traps, no faults that kill. Loads wrap on the torus,
+  failed allocations set a flag, stores into guarded bytes fail silently.
+  The only death is energy exhaustion plus decay (§5.7). A trap that kills is
+  a reaper in disguise.
 
 Evaluation criterion for the ISA: with a random soup and no seed, do
 replicators emerge? If not, the encoding is probably not evolvable enough.
 This is a Phase 4 experiment but the ISA should be designed with it in mind.
+
+#### 5.3.1 Register vs stack machine
+
+Decision: register machine for Phase 1, with the decode/execute step
+isolated behind a trait so a stack ISA can be swapped in as a Phase 4
+experiment on the same world, energy model, and instrumentation.
+
+Reasoning. In a register machine each instruction byte names its operand, so
+a point mutation changes one op and at most one register; effects are local.
+In a stack machine operands are implicit (top of stack), so genomes are
+denser, but any mutation that changes stack depth shifts the operand of every
+later instruction. That is high epistasis and lower mutational robustness,
+which tightens the Eigen error threshold. Agüera y Arcas et al. (2024) saw
+replicators emerge from soup under both styles (BFF tape machine, Forth
+stack, Z80 and 8080 register), so neither is fatal; which evolves richer
+structure afterwards is an open question worth testing.
+
+Prediction (to record in the hypotheses log): register ISA gives longer and
+more robust genomes; stack ISA gives shorter genomes, more frequent
+catastrophic mutations, and more natural chaining of computation.
+
+#### 5.3.2 Encoding
+
+One byte per instruction. Low 5 bits select the opcode (32 slots). High 3
+bits are a modifier whose meaning depends on the opcode: register select for
+register ops, direction or variant for others. Every byte decodes.
+
+Registers: `A`, `B`, `C`, `D` (general purpose, machine word), plus `IP`
+(instruction pointer) and a small flag set (last search/alloc failed). With 4
+registers and a 3-bit field, each register has two encodings; the redundant
+encodings are neutral mutations. Unassigned opcodes decode as `nop0`, so
+unused slots are neutral drift space until assigned.
+
+Registers hold world offsets when used as addresses. Genome bytes never
+contain an address; address values arise only at runtime from `search`,
+`self`, or arithmetic. This invariant is what makes a copied genome work at
+its new location.
+
+Alternative considered: Avida-style nop modifiers (ops take no operand, the
+following nop selects the register, so nops double as labels and modifiers).
+Elegant but more indirect. Fixed field chosen for simplicity; revisit if the
+ISA proves hard to evolve.
+
+#### 5.3.3 Phase 1 op set (22 ops)
+
+Templates and neutral filler:
+
+| op | effect |
+|---|---|
+| `nop0`, `nop1` | Do nothing. A run of nops directly after a search op is a template. Also the neutral filler. |
+
+Data:
+
+| op | effect |
+|---|---|
+| `zero r` | r = 0 |
+| `inc r`, `dec r` | r += 1, r -= 1 |
+| `shl r`, `shr r` | shift left / right by one bit |
+| `add r`, `sub r` | A += r, A -= r |
+| `lit r` | r = next byte; skip that byte. Cheap constants. The skipped byte is still a valid op if jumped into. |
+
+Control:
+
+| op | effect |
+|---|---|
+| `skipz r`, `skipnz r` | skip next instruction if r == 0 / r != 0 |
+| `jmpr r` | IP += r (signed) |
+| `searchf`, `searchb` | Read the template (run of nops) immediately following this op, skip past it, scan forward / backward within the locality radius for the complementary pattern (`nop0` matches `nop1`). On success D = address just past the match, C = template length. On failure D = 0 and the fail flag is set. Cost grows with distance scanned. |
+| `self` | A = own body start, B = own body length. Self-knowledge, not privileged access: the body remains ordinary memory. |
+
+Memory (fixed-register conventions keep the encoding to one byte):
+
+| op | effect |
+|---|---|
+| `load r` | r = byte at [A] |
+| `store r` | byte at [A] = r |
+| `copy` | byte at [A] = byte at [B]. Tierra's `mov_iab`. A one-op copy keeps the replication loop short, which makes it more robust to mutation. |
+
+All writes are noisy (§5.7): with probability p per write the stored byte
+gets a random bit flip. Mutation is physics, not a separate step, so
+proofreading (read back, compare, rewrite) is something an organism can
+evolve.
+
+Body and reproduction:
+
+| op | effect |
+|---|---|
+| `alloc r` | Claim r contiguous free bytes (free or debris) nearest to the body within the locality radius. A = start of the claimed region; on failure A = 0 and the fail flag is set. The region is owned by the parent until `divide`. Cost: base plus per byte. |
+| `divide r` | The region from the last `alloc` becomes a new organism with IP at its start. The parent transfers r energy units to it (capped by the parent's store). That byte is parental investment, and evolvable. |
+
+Energy:
+
+| op | effect |
+|---|---|
+| `absorb` | Store += min(cell pool, absorb rate). Dilute by construction. |
+
+Held back for Phase 3 (§5.5): `drain`, `guard`, `sense`. Tierra-style
+parasites do not need them; reading a neighbour's copy loop needs only
+`searchf` and `jmpr`.
+
+#### 5.3.4 Cost draft
+
+| op class | cost (energy units) |
+|---|---|
+| nop, data, skip, jmpr | 1 |
+| load, store | 2 |
+| copy | 3 |
+| search | 1 + 1 per 16 bytes scanned |
+| alloc | 2 + 1 per byte |
+| divide | 8 |
+| absorb | 1 (yields up to absorb rate) |
+
+Numbers are guesses. Only the ratios matter, and they are tuned when the
+ancestor cannot pay for replication or when nothing bothers to absorb.
 
 ### 5.4 Energy
 
@@ -265,7 +378,8 @@ later live viewer could read a memory-mapped snapshot.
 ```
 evo/
   PLAN.md              this file
-  docs/                design notes, ISA spec, experiment logs
+  docs/                design notes, ISA spec
+  docs/research/       literature review, hypotheses log, experiment records
   evo-core/            Rust crate: VM, world, CLI
   analysis/            Python: uv project
   runs/                run outputs (gitignored)
@@ -328,7 +442,27 @@ work.
 Not realistic: multicellularity, nervous systems, anything requiring the
 roughly 20+ orders of magnitude of scale separating a desktop from Earth.
 
-## 11. Working notes
+## 11. Research record
+
+The project keeps a written record from the start so that anything found can
+be reported, and so that predictions are dated before the experiments that
+test them.
+
+- `docs/research/literature.md`: deeper review of prior systems (Tierra,
+  Avida, Coreworld, Amoeba, BFF/Computational Life, Stringmol, Geb, and the
+  open-endedness literature). For each: substrate, what emerged, where it
+  plateaued, and what the authors thought was missing. This is a prerequisite
+  for Phase 1 design decisions, not optional reading.
+- `docs/research/hypotheses.md`: numbered, dated predictions with the
+  observation that would confirm or refute each. First entries: the register
+  vs stack prediction (§5.3.1), the producer/consumer diagnostic (§5.5), and
+  emergent size limits (§5.8).
+- `docs/research/experiments/`: one file per experiment: seed, config hash,
+  commit, what was varied, what was observed, which hypothesis it bears on.
+  Runs are reproducible from seed and config (§3), so a record plus the repo
+  is sufficient to regenerate any figure.
+
+## 12. Working notes
 
 - Languages: Rust core, Python analysis. The author knows Zig, Go, and Python;
   Rust is new. Code should be written with that in mind: idiomatic but
