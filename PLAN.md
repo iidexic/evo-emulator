@@ -106,8 +106,8 @@ no analog and no clear emergent purpose, it is suspect.
   Phase 1 may use a 1D ring for simplicity.
 - Every byte is simultaneously matter and potential code.
 - Each byte has an owner (organism id, or free, or debris).
-- World cells (coarse regions of the array) carry environmental parameters
-  (§5.6).
+- Patches (coarse regions of the array) carry environmental parameters
+  (§5.6). "Patch" rather than "cell" to avoid the biological sense.
 
 Analog: matter is finite and occupies space.
 
@@ -122,6 +122,22 @@ An organism is an execution context: instruction pointer, a few registers, an
 energy store, and an owned region of the byte array (its body). Bodies are
 contiguous in Phase 1; whether to allow non-contiguous bodies later is an
 open question.
+
+Organism state lives in the emulator's organism table, not in world memory:
+registers `A`–`D` and `IP` (32-bit, wrapping arithmetic; an address is the
+value mod world size), the fail flag, the energy store, body start and
+length, and at most one pending region claimed by `alloc` but not yet
+divided. Registers are not subject to bit rot, cost no upkeep, and cannot
+be read by other organisms.
+
+At birth: `A`–`D` = 0, `IP` = body start, fail flag clear, energy = the
+endowment passed by `divide`. The child first runs on the tick after its
+birth.
+
+Locality is measured from `IP`, not from the body: every op acts at the
+place it is executed. One reference point for all ops; a parasite running a
+host's code acts near the host; an IP that walks away from its body pays
+energy per byte walked, so travel is a physical cost.
 
 Organisms have no privileged access to their own body. Reading, writing, and
 executing are all memory operations subject to the same locality rules,
@@ -141,10 +157,17 @@ Design constraints:
   Optionally, cost grows with distance (memory-hierarchy analog).
 - Every op has an energy cost. Costs are the main tuning surface and should
   be in a table, not scattered in code.
-- All ops are total: no traps, no faults that kill. Loads wrap on the torus,
-  failed allocations set a flag, stores into protected bytes fail silently
-  and set the fail flag. The only death is energy exhaustion plus decay
-  (§5.7). A trap that kills is a reaper in disguise.
+- All ops are total: no traps, no faults that kill. Addresses wrap on the
+  torus. An op whose target is protected or outside the locality radius does
+  nothing to memory, sets the fail flag, and still costs its base energy
+  (`load` then gives r = 0; `copy` still advances A and B so loops keep
+  stepping). The only death is energy exhaustion plus decay (§5.7). A trap
+  that kills is a reaper in disguise.
+- The fail flag is set by a failed `search`, a failed `alloc`, `divide`
+  with no pending region, and any blocked or out-of-range `load`, `store`,
+  or `copy`. It is sticky until read: `self` modifier 2 copies it into A and
+  clears it. Without a reader an organism could not tell that a write was
+  blocked except by reading the byte back.
 - Write protection is a physics switch, default on: bytes owned by a living
   organism cannot be written by another organism; free and debris bytes can.
   Reads and execution are never restricted. Every system that lacked
@@ -214,7 +237,7 @@ following nop selects the register, so nops double as labels and modifiers).
 Elegant but more indirect. Fixed field chosen for simplicity; revisit if the
 ISA proves hard to evolve.
 
-#### 5.3.3 Phase 1 op set (24 ops)
+#### 5.3.3 Phase 1 op set (25 ops)
 
 Templates and neutral filler:
 
@@ -231,17 +254,18 @@ Data:
 | `inc r`, `dec r` | r += 1, r -= 1 |
 | `shl r`, `shr r` | shift left / right by one bit |
 | `add r`, `sub r` | A += r, A -= r |
-| `lit r` | r = next byte; skip that byte. Cheap constants. The skipped byte is still a valid op if jumped into. |
+| `lit r` | r = next byte, sign-extended (the byte is a signed value -128..127); skip that byte. Cheap constants. The skipped byte is still a valid op if jumped into. |
 | `swap r` | Exchange A and r. The only register-to-register move. Without it nothing can get an address out of A into B, and `copy` is unreachable even for a hand-written ancestor (found 2026-09-30 while checking the op set against a copy loop). Avida has the same op. |
 
 Control:
 
 | op | effect |
 |---|---|
-| `skipz r`, `skipnz r` | skip next instruction if r == 0 / r != 0 |
-| `jmpr r` | IP += r (signed) |
+| `skipz r`, `skipnz r` | Skip the next instruction if r == 0 / r != 0. A whole instruction: 2 bytes when the next op is `lit`, else 1. |
+| `jmpr r` | IP = (address of the byte after this op) + r, r signed. For loops with a constant offset. |
+| `jmpa r` | IP = r. Absolute jump to a computed address. `self ; jmpa A` restarts a body from anywhere without a length-coupled constant, and `searchf ... ; jmpa D` jumps straight to a search result. Added 2026-09-30 when the ancestor turned out to run off its own end. |
 | `searchf`, `searchb` | Read the template (run of nops) immediately following this op, skip past it, scan forward / backward within the locality radius for the complementary pattern (`nop0` matches `nop1`). On success D = address just past the match, C = template length. On failure, or if the template is empty, D = 0 and the fail flag is set. Cost grows with distance scanned. Byte 0x00 decodes as `pad`, so zeroed memory is never a template. |
-| `self` | Modifier 0: A = own body start, B = own body length. Modifier 1: A = IP. The IP form lets a host's copy loop check who is running it (Stringmol's evolved defences did exactly this) and lets code find itself after a jump. Self-knowledge, not privileged access: the body remains ordinary memory. Phase 1: "own" means the executing organism. Alternative (§9): the owner of the byte IP is on, which restores Tierra's hyper-parasite trick where a host's copy loop, run by a parasite's CPU, copies the host. |
+| `self` | Modifier 0: A = own body start, B = own body length. Modifier 1: A = IP. Modifier 2: A = fail flag (0 or 1), then clears the flag. The IP form lets a host's copy loop check who is running it (Stringmol's evolved defences did exactly this) and lets code find itself after a jump. Self-knowledge, not privileged access: the body remains ordinary memory. Phase 1: "own" means the executing organism. Alternative (§9): the owner of the byte IP is on, which restores Tierra's hyper-parasite trick where a host's copy loop, run by a parasite's CPU, copies the host. |
 
 Memory (fixed-register conventions keep the encoding to one byte):
 
@@ -252,52 +276,92 @@ Memory (fixed-register conventions keep the encoding to one byte):
 | `copy` | byte at [A] = byte at [B], then A += 1 and B += 1. Tierra's `mov_iab` plus the two increments its ancestor spent separate ops on. A one-op copy step keeps the replication loop short, which makes it more robust to mutation. |
 
 All writes are noisy (§5.7): with probability p per write the stored byte
-gets a random bit flip. Mutation is physics, not a separate step, so
-proofreading (read back, compare, rewrite) is something an organism can
-evolve.
+gets a random bit flip. `copy` also slips: with probability q per `copy`,
+A or B either fails to advance or advances twice (DNA polymerase slippage
+analog), which duplicates or drops a byte in the child. Bit flips alone are
+substitutions only; without slippage, nothing at the physics level can
+insert or delete, and gene duplication is the main source of new function
+in biology. Default q = p / 4. Caveat: the child's length is still fixed by
+`alloc`, so a slip shifts the tail and loses the last byte; genome growth
+still needs the length arithmetic to mutate, as in Tierra. Mutation is
+physics, not a separate step, so proofreading (read back, compare, rewrite)
+is something an organism can evolve.
 
 Body and reproduction:
 
 | op | effect |
 |---|---|
-| `alloc r` | Claim r contiguous free bytes (free or debris) nearest to the body within the locality radius. Claimed bytes are not cleared: matter is conserved, so debris content comes along. `alloc` then `divide` with no copying therefore resurrects whatever was there. That is scavenging, allowed on purpose, and logged as a birth whose copy source is debris. A = start of the claimed region; on failure A = 0 and the fail flag is set. The region is owned by the parent until `divide`. Cost: base plus per byte. |
-| `divide r` | The region from the last `alloc` becomes a new organism with IP at its start. The parent transfers r energy units to it (capped by the parent's store). That byte is parental investment, and evolvable. |
+| `alloc r` | Claim r contiguous free bytes (free or debris) nearest to IP within the locality radius. Claimed bytes are not cleared: matter is conserved, so debris content comes along. `alloc` then `divide` with no copying therefore resurrects whatever was there. That is scavenging, allowed on purpose, and logged as a birth whose copy source is debris. A = start of the claimed region; on failure A = 0 and the fail flag is set. The region is owned by the parent until `divide`: protected from other writers, and it pays upkeep like body bytes, otherwise `alloc` would be free protected storage. An organism holds at most one pending region; a second `alloc` releases the first (content stays, ownership returns to free). On death a pending region becomes debris. Cost: base plus per byte. |
+| `divide r` | The pending region becomes a new organism with IP at its start and registers zeroed (§5.2). The parent transfers min(r, parent's store) energy units to it; r is read as unsigned, so a "negative" value hands over everything. That value is parental investment, and evolvable. With no pending region: nothing happens, fail flag set. |
 
 Energy:
 
 | op | effect |
 |---|---|
-| `absorb` | Store += min(cell pool, absorb rate). Dilute by construction. |
+| `absorb` | Take min(patch pool, absorb rate) from the pool of the patch containing the byte at IP and add it to the store. Pool decreases by the same amount: conserved, dilute by construction. |
 
 Held back for Phase 3 (§5.5): `drain`, `guard`, `sense`. Tierra-style
 parasites do not need them; reading a neighbour's copy loop needs only
 `searchf` and `jmpr`.
 
 Sanity check, a hand-written ancestor in this op set (the op set is only
-complete if this loop can be written):
+complete if this loop can be written and can pay for itself):
 
 ```
 self        ; A = own start, B = own length
 swap B      ; A = length,    B = own start
-swap C      ; A = 0,         C = length      (loop counter)
+swap C      ; A = 0,         C = length      (copy counter)
+lit D -4    ; one loop offset serves both 4-byte loops below
+lit A K     ; A = absorb count
+absorb      ; <-+  gather energy K times
+dec A       ;   |
+skipz A     ;   |
+jmpr D      ; --+
 alloc C     ; A = child start (B, C untouched)
-lit D -4    ; D = jump offset back to the copy
-copy        ; [A] = [B]; A++, B++
-dec C
-skipz C
-jmpr D      ; loop while C != 0
-divide r    ; child born, r energy handed over
+copy        ; <-+  [A] = [B]; A++, B++
+dec C       ;   |
+skipz C     ;   |
+jmpr D      ; --+  loop while C != 0
+lit A E     ; A = endowment
+divide A    ; child born with E energy
+self        ; A = own start
+jmpa A      ; start over
 ```
 
-About 12 bytes. Register pressure is real: all four registers are in use, and
-the parent has forgotten its own start by the end. That is acceptable for
-Phase 1 and is itself something evolution can work around (a second `self`).
+21 bytes. An earlier 12-byte sketch (2026-09-27) never absorbed, passed a
+garbage register to `divide`, and ran off its own end after dividing; the
+hand trace that found this is the reason the sanity check exists. A
+replicator with no absorb loop is about 15 bytes, which is the minimal
+replicator length that matters for seedless emergence (Phase 4).
+
+Budget at the draft costs (§5.3.4) with absorb rate 8, K = 64, E = 16,
+u = 0.1, about 13 ticks per cycle at c0 = 32:
+
+| item | energy |
+|---|---|
+| absorb income | +512 |
+| absorb loop (64 × 4, minus the skipped jump) | -255 |
+| alloc (2 + 21) and copy loop (21 × 6, minus the skipped jump) | -148 |
+| prologue, endowment literal, divide, restart | -16 |
+| endowment to child | -16 |
+| upkeep (21 bytes × 0.1 × 13 ticks) | -27 |
+| net per child | +50 |
+
+The absorb loop is 61% of executed instructions, which is the intended
+"gathering sunlight takes most of a producer's time". The child needs
+E ≥ 5 to pay its prologue; after that its own absorb loop nets positive.
+Every number here is a guess; the structure is the point, and the single
+genome harness (§7) measures the real budget.
+
+Register pressure is real: all four registers are in use. Evolution's
+first easy wins are visible in the listing: raise K, lower E, move
+`absorb` into the copy loop (H6).
 
 #### 5.3.4 Cost draft
 
 | op class | cost (energy units) |
 |---|---|
-| nop, data, skip, jmpr | 1 |
+| nop, data, skip, jmpr, jmpa | 1 |
 | load, store | 2 |
 | copy | 3 |
 | search | 1 + 1 per 16 bytes scanned |
@@ -310,9 +374,9 @@ ancestor cannot pay for replication or when nothing bothers to absorb.
 
 ### 5.4 Energy
 
-- Each world cell receives an energy income per tick (sunlight). Income varies
+- Each patch receives an energy income per tick (sunlight). Income varies
   in space and cycles in time (§5.6).
-- Energy in a cell accumulates up to a cap and is otherwise lost.
+- Energy in a patch pool accumulates up to a cap and is otherwise lost.
 - An organism gains energy only by executing an absorb op at its location.
   Absorb yields a small amount per execution: sunlight is dilute. Gathering it
   should take a large fraction of a producer's cycles.
@@ -328,7 +392,12 @@ ancestor cannot pay for replication or when nothing bothers to absorb.
   as many instructions per tick as it can pay for, up to a per-tick cap of
   cap = c0 + c1 × body length. This cap is the analog of Tierra's CPU slice,
   and that slice set Tierra's size trend outright (§2). Phase 1: c1 = 0
-  (constant slice; expect shrinking). Phase 3 sweeps c1.
+  (constant slice; expect shrinking). Phase 3 sweeps c1. An instruction
+  whose cost exceeds the remaining cap waits for the next tick.
+- Tick order: upkeep is charged to every organism at the start of the tick,
+  then organisms execute in a seeded random permutation, fresh each tick.
+  Fixed id order would give the first-born permanent priority on contested
+  free space. Births take effect at the end of the tick.
 
 Analog: sunlight is the only external input; all work dissipates energy.
 
@@ -359,7 +428,7 @@ happens, and at what ratio, is an experimental result.
 
 ### 5.6 Environment heterogeneity
 
-Per world cell:
+Per patch:
 
 - Energy income (spatial gradient + temporal cycle: day/night, seasons).
 - Background bit-flip rate (radiation).
@@ -368,7 +437,7 @@ Per world cell:
   types and regional abundance differs (crude chemistry). Deferred to Phase 3
   or later.
 
-Slow drift: all per-cell parameters change slowly over long timescales
+Slow drift: all per-patch parameters change slowly over long timescales
 (continental drift analog). A non-stationary environment is a plausible
 pressure against equilibrium, not an established one: no reviewed system
 showed it working, and Avida's fluctuating-environment results are about
@@ -505,7 +574,7 @@ reaper.
 **Phase 2 — Instrumentation.** Everything in §7. Success criterion: we can
 draw the phylogeny of a Phase 1 run and see the parasite lineage appear.
 
-**Phase 3 — Richer physics.** 2D torus, per-cell parameters, bit rot,
+**Phase 3 — Richer physics.** 2D torus, per-patch parameters, bit rot,
 seasons, slow drift, debris, drain/defense ops. Success criteria: spatial
 differentiation of lineages; some form of producer/consumer split;
 evidence for or against evolved repair.
@@ -527,8 +596,16 @@ resource types). Multi-day runs. Compare ISA variants for evolvability.
 - Contiguous bodies only, or allow fragmented bodies?
 - Fault semantics: which faults are recoverable, which kill?
 - Exact locality radius and whether cost grows with distance.
-- Whether energy is per organism or per byte of body (the latter makes
-  "where the energy is" spatial, which might matter for predation).
+- Energy location: per organism (Phase 1 decision, 2026-09-30) or per byte
+  of body (makes "where the energy is" spatial, which might matter for
+  predation). Revisit with `drain` in Phase 3.
+- Locality from IP (Phase 1 decision) vs from body start. IP-relative lets
+  an IP wander far from its body at a per-byte energy cost; whether that
+  gets abused (organisms executing free space to reach distant debris) is a
+  Phase 1 observation.
+- Copy slippage rate q relative to p; whether `alloc` length should also be
+  able to slip, which would let bodies grow without a length-arithmetic
+  mutation.
 - Multi-core strategy: partition the torus into strips with halo exchange, or
   run independent worlds and migrate organisms between them (islands).
 - Snapshot format: hand-rolled vs serde/bincode.

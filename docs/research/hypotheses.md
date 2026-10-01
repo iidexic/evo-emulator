@@ -217,3 +217,13 @@ track it.
 
 **Status.** Open. Phase 3, with the three-way control built in from the
 start.
+
+---
+
+## H5 note (2026-10-01)
+
+E001 refutes the first form of H5: with absorb income far above upkeep,
+upkeep alone does not purge non-replicators. Store cap and bit rot were
+added. Whether upkeep plus store cap plus bit rot plus decay is enough
+turnover is the revised question; E001 run 4 suggests not yet (loafers
+outlive replicators through patch crashes). Status: mixed.
