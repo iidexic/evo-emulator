@@ -26,11 +26,13 @@ informative part.
 
 | System | Year | Substrate | Key result | Where it stalled |
 |---|---|---|---|---|
-| Coreworld (Rasmussen) | 1990 | Core War with mutation | Programs degraded to noise | Instruction set not evolvable |
-| Tierra (Ray) | 1991 | Custom 32-op VM, shared memory, "reaper" | Parasites, immunity, hyper-parasites, cheaters within hours | Equilibrium; everything shrank toward minimal parasites |
-| Avida (Ofria, Adami) | 1994+ | Grid, one VM per cell, CPU time rewarded for logic tasks | Real published biology (Lenski 2003, Nature) | Complexity only grows along designer-rewarded axes |
-| Amoeba (Pargellis) | 1996 | Random soup | Replicators emerge spontaneously | Small scale |
-| BFF / "Computational Life" (Agüera y Arcas et al.) | 2024 | Brainfuck-like programs concatenated and run against each other | Self-replicators emerge from noise, no seed, no fitness function; debris essential | Open question |
+| Coreworld (Rasmussen) | 1990 | Core War with noise, per-address compute resource, 1D | Cooperative structures dominated the core for 100,000+ iterations, seven epochs. "Degraded to noise" is a misreading; only hand-seeded replicators broke, within ~200 iterations, for lack of write protection | Stable structures, but no organisms in the Tierra sense |
+| Tierra (Ray) | 1991 | Custom 32-op VM, shared memory, write protection, reaper | Parasites, immunity, hyper-parasites, cheaters within hours | Stasis. Size trend was a scheduler setting: constant CPU slice shrank genomes to 22–30, slice ∝ size grew them to 400–800, slice ∝ size^>1 past 23,000. Standish 2003: genomes grew 80 to 526 with no complexity gain |
+| Avida (Ofria, Adami) | 1994+ | Grid, one VM per cell, CPU share ∝ genome length (size-neutral by design), tasks add merit | Real published biology (Lenski 2003, Nature); parasites, coevolution (Zaman 2014) | With no rewarded tasks, complexity rose then fell and plateaued (MODES, Dolson 2019). Kept an age limit because non-replicators otherwise "persist since organisms have no means by which to be purged" |
+| Amoeba (Pargellis) | 1996 | Random soup, 5% of CPUs given to random code each generation | Replicators emerge spontaneously; emergence fell once NOPs passed 25% of memory | No write protection; never saw two species coexist |
+| Cosmos (Taylor) | 1999 | Spatial, one energy token per instruction, energy death, no reaper (cull at cap) | Closest precedent to this design | Stasis after the copy loop filled with energy-collect ops. CPU ∝ length: genome doubling and collapse in 5 of 9 runs. Energy theft from neighbours froze evolution |
+| Stringmol (York) | 2010+ | Artificial chemistry, molecules bind by soft matching and execute each other, energy per opcode, stochastic decay | Spatial runs: parasites contained by spatial pattern, 8 of 20 runs survived 2M steps; evolved defences (self-scan, trapping foreign executors) | Universal-constructor variant: all 500 runs died of "bureaucratic death", none of parasites. Decay rule shaped everything: only constant decay in every state kept species turning over |
+| BFF / "Computational Life" (Agüera y Arcas et al.) | 2024 | Brainfuck-like programs concatenated and run against each other | Self-replicators emerge from noise, no seed, no fitness function, even at zero mutation rate; SUBLEQ never did | Open question; no energy, no ownership, pairing imposed by the environment |
 
 Shared lesson: replication and mutation are easy. What is hard is
 **open-endedness**: keeping the system generating novelty instead of settling
@@ -109,6 +111,11 @@ no analog and no clear emergent purpose, it is suspect.
 
 Analog: matter is finite and occupies space.
 
+Evidence status: Stringmol's "conservation of matter increases evolutionary
+activity" (Hickinbotham & Stepney 2015) has no unconserved control, so it
+does not test this premise. Conservation here is a physics choice, not a
+result borrowed from the literature.
+
 ### 5.2 Organisms
 
 An organism is an execution context: instruction pointer, a few registers, an
@@ -135,9 +142,16 @@ Design constraints:
 - Every op has an energy cost. Costs are the main tuning surface and should
   be in a table, not scattered in code.
 - All ops are total: no traps, no faults that kill. Loads wrap on the torus,
-  failed allocations set a flag, stores into guarded bytes fail silently.
-  The only death is energy exhaustion plus decay (§5.7). A trap that kills is
-  a reaper in disguise.
+  failed allocations set a flag, stores into protected bytes fail silently
+  and set the fail flag. The only death is energy exhaustion plus decay
+  (§5.7). A trap that kills is a reaper in disguise.
+- Write protection is a physics switch, default on: bytes owned by a living
+  organism cannot be written by another organism; free and debris bytes can.
+  Reads and execution are never restricted. Every system that lacked
+  protection collapsed (Coreworld's seeded replicators within ~200
+  iterations, Amoeba-IV never held two species); Tierra had it and got
+  coexisting parasites. Phase 3 `guard`/`drain` then evolve the boundary
+  rather than create it. A no-protection run is a Phase 4 control.
 
 Evaluation criterion for the ISA: with a random soup and no seed, do
 replicators emerge? If not, the encoding is probably not evolvable enough.
@@ -156,8 +170,13 @@ denser, but any mutation that changes stack depth shifts the operand of every
 later instruction. That is high epistasis and lower mutational robustness,
 which tightens the Eigen error threshold. Agüera y Arcas et al. (2024) saw
 replicators emerge from soup under both styles (BFF tape machine, Forth
-stack, Z80 and 8080 register), so neither is fatal; which evolves richer
-structure afterwards is an open question worth testing.
+stack, Z80 and 8080 register), but not equally: SUBLEQ never produced one,
+the first Forth variant failed on long tapes and needed a second instruction
+set, and 8080 gave only non-looping replicators on long tapes. The authors
+name minimal replicator length as the deciding factor. So neither style is
+fatal, but the details of each encoding matter more than the register/stack
+split; which evolves richer structure afterwards is an open question worth
+testing.
 
 Prediction (to record in the hypotheses log): register ISA gives longer and
 more robust genomes; stack ISA gives shorter genomes, more frequent
@@ -172,8 +191,18 @@ register ops, direction or variant for others. Every byte decodes.
 Registers: `A`, `B`, `C`, `D` (general purpose, machine word), plus `IP`
 (instruction pointer) and a small flag set (last search/alloc failed). With 4
 registers and a 3-bit field, each register has two encodings; the redundant
-encodings are neutral mutations. Unassigned opcodes decode as `nop0`, so
-unused slots are neutral drift space until assigned.
+encodings are neutral mutations. Unassigned opcodes decode as `pad`: does
+nothing and is not a template character. Decoding them as `nop0` would make
+11 of 32 opcode slots template letters, so random and decayed bytes would
+spell templates everywhere; Amoeba's emergence rate fell once nops passed
+25% of memory. `pad` keeps unused slots as neutral drift space without that.
+
+Opcode numbers are assigned so that one-bit flips are mild where possible:
+`inc`/`dec`, `shl`/`shr`, `skipz`/`skipnz`, `searchf`/`searchb`,
+`nop0`/`nop1` one bit apart; `divide`, `alloc`, `copy` at Hamming distance
+2 or more from `nop0`, `nop1`, `pad`, so filler does not drift into ops
+that do something drastic. Stringmol arranges its mutation cycle the same
+way.
 
 Registers hold world offsets when used as addresses. Genome bytes never
 contain an address; address values arise only at runtime from `search`,
@@ -185,13 +214,14 @@ following nop selects the register, so nops double as labels and modifiers).
 Elegant but more indirect. Fixed field chosen for simplicity; revisit if the
 ISA proves hard to evolve.
 
-#### 5.3.3 Phase 1 op set (22 ops)
+#### 5.3.3 Phase 1 op set (24 ops)
 
 Templates and neutral filler:
 
 | op | effect |
 |---|---|
 | `nop0`, `nop1` | Do nothing. A run of nops directly after a search op is a template. Also the neutral filler. |
+| `pad` | Do nothing, ends a template. All unassigned opcode slots decode to this. |
 
 Data:
 
@@ -202,6 +232,7 @@ Data:
 | `shl r`, `shr r` | shift left / right by one bit |
 | `add r`, `sub r` | A += r, A -= r |
 | `lit r` | r = next byte; skip that byte. Cheap constants. The skipped byte is still a valid op if jumped into. |
+| `swap r` | Exchange A and r. The only register-to-register move. Without it nothing can get an address out of A into B, and `copy` is unreachable even for a hand-written ancestor (found 2026-09-30 while checking the op set against a copy loop). Avida has the same op. |
 
 Control:
 
@@ -209,8 +240,8 @@ Control:
 |---|---|
 | `skipz r`, `skipnz r` | skip next instruction if r == 0 / r != 0 |
 | `jmpr r` | IP += r (signed) |
-| `searchf`, `searchb` | Read the template (run of nops) immediately following this op, skip past it, scan forward / backward within the locality radius for the complementary pattern (`nop0` matches `nop1`). On success D = address just past the match, C = template length. On failure D = 0 and the fail flag is set. Cost grows with distance scanned. |
-| `self` | A = own body start, B = own body length. Self-knowledge, not privileged access: the body remains ordinary memory. |
+| `searchf`, `searchb` | Read the template (run of nops) immediately following this op, skip past it, scan forward / backward within the locality radius for the complementary pattern (`nop0` matches `nop1`). On success D = address just past the match, C = template length. On failure, or if the template is empty, D = 0 and the fail flag is set. Cost grows with distance scanned. Byte 0x00 decodes as `pad`, so zeroed memory is never a template. |
+| `self` | Modifier 0: A = own body start, B = own body length. Modifier 1: A = IP. The IP form lets a host's copy loop check who is running it (Stringmol's evolved defences did exactly this) and lets code find itself after a jump. Self-knowledge, not privileged access: the body remains ordinary memory. Phase 1: "own" means the executing organism. Alternative (§9): the owner of the byte IP is on, which restores Tierra's hyper-parasite trick where a host's copy loop, run by a parasite's CPU, copies the host. |
 
 Memory (fixed-register conventions keep the encoding to one byte):
 
@@ -218,7 +249,7 @@ Memory (fixed-register conventions keep the encoding to one byte):
 |---|---|
 | `load r` | r = byte at [A] |
 | `store r` | byte at [A] = r |
-| `copy` | byte at [A] = byte at [B]. Tierra's `mov_iab`. A one-op copy keeps the replication loop short, which makes it more robust to mutation. |
+| `copy` | byte at [A] = byte at [B], then A += 1 and B += 1. Tierra's `mov_iab` plus the two increments its ancestor spent separate ops on. A one-op copy step keeps the replication loop short, which makes it more robust to mutation. |
 
 All writes are noisy (§5.7): with probability p per write the stored byte
 gets a random bit flip. Mutation is physics, not a separate step, so
@@ -229,7 +260,7 @@ Body and reproduction:
 
 | op | effect |
 |---|---|
-| `alloc r` | Claim r contiguous free bytes (free or debris) nearest to the body within the locality radius. A = start of the claimed region; on failure A = 0 and the fail flag is set. The region is owned by the parent until `divide`. Cost: base plus per byte. |
+| `alloc r` | Claim r contiguous free bytes (free or debris) nearest to the body within the locality radius. Claimed bytes are not cleared: matter is conserved, so debris content comes along. `alloc` then `divide` with no copying therefore resurrects whatever was there. That is scavenging, allowed on purpose, and logged as a birth whose copy source is debris. A = start of the claimed region; on failure A = 0 and the fail flag is set. The region is owned by the parent until `divide`. Cost: base plus per byte. |
 | `divide r` | The region from the last `alloc` becomes a new organism with IP at its start. The parent transfers r energy units to it (capped by the parent's store). That byte is parental investment, and evolvable. |
 
 Energy:
@@ -241,6 +272,26 @@ Energy:
 Held back for Phase 3 (§5.5): `drain`, `guard`, `sense`. Tierra-style
 parasites do not need them; reading a neighbour's copy loop needs only
 `searchf` and `jmpr`.
+
+Sanity check, a hand-written ancestor in this op set (the op set is only
+complete if this loop can be written):
+
+```
+self        ; A = own start, B = own length
+swap B      ; A = length,    B = own start
+swap C      ; A = 0,         C = length      (loop counter)
+alloc C     ; A = child start (B, C untouched)
+lit D -4    ; D = jump offset back to the copy
+copy        ; [A] = [B]; A++, B++
+dec C
+skipz C
+jmpr D      ; loop while C != 0
+divide r    ; child born, r energy handed over
+```
+
+About 12 bytes. Register pressure is real: all four registers are in use, and
+the parent has forgotten its own start by the end. That is acceptable for
+Phase 1 and is itself something evolution can work around (a second `self`).
 
 #### 5.3.4 Cost draft
 
@@ -266,10 +317,18 @@ ancestor cannot pay for replication or when nothing bothers to absorb.
   Absorb yields a small amount per execution: sunlight is dilute. Gathering it
   should take a large fraction of a producer's cycles.
 - Every executed instruction costs energy from the organism's store.
-- An organism with zero energy stops executing. It does not immediately die;
-  its body persists, decaying (§5.7), and it can be scavenged.
+- Upkeep: every tick an organism pays u energy per byte of body whether or
+  not it executes anything. Existence has a metabolic cost. This is what
+  prevents immortal loafers: without it a genome that only executes `absorb`
+  never dies except by bit rot. Avida needed an explicit age limit for the
+  same reason.
+- An organism that cannot pay upkeep is dead: it stops, its bytes become
+  debris, and they decay (§5.7) until claimed.
 - Energy is compute. There is no separate scheduler fairness; an organism runs
-  as many instructions per tick as it can pay for, up to a per-tick cap.
+  as many instructions per tick as it can pay for, up to a per-tick cap of
+  cap = c0 + c1 × body length. This cap is the analog of Tierra's CPU slice,
+  and that slice set Tierra's size trend outright (§2). Phase 1: c1 = 0
+  (constant slice; expect shrinking). Phase 3 sweeps c1.
 
 Analog: sunlight is the only external input; all work dissipates energy.
 
@@ -310,8 +369,12 @@ Per world cell:
   or later.
 
 Slow drift: all per-cell parameters change slowly over long timescales
-(continental drift analog). A non-stationary environment is the best known
-tool against equilibrium.
+(continental drift analog). A non-stationary environment is a plausible
+pressure against equilibrium, not an established one: no reviewed system
+showed it working, and Avida's fluctuating-environment results are about
+phenotypic plasticity, not open-endedness. So heterogeneity is hypothesis
+H9 (§11): compare homogeneous, static-heterogeneous, and drifting worlds
+with replicated seeds before crediting drift with anything.
 
 Locality plus heterogeneity gives geography, and geography gives allopatric
 speciation (populations separated by distance drift apart).
@@ -324,10 +387,20 @@ speciation (populations separated by distance drift apart).
 - Maintenance: since the body decays, an organism must spend cycles checking
   and repairing itself or accept accumulating damage. Bigger bodies cost more
   to maintain. Whether repair evolves is an experimental result.
-- Death: an organism is dead when it has no energy and cannot regain it, or
-  when it faults in an unrecoverable way (exact fault semantics TBD; the ISA
-  should make most faults recoverable so death is mostly energetic).
-- No reaper. Dead bodies remain as debris until claimed or decayed.
+- Death: an organism is dead when it cannot pay upkeep (§5.4). No fault
+  kills; all ops are total (§5.3).
+- No reaper. Dead bodies remain as debris until claimed or decayed. Note
+  that every "no reaper" system in the literature still had forced
+  turnover (Nanopond reseeds random cells, Cosmos culls at a population
+  cap, Evoloops dissolves loops). Here upkeep plus decay is that turnover;
+  whether it suffices is a Phase 1 measurement (§11).
+- Rates: set by mutation load per genome copy, p × L, not by p alone.
+  Reference loads: Tierra about 0.13 per 80-byte copy (about 1 bit per
+  1,000–2,500 instructions moved), Avida default 0.85 per copy, evolved
+  Avida genomes tolerate 2 to 3.6. Start at load 0.1 on the ancestor, which
+  for a 12-byte ancestor means p = 8e-3 per byte written, and sweep by log
+  steps. Log realized load per birth (§7) since L drifts. Tierra communities died when genome size grew 10x at a fixed
+  rate: the error threshold, observed.
 
 Analog: the second law. Copying is imperfect. Bodies rot.
 
@@ -345,9 +418,14 @@ metabolic scaling) have analogs that emerge from the rules above:
   can drain or overwrite it.
 
 Together these give an optimal size that depends on the local environment.
-Tierra's problem was the opposite of "too big": everything shrank. The
-intended counter-pressures are interaction richness and environmental
-complexity, which reward carrying more code.
+Every predecessor shrank under a constant CPU slice and bloated or collapsed
+under a size-proportional one (Tierra, Cosmos; Avida is size-neutral by
+construction and its complexity still plateaued). The literature gives no
+example of size settling at an interior optimum by itself. The intended
+counter-pressures here are interaction richness and environmental
+complexity, which reward carrying more code, plus the c1 term in the tick
+cap (§5.4) as a tunable. Whether an interior optimum appears is hypothesis
+H3 (§11).
 
 ## 6. Architecture
 
@@ -387,11 +465,28 @@ evo/
 
 ## 7. Instrumentation (build before more physics)
 
-- Organism table: id, parent id, birth tick, death tick, genome hash, length,
-  position.
-- Genome store keyed by hash so identical genomes are stored once.
+- Organism table: id, birth tick, death tick, death cause, genome hash at
+  birth, length, position, lifetime offspring count.
+- Two parents per birth: the executor (whose CPU ran `divide`) and the copy
+  source (whose bytes were copied). Under Tierra-style hyper-parasitism
+  these differ, and Ray's logs recorded the wrong one.
+- Birth record also carries generation depth and number of copy errors
+  relative to the source genome.
+- Genome store keyed by hash, with parent hash, so the phylogeny exports in
+  the standard ALife phylogeny format.
+- Mutation events tagged heritable (copy error into a child) vs somatic (bit
+  rot or foreign write into a living body). Activity statistics assume
+  genomes do not change in place; ours do.
+- Periodic census: genome hash and count, every N ticks. This is the raw
+  input for Bedau–Packard activity statistics, Channon's shadow test, MODES,
+  and QNN (docs/research/literature.md); all can run offline from it.
 - Per-N-ticks summary: population, distinct genomes, mean/max length, total
-  energy, energy by region.
+  energy, energy by region, interaction counts (foreign reads, foreign
+  execution, blocked writes).
+- Single-genome test harness: run one genome alone in a clean world to
+  measure replication time, deleterious mutation fraction, and offspring
+  per lifetime. Needed for MODES complexity and for the error-threshold
+  check (§5.8).
 - Full world snapshot on demand and at intervals; replay from seed + tick.
 - First visualizer: image of the byte array colored by lineage, one frame per
   snapshot. Web or terminal viewer later.
@@ -415,7 +510,13 @@ seasons, slow drift, debris, drain/defense ops. Success criteria: spatial
 differentiation of lineages; some form of producer/consumer split;
 evidence for or against evolved repair.
 
-**Phase 4 — Experiments.** Soup runs with no seed. Chemistry (multiple
+**Phase 4 — Experiments.** BFF calibration harness first: reproduce
+Agüera y Arcas et al. (2024) exactly (2^17 tapes of 64 bytes, random
+pairing, 8,192 steps per interaction, byte-replacement mutation at 2^-12)
+to confirm their 40% emergence rate, then swap in evo's ISA on the same
+protocol, then add evo's physics one rule at a time (energy, ownership,
+locality). This isolates which rule, if any, kills emergence. Then soup
+runs with no seed in the full world, with a start-execution rule (§9). Chemistry (multiple
 resource types). Multi-day runs. Compare ISA variants for evolvability.
 
 ## 9. Open questions
@@ -431,6 +532,19 @@ resource types). Multi-day runs. Compare ISA variants for evolvability.
 - Multi-core strategy: partition the torus into strips with halo exchange, or
   run independent worlds and migrate organisms between them (islands).
 - Snapshot format: hand-rolled vs serde/bincode.
+- `self` semantics: executing organism (Phase 1) vs owner of the byte at
+  IP (Tierra-like, enables hyper-parasites). Cheap ISA switch; test both.
+- Search: Tierra searched both directions alternately at flat cost. We have
+  directional search at distance-proportional cost. Locality radius plays
+  Tierra's max-search-distance role (200–400 in 1991, 5x mean adult size
+  later, 10,000 in size-neutral runs).
+- Seedless soup needs a rule that starts execution on random bytes
+  (Coreworld injected random pointers at p = 0.05 per update; Amoeba gave
+  5% of CPUs to random code). Not needed while seeded. Phase 4.
+- Upkeep u and tick-cap slope c1 are the two knobs that set size selection.
+  Defaults u small, c1 = 0. Sweep in Phase 3. Variant worth testing: scale
+  the cap by distinct bytes executed last tick rather than bytes owned, so
+  padding earns nothing (Cosmos's owned-length slice rewarded padding).
 
 ## 10. Expectations
 
@@ -454,9 +568,17 @@ test them.
   plateaued, and what the authors thought was missing. This is a prerequisite
   for Phase 1 design decisions, not optional reading.
 - `docs/research/hypotheses.md`: numbered, dated predictions with the
-  observation that would confirm or refute each. First entries: the register
-  vs stack prediction (§5.3.1), the producer/consumer diagnostic (§5.5), and
-  emergent size limits (§5.8).
+  observation that would confirm or refute each. Nine entries as of
+  2026-09-30: H1 register vs stack (§5.3.1), H2 producer/consumer diagnostic
+  (§5.5), H3 no interior size optimum on its own (§5.8), H4 write protection
+  needed for coexistence (§5.3), H5 upkeep plus decay is enough turnover
+  (§5.4, §5.7), H6 absorb-loop takeover (§5.4), H7 seedless emergence needs
+  a start-execution rule (§9), H8 `self` semantics change the ecology (§9),
+  H9 environmental drift delays equilibrium (§5.6).
+- `docs/research/notes/`: raw per-source notes from the 2026-09-30 review,
+  one file per cluster, URL on every fact, UNVERIFIED tags kept.
+- `docs/research-historic/`: the earlier Codex pass. Superseded by
+  `literature.md`; kept for the reference list.
 - `docs/research/experiments/`: one file per experiment: seed, config hash,
   commit, what was varied, what was observed, which hypothesis it bears on.
   Runs are reproducible from seed and config (§3), so a record plus the repo
