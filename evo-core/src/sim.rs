@@ -414,8 +414,9 @@ impl Sim {
                 if want > 0 && want <= self.cfg.locality {
                     'outer: for d in 0..=self.cfg.locality {
                         for s in [self.wrap(ip + d), self.off(ip, -(d as i64) - want as i64 + 1)] {
-                            // every byte of [s, s+want) must be free/debris and in range
-                            let mut ok = self.in_range(ip, self.wrap(s + want - 1));
+                            // every byte of [s, s+want) must be free/debris and in range;
+                            // both ends in range means the whole run is (want <= locality)
+                            let mut ok = self.in_range(ip, s) && self.in_range(ip, self.wrap(s + want - 1));
                             if ok {
                                 for k in 0..want {
                                     let o = self.owner[self.wrap(s + k) as usize];
@@ -766,6 +767,27 @@ self 2
         sim.run_tick();
         assert_eq!(sim.orgs[0].regs[2], 3);
         assert_eq!(sim.orgs[0].regs[3], 100 + 9);
+    }
+
+    #[test]
+    fn alloc_region_lies_within_locality() {
+        // Block forward space and the near backward space so the nearest
+        // backward run that fits extends past the locality radius.
+        let mut cfg = Config::default();
+        quiet(&mut cfg);
+        cfg.locality = 64;
+        let mut sim = Sim::new(cfg);
+        let g = crate::isa::assemble("lit C 40
+alloc C
+").unwrap();
+        sim.seed(1000, &g, 100 * MILLI, 0);
+        sim.seed(1003, &vec![0u8; 100], 100 * MILLI, 0);
+        sim.seed(1000 - 40, &vec![0u8; 40], 100 * MILLI, 0);
+        // The only free 40-byte run ending within reach is [920, 960), whose
+        // start is 80 bytes from IP. It must be refused, not half-claimed.
+        sim.run_tick();
+        assert_eq!(sim.orgs[0].pending, None);
+        assert!(sim.orgs[0].flag);
     }
 
     #[test]
