@@ -250,3 +250,13 @@ occupied.
 or arms that spread wider replicate no longer.
 
 **Status.** Open. E002.
+
+---
+
+## H10 note (2026-10-01)
+
+E002: best dispersal arm (farthest-free `alloc`) had 2 of 10 seeds still
+replicating at 50,000 ticks vs 0 of 10 for control, no extinctions vs 2,
+and about twice the births; same median patch count. Below the +3 threshold
+set above. Smaller patches at constant energy density made extinction more
+likely, not less. Status: mixed.

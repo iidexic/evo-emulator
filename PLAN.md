@@ -579,7 +579,10 @@ Follow-ups 2026-10-01: entropy loops use a geometric skip, about 29x faster
 (2ade71f); `alloc` range check fixed to cover the whole region (12513a3);
 E002 dispersal experiment set up, not yet run: six arms over patch size and
 farthest-free `alloc`, runner `analysis/e002_dispersal.py`, hypothesis H10
-(5c7aa74). Rust VM, 1D ring world, energy, noisy
+(5c7aa74). E002 run at d89e634: farthest-free `alloc` helped a little (0 of
+10 extinct, 2 of 10 still replicating vs 0 for control); smaller patches
+made extinction more likely, because founder and first child starve in
+one small patch. H10 mixed. Rust VM, 1D ring world, energy, noisy
 writes, hand-written ancestor. Success criterion: the ancestor replicates,
 mutants appear, and parasites (organisms that use another's copy loop)
 emerge. This is roughly a Tierra reimplementation with energy instead of a
