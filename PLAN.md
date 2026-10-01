@@ -388,6 +388,11 @@ ancestor cannot pay for replication or when nothing bothers to absorb.
   same reason.
 - An organism that cannot pay upkeep is dead: it stops, its bytes become
   debris, and they decay (§5.7) until claimed.
+- Store cap: an organism holds at most s energy per body byte (default 64).
+  Absorb beyond that is wasted and stays in the patch. Added 2026-10-01
+  after the first run (E001) showed non-replicating absorbers hoarding
+  without bound: income from a tight absorb loop was 30x upkeep, so upkeep
+  alone killed nothing. Bit rot is on by default for the same reason.
 - Energy is compute. There is no separate scheduler fairness; an organism runs
   as many instructions per tick as it can pay for, up to a per-tick cap of
   cap = c0 + c1 × body length. This cap is the analog of Tierra's CPU slice,
@@ -565,7 +570,9 @@ evo/
 **Phase 0 — Design (this doc).** ISA draft, op cost table, world model. Each
 rule with its physical justification. Decide open questions in §9.
 
-**Phase 1 — Minimal living system.** Rust VM, 1D ring world, energy, noisy
+**Phase 1 — Minimal living system.** Status 2026-10-01: `evo-core` builds
+and passes its tests, the ancestor replicates, first runs are recorded in
+`docs/research/experiments/2026-10-01-e001-first-runs.md`. Rust VM, 1D ring world, energy, noisy
 writes, hand-written ancestor. Success criterion: the ancestor replicates,
 mutants appear, and parasites (organisms that use another's copy loop)
 emerge. This is roughly a Tierra reimplementation with energy instead of a
@@ -656,7 +663,7 @@ test them.
   one file per cluster, URL on every fact, UNVERIFIED tags kept.
 - `docs/research-historic/`: the earlier Codex pass. Superseded by
   `literature.md`; kept for the reference list.
-- `docs/research/experiments/`: one file per experiment: seed, config hash,
+- `docs/research/experiments/`: one file per experiment (E001 onward): seed, config hash,
   commit, what was varied, what was observed, which hypothesis it bears on.
   Runs are reproducible from seed and config (§3), so a record plus the repo
   is sufficient to regenerate any figure.
