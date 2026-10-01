@@ -412,7 +412,11 @@ impl Sim {
                 let me = self.orgs[i].id;
                 let mut got: Option<u32> = None;
                 if want > 0 && want <= self.cfg.locality {
-                    'outer: for d in 0..=self.cfg.locality {
+                    let loc = self.cfg.locality;
+                    'outer: for step in 0..=loc {
+                        // Nearest-first by default; alloc_far scans from the
+                        // locality edge inward (E002 dispersal arm).
+                        let d = if self.cfg.alloc_far { loc - step } else { step };
                         for s in [self.wrap(ip + d), self.off(ip, -(d as i64) - want as i64 + 1)] {
                             // every byte of [s, s+want) must be free/debris and in range;
                             // both ends in range means the whole run is (want <= locality)
@@ -767,6 +771,27 @@ self 2
         sim.run_tick();
         assert_eq!(sim.orgs[0].regs[2], 3);
         assert_eq!(sim.orgs[0].regs[3], 100 + 9);
+    }
+
+    #[test]
+    fn alloc_far_places_child_at_locality_edge() {
+        let mut cfg = Config::default();
+        quiet(&mut cfg);
+        cfg.alloc_far = true;
+        let mut sim = Sim::new(cfg);
+        let g = ancestor(64, 16);
+        sim.seed(1000, &g, 100 * MILLI, 0);
+        for _ in 0..200 {
+            sim.run_tick();
+            if sim.orgs.len() > 1 {
+                break;
+            }
+        }
+        let child = &sim.orgs[1];
+        assert_eq!(child.genome, g);
+        // `alloc` is at offset 11; the farthest 21-byte run whose end is
+        // within 512 of IP starts 512 - 20 bytes ahead.
+        assert_eq!(child.start, 1011 + 492);
     }
 
     #[test]

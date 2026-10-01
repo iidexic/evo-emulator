@@ -30,6 +30,9 @@ pub struct Config {
     pub cap_c0: i64,
     pub cap_c1: i64,
     pub write_protection: bool,
+    /// `alloc` claims the farthest fitting free run within locality instead
+    /// of the nearest. Dispersal experiment (E002); default off.
+    pub alloc_far: bool,
 
     // Costs (milli-units)
     pub cost_simple: i64,
@@ -70,6 +73,7 @@ impl Default for Config {
             cap_c0: 32 * MILLI,
             cap_c1: 0,
             write_protection: true,
+            alloc_far: false,
             cost_simple: MILLI,
             cost_load: 2 * MILLI,
             cost_store: 2 * MILLI,

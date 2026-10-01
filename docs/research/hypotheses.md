@@ -227,3 +227,26 @@ upkeep alone does not purge non-replicators. Store cap and bit rot were
 added. Whether upkeep plus store cap plus bit rot plus decay is enough
 turnover is the revised question; E001 run 4 suggests not yet (loafers
 outlive replicators through patch crashes). Status: mixed.
+
+---
+
+## H10. Dispersal across patches sustains replication (2026-10-01)
+
+**Prediction.** When children can land in patches other than their
+parent's, replication continues through 50,000 ticks in more runs than when
+they cannot, because a crash in one patch no longer takes the whole colony
+and loafers no longer inherit the only habitable patch.
+
+**Reasoning.** E001: every child landed in the parent's 4,096-byte patch
+(locality 512, nearest-free `alloc`), the colony overshot that patch's
+income, and loafers survived the crashes that killed replicators.
+
+**Confirms.** In E002, the best dispersal arm (smaller patches at constant
+energy density, or farthest-free `alloc`) has at least 3 more of 10 seeds
+still replicating at 50,000 ticks than the control, and more patches
+occupied.
+
+**Refutes.** No dispersal arm beats the control on runs still replicating,
+or arms that spread wider replicate no longer.
+
+**Status.** Open. E002.
