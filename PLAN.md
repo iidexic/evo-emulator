@@ -572,7 +572,12 @@ rule with its physical justification. Decide open questions in §9.
 
 **Phase 1 — Minimal living system.** Status 2026-10-01: `evo-core` builds
 and passes its tests, the ancestor replicates, first runs are recorded in
-`docs/research/experiments/2026-10-01-e001-first-runs.md`. Rust VM, 1D ring world, energy, noisy
+`docs/research/experiments/2026-10-01-e001-first-runs.md`.
+Follow-ups 2026-10-01: entropy loops use a geometric skip, about 29x faster
+(2ade71f); `alloc` range check fixed to cover the whole region (12513a3);
+E002 dispersal experiment set up, not yet run: six arms over patch size and
+farthest-free `alloc`, runner `scripts/e002_dispersal.py`, hypothesis H10
+(5c7aa74). Rust VM, 1D ring world, energy, noisy
 writes, hand-written ancestor. Success criterion: the ancestor replicates,
 mutants appear, and parasites (organisms that use another's copy loop)
 emerge. This is roughly a Tierra reimplementation with energy instead of a
@@ -658,7 +663,8 @@ test them.
   needed for coexistence (§5.3), H5 upkeep plus decay is enough turnover
   (§5.4, §5.7), H6 absorb-loop takeover (§5.4), H7 seedless emergence needs
   a start-execution rule (§9), H8 `self` semantics change the ecology (§9),
-  H9 environmental drift delays equilibrium (§5.6).
+  H9 environmental drift delays equilibrium (§5.6). H10 (2026-10-01):
+  dispersal across patches sustains replication (E002).
 - `docs/research/notes/`: raw per-source notes from the 2026-09-30 review,
   one file per cluster, URL on every fact, UNVERIFIED tags kept.
 - `docs/research-historic/`: the earlier Codex pass. Superseded by
