@@ -519,6 +519,8 @@ H3 (§11).
 - Phylogenetic tree, diversity metrics, genome length over time, energy flow
   between organisms, spatial maps colored by lineage.
 - Managed with `uv`. numpy, polars or pandas, matplotlib to start.
+  Set up 2026-10-01: Python 3.13, numpy, polars, matplotlib, `uv.lock`
+  committed; experiment runners live here too (`analysis/README.md`).
 
 ### 6.3 Interface between them
 
@@ -576,7 +578,7 @@ and passes its tests, the ancestor replicates, first runs are recorded in
 Follow-ups 2026-10-01: entropy loops use a geometric skip, about 29x faster
 (2ade71f); `alloc` range check fixed to cover the whole region (12513a3);
 E002 dispersal experiment set up, not yet run: six arms over patch size and
-farthest-free `alloc`, runner `scripts/e002_dispersal.py`, hypothesis H10
+farthest-free `alloc`, runner `analysis/e002_dispersal.py`, hypothesis H10
 (5c7aa74). Rust VM, 1D ring world, energy, noisy
 writes, hand-written ancestor. Success criterion: the ancestor replicates,
 mutants appear, and parasites (organisms that use another's copy loop)

@@ -1,0 +1,11 @@
+[project]
+name = "evo-analysis"
+version = "0.1.0"
+description = "Analysis and experiment runners for evo-core output (PLAN.md §6.2)"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "matplotlib>=3.11.2",
+    "numpy>=2.5.3",
+    "polars>=1.44.2",
+]

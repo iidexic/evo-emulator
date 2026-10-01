@@ -1,10 +1,10 @@
 """E002: dispersal arms. Runs every arm x seed, then summarizes.
 
-Stdlib only. Usage (from the repo root):
+Stdlib only, so plain `python` works too. Usage (from analysis/):
 
-    python scripts/e002_dispersal.py                 # build, run, summarize
-    python scripts/e002_dispersal.py --summarize-only
-    python scripts/e002_dispersal.py --seeds 3 --ticks 10000   # quick look
+    uv run e002_dispersal.py                 # build, run, summarize
+    uv run e002_dispersal.py --summarize-only
+    uv run e002_dispersal.py --seeds 3 --ticks 10000   # quick look
 
 Raw output goes to runs/e002/<arm>/s<seed>.csv (census lines from the CLI)
 and .err (timing and top genotypes). The summary table is printed and
