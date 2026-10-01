@@ -566,19 +566,27 @@ impl Sim {
             }
         }
 
-        // Entropy: bit rot and debris decay.
-        if self.cfg.p_bit_rot > 0.0 {
-            for a in 0..self.bytes.len() {
-                if self.rng.chance(self.cfg.p_bit_rot) {
-                    self.bytes[a] ^= 1 << self.rng.below(8);
-                }
+        // Entropy: bit rot and debris decay. Each is a per-byte Bernoulli
+        // trial; sampling the gap to the next hit gives the same event
+        // distribution without one RNG call per byte. Debris decay trials
+        // that land on non-debris bytes do nothing, as in a per-byte loop.
+        let n = self.bytes.len() as u64;
+        let p = self.cfg.p_bit_rot;
+        if p > 0.0 {
+            let mut a = self.rng.geometric(p);
+            while a < n {
+                self.bytes[a as usize] ^= 1 << self.rng.below(8);
+                a = a.saturating_add(self.rng.geometric(p)).saturating_add(1);
             }
         }
-        if self.cfg.p_debris_decay > 0.0 {
-            for a in 0..self.owner.len() {
-                if self.owner[a] == DEBRIS && self.rng.chance(self.cfg.p_debris_decay) {
-                    self.owner[a] = FREE;
+        let p = self.cfg.p_debris_decay;
+        if p > 0.0 {
+            let mut a = self.rng.geometric(p);
+            while a < n {
+                if self.owner[a as usize] == DEBRIS {
+                    self.owner[a as usize] = FREE;
                 }
+                a = a.saturating_add(self.rng.geometric(p)).saturating_add(1);
             }
         }
     }

@@ -55,6 +55,23 @@ impl Rng {
         p > 0.0 && self.unit() < p
     }
 
+    /// Number of failed Bernoulli(p) trials before the next success.
+    /// Lets a loop over n bytes with per-byte probability p jump straight
+    /// to the next hit instead of drawing n random numbers; the resulting
+    /// event positions have the same distribution.
+    pub fn geometric(&mut self, p: f64) -> u64 {
+        if p >= 1.0 {
+            return 0;
+        }
+        if p <= 0.0 {
+            return u64::MAX;
+        }
+        // 1 - unit() is in (0, 1], so ln is finite. ln_1p(-p) keeps
+        // precision for tiny p. f64 -> u64 casts saturate, never wrap.
+        let u = 1.0 - self.unit();
+        (u.ln() / (-p).ln_1p()).floor() as u64
+    }
+
     /// Fisher–Yates shuffle in place.
     pub fn shuffle<T>(&mut self, v: &mut [T]) {
         for i in (1..v.len()).rev() {
@@ -83,5 +100,27 @@ mod tests {
         for _ in 0..10_000 {
             assert!(r.below(7) < 7);
         }
+    }
+
+    #[test]
+    fn geometric_matches_bernoulli_rate() {
+        // Hits over n positions should average p * n.
+        let mut r = Rng::new(3);
+        let (p, n) = (1e-3, 10_000_000u64);
+        let mut hits = 0u64;
+        let mut a = r.geometric(p);
+        while a < n {
+            hits += 1;
+            a += 1 + r.geometric(p);
+        }
+        let want = p * n as f64; // 10,000; sd ~100
+        assert!((hits as f64 - want).abs() < 5.0 * want.sqrt(), "hits {hits}");
+    }
+
+    #[test]
+    fn geometric_edges() {
+        let mut r = Rng::new(1);
+        assert_eq!(r.geometric(1.0), 0);
+        assert_eq!(r.geometric(0.0), u64::MAX);
     }
 }
