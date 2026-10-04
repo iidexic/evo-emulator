@@ -141,6 +141,9 @@ shows each survivor's activity over the last census interval.
   child), `newborn` (never divided), `after_dividing`. Births are typed
   `exact` (child equals the executor's body at `divide`), `mutant`, or
   `stillborn`.
+- `explore.py` (added after this spec): a marimo notebook over the same
+  files, with the same derived tables and palette. Interactive, but not
+  the full viewer PLAN.md §7 has in mind (`analysis/README.md`).
 
 ## Acceptance
 

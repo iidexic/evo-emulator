@@ -39,9 +39,9 @@ SIG_ORDER = ["newborn", "mid_copy", "after_dividing", "stillborn"]
 SIG_COLOR = {"newborn": BLUE, "mid_copy": ORANGE, "after_dividing": AQUA, "stillborn": GRAY}
 BIRTH_ORDER = ["exact", "mutant", "stillborn"]
 BIRTH_COLOR = {"exact": BLUE, "mutant": ORANGE, "stillborn": GRAY}
-SEQ = LinearSegmentedColormap.from_list(
-    "blue", ["#fcfcfb", "#cde2fb", "#86b6ef", "#3987e5", "#256abf", "#184f95", "#0d366b"]
-)
+# Sequential blue ramp, light to dark (magnitude: patch pools).
+SEQ_STEPS = ["#fcfcfb", "#cde2fb", "#86b6ef", "#3987e5", "#256abf", "#184f95", "#0d366b"]
+SEQ = LinearSegmentedColormap.from_list("blue", SEQ_STEPS)
 
 
 def style(ax, title: str, xlabel: str | None = None, ylabel: str | None = None) -> None:

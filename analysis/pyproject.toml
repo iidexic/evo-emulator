@@ -5,6 +5,8 @@ description = "Analysis and experiment runners for evo-core output (PLAN.md §6.
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "altair>=6.3.0",
+    "marimo>=0.25.1",
     "matplotlib>=3.11.2",
     "numpy>=2.5.3",
     "polars>=1.44.2",

@@ -523,7 +523,11 @@ H3 (§11).
   committed; experiment runners live here too (`analysis/README.md`).
   2026-10-03: `evo_run.py` loads a run directory into polars frames;
   `report.py` prints a diagnostic summary and writes static plots
-  (population by class, space-time, patch pools, deaths).
+  (population by class, space-time, patch pools, deaths). `explore.py` is
+  a marimo notebook over the same files: run picker, tick window, hover
+  tooltips, click an organism in the space-time view to see its life and
+  genome. It is a stopgap. Derek wants a fuller viewer later; whether it
+  is Rust, Python, or something else is open.
 
 ### 6.3 Interface between them
 
@@ -550,8 +554,9 @@ birth/death logs with executor and copy source, genome store with raw and
 functional hashes and parent links, periodic census from current body
 bytes, per-patch series, single-genome classifier (`--classify`), and a
 whole-state hash with determinism tests. Not yet: the ALife phylogeny
-export, snapshots and replay from a mid-run tick, activity statistics, an
-interactive viewer.
+export, snapshots and replay from a mid-run tick, activity statistics, a
+full interactive viewer (a marimo notebook over the run files stands in
+for now, §6.2).
 
 - Organism table: id, birth tick, death tick, death cause, genome hash at
   birth, length, position, lifetime offspring count.
