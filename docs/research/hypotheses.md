@@ -156,7 +156,11 @@ state (dilute, depleting) so stacking absorbs has diminishing returns, which
 is already the intent in §5.4; the experiment tests whether the ratio is
 right.
 
-**Status.** Open. Phase 1.
+**Status.** Open. Phase 1. 2026-10-03: a related but different mechanism
+seen at the end of E002 control runs: 12 of 13 survivors (seeds 1–3) had a
+point mutation that breaks the absorb loop's exit, not extra absorbs in the
+copy loop. They absorb forever and never copy. See the post-hoc section of
+`experiments/2026-10-01-e002-dispersal.md`.
 
 ---
 
@@ -260,3 +264,22 @@ replicating at 50,000 ticks vs 0 of 10 for control, no extinctions vs 2,
 and about twice the births; same median patch count. Below the +3 threshold
 set above. Smaller patches at constant energy density made extinction more
 likely, not less. Status: mixed.
+
+---
+
+## H10 note (2026-10-03)
+
+E003 re-ran the E002 far arm with recording. The two "still replicating"
+seeds (6 and 8) had only mutant births late in the run; their last exact
+birth was at tick 9,839 and 31,875. Counting only exact copies, the far arm
+had 0 of 10 seeds still replicating at tick 45,000, the same as control. It
+still had 0 of 10 extinct vs 2 of 10. Status: leaning refuted on
+persistence; dispersal by farthest-free `alloc` alone does not keep
+replicators going.
+
+## H5 note (2026-10-03)
+
+E003: the 23 survivors across control seeds 1–5 are 23,145–49,906 ticks
+old, and 22 of 23 sit in a 4-instruction absorb loop. Upkeep, store cap,
+bit rot and decay together still do not turn them over within 50,000
+ticks. Status: mixed, leaning refuted for the current constants.

@@ -521,6 +521,9 @@ H3 (§11).
 - Managed with `uv`. numpy, polars or pandas, matplotlib to start.
   Set up 2026-10-01: Python 3.13, numpy, polars, matplotlib, `uv.lock`
   committed; experiment runners live here too (`analysis/README.md`).
+  2026-10-03: `evo_run.py` loads a run directory into polars frames;
+  `report.py` prints a diagnostic summary and writes static plots
+  (population by class, space-time, patch pools, deaths).
 
 ### 6.3 Interface between them
 
@@ -540,6 +543,15 @@ evo/
 ```
 
 ## 7. Instrumentation (build before more physics)
+
+Status 2026-10-03: first cut built, spec and file formats in
+`docs/instrumentation.md`. Done: per-organism counters, structured
+birth/death logs with executor and copy source, genome store with raw and
+functional hashes and parent links, periodic census from current body
+bytes, per-patch series, single-genome classifier (`--classify`), and a
+whole-state hash with determinism tests. Not yet: the ALife phylogeny
+export, snapshots and replay from a mid-run tick, activity statistics, an
+interactive viewer.
 
 - Organism table: id, birth tick, death tick, death cause, genome hash at
   birth, length, position, lifetime offspring count.
@@ -590,6 +602,16 @@ reaper.
 
 **Phase 2 — Instrumentation.** Everything in §7. Success criterion: we can
 draw the phylogeny of a Phase 1 run and see the parasite lineage appear.
+Status 2026-10-03: diagnostic first cut built (§7). First use, E003
+(`docs/research/experiments/2026-10-03-e003-crash-diagnosis.md`):
+replicators starve in their own crowded patch (newborns at a median age of
+3 ticks, adults at 14–17, zero `alloc` failures), replicator lineages end
+by tick 2,100–9,400 in control seeds 1–5, and broken-loop absorbers are
+what remains. Also seen: reproduction from debris, where an organism that
+copies one byte per child gets working replicators because the claimed
+region already holds dead ancestors' bytes. The parasite criterion cannot be
+met until replication persists, so the next design pass is physics (E003
+lists the options).
 
 **Phase 3 — Richer physics.** 2D torus, per-patch parameters, bit rot,
 seasons, slow drift, debris, drain/defense ops. Success criteria: spatial
