@@ -72,6 +72,11 @@ impl Rng {
         (u.ln() / (-p).ln_1p()).floor() as u64
     }
 
+    /// Internal state, for the whole-simulation state hash (determinism tests).
+    pub fn state(&self) -> [u64; 4] {
+        self.s
+    }
+
     /// Fisher–Yates shuffle in place.
     pub fn shuffle<T>(&mut self, v: &mut [T]) {
         for i in (1..v.len()).rev() {

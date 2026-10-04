@@ -24,7 +24,98 @@ pub enum DeathCause {
     Harness,
 }
 
-#[derive(Clone, Debug)]
+impl DeathCause {
+    pub fn name(self) -> &'static str {
+        match self {
+            DeathCause::Upkeep => "upkeep",
+            DeathCause::Harness => "harness",
+        }
+    }
+}
+
+/// Per-organism counters, cumulative over its life (docs/instrumentation.md).
+/// The simulation writes them; nothing in the physics reads them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OrgStats {
+    /// Energy at birth: seed energy or the parent's endowment.
+    pub born_with_m: i64,
+    pub executed: u64,
+    pub absorbs: u64,
+    pub absorb_gain_m: i64,
+    /// Absorbs that got less than a full ration because the pool was short.
+    pub absorb_short: u64,
+    /// Absorbs that got less than a full ration because the store was near cap.
+    pub absorb_capped: u64,
+    pub copies: u64,
+    /// `load`/`copy` reads of a byte owned by another organism.
+    pub reads_foreign: u64,
+    /// Instructions executed at an address owned by another organism.
+    pub exec_foreign: u64,
+    /// Instructions executed at a free or debris address.
+    pub exec_unowned: u64,
+    pub writes_blocked: u64,
+    /// Reads or writes outside locality.
+    pub range_faults: u64,
+    pub allocs_ok: u64,
+    pub allocs_fail: u64,
+    pub divides_ok: u64,
+    /// `divide` with no pending region.
+    pub divides_fail: u64,
+    pub endowed_m: i64,
+    pub spent_m: i64,
+    pub upkeep_m: i64,
+    /// Ticks in which it paid upkeep but could not afford one instruction.
+    pub starved_ticks: u64,
+    /// Tick of the last successful `divide`, -1 if none.
+    pub last_divide_tick: i64,
+    pub max_energy_m: i64,
+}
+
+impl OrgStats {
+    pub fn new(born_with_m: i64) -> OrgStats {
+        OrgStats {
+            born_with_m,
+            executed: 0,
+            absorbs: 0,
+            absorb_gain_m: 0,
+            absorb_short: 0,
+            absorb_capped: 0,
+            copies: 0,
+            reads_foreign: 0,
+            exec_foreign: 0,
+            exec_unowned: 0,
+            writes_blocked: 0,
+            range_faults: 0,
+            allocs_ok: 0,
+            allocs_fail: 0,
+            divides_ok: 0,
+            divides_fail: 0,
+            endowed_m: 0,
+            spent_m: 0,
+            upkeep_m: 0,
+            starved_ticks: 0,
+            last_divide_tick: -1,
+            max_energy_m: born_with_m,
+        }
+    }
+
+    /// CSV column names, in the order `csv_row` writes them.
+    pub const CSV_HEADER: &'static str = "born_with_m,executed,absorbs,absorb_gain_m,absorb_short,absorb_capped,copies,reads_foreign,exec_foreign,exec_unowned,writes_blocked,range_faults,allocs_ok,allocs_fail,divides_ok,divides_fail,endowed_m,spent_m,upkeep_m,starved_ticks,last_divide_tick,max_energy_m";
+
+    pub fn csv_row(&self) -> String {
+        format!(
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            self.born_with_m, self.executed, self.absorbs, self.absorb_gain_m,
+            self.absorb_short, self.absorb_capped, self.copies, self.reads_foreign,
+            self.exec_foreign, self.exec_unowned, self.writes_blocked, self.range_faults,
+            self.allocs_ok, self.allocs_fail, self.divides_ok, self.divides_fail,
+            self.endowed_m, self.spent_m, self.upkeep_m, self.starved_ticks,
+            self.last_divide_tick, self.max_energy_m,
+        )
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Event {
     Birth {
         tick: u64,
@@ -33,13 +124,21 @@ pub enum Event {
         /// Owner id of the first byte copied into the child's region, or
         /// DEBRIS/FREE if the child was scavenged without copying.
         source: u32,
+        start: u32,
         len: u32,
         /// Bit flips that landed in the child's region while it was pending.
         copy_errors: u32,
         /// Slips that landed in the child's region while it was pending.
         slips: u32,
         genome_hash: u64,
+        /// Executor's genome hash at its birth.
         parent_hash: u64,
+        /// Hash of the executor's body bytes at the moment of `divide`. Differs
+        /// from `parent_hash` when the executor's body changed since birth.
+        parent_now_hash: u64,
+        /// Birth genome hash of the copy source organism, 0 if `source` is
+        /// free space or debris.
+        source_hash: u64,
         endowment: i64,
     },
     Death {
@@ -48,6 +147,21 @@ pub enum Event {
         cause: DeathCause,
         age: u64,
         offspring: u32,
+        start: u32,
+        len: u32,
+        /// Length of a half-built child region at death, 0 if none.
+        pending_len: u32,
+        /// IP minus body start, wrapped around the ring.
+        ip_off: u32,
+        op_at_ip: Op,
+        /// Energy just before the failed upkeep charge (or the harness cull).
+        energy: i64,
+        /// Pool of the patch holding the body start.
+        pool: i64,
+        birth_hash: u64,
+        /// Hash of the body bytes at death.
+        now_hash: u64,
+        stats: OrgStats,
     },
 }
 
@@ -70,12 +184,16 @@ pub struct Org {
     pub genome_hash: u64,
     pub genome: Vec<u8>,
     pub parent: u32,
-    pub executed: u64,
+    pub stats: OrgStats,
 }
 
 #[derive(Clone, Debug)]
 pub struct Patch {
     pub pool: i64,
+    /// Cumulative energy taken from this pool by `absorb`.
+    pub absorbed: i64,
+    /// Cumulative income lost to the pool cap.
+    pub overflow: i64,
 }
 
 pub struct Sim {
@@ -113,7 +231,13 @@ impl Sim {
             rng: Rng::new(cfg.seed),
             bytes: vec![0; n],
             owner: vec![FREE; n],
-            patches: (0..np).map(|_| Patch { pool: if cfg.pools_start_full { cfg.patch_cap } else { 0 } }).collect(),
+            patches: (0..np)
+                .map(|_| Patch {
+                    pool: if cfg.pools_start_full { cfg.patch_cap } else { 0 },
+                    absorbed: 0,
+                    overflow: 0,
+                })
+                .collect(),
             orgs: Vec::new(),
             tick: 0,
             events: Vec::new(),
@@ -152,7 +276,7 @@ impl Sim {
         self.ring_dist(ip, addr) <= self.cfg.locality
     }
 
-    fn patch_of(&self, addr: u32) -> usize {
+    pub fn patch_of(&self, addr: u32) -> usize {
         (self.wrap(addr) / self.cfg.patch_size) as usize
     }
 
@@ -191,9 +315,20 @@ impl Sim {
             genome_hash: fnv1a(genome),
             genome: genome.to_vec(),
             parent,
-            executed: 0,
+            stats: OrgStats::new(energy),
         });
         id
+    }
+
+    /// Current bytes of a region (an organism's body as it is now, which can
+    /// differ from `Org.genome` after bit rot or foreign writes).
+    pub fn region(&self, start: u32, len: u32) -> Vec<u8> {
+        (0..len).map(|k| self.bytes[self.wrap(start + k) as usize]).collect()
+    }
+
+    /// IP minus body start, wrapped around the ring.
+    pub fn ip_off(&self, o: &Org) -> u32 {
+        self.off(o.ip, -(o.start as i64))
     }
 
     // ---- memory access with physics ------------------------------------
@@ -205,19 +340,21 @@ impl Sim {
         let ip = self.orgs[i].ip;
         if !self.in_range(ip, addr) {
             self.orgs[i].flag = true;
+            self.orgs[i].stats.range_faults += 1;
             return false;
         }
         let own = self.owner[addr as usize];
         let me = self.orgs[i].id;
         if self.cfg.write_protection && own >= FIRST_ID && own != me {
             self.orgs[i].flag = true;
+            self.orgs[i].stats.writes_blocked += 1;
             return false;
         }
         let mut v = val;
         if self.rng.chance(self.cfg.p_write_flip) {
             v ^= 1 << self.rng.below(8);
             if let Some((ps, pl)) = self.orgs[i].pending {
-                if self.ring_dist(ps, addr) < pl && self.wrap(addr.wrapping_sub(ps)) < pl {
+                if self.off(addr, -(ps as i64)) < pl {
                     self.orgs[i].pending_errors += 1;
                 }
             }
@@ -230,7 +367,12 @@ impl Sim {
         let addr = self.wrap(addr);
         if !self.in_range(self.orgs[i].ip, addr) {
             self.orgs[i].flag = true;
+            self.orgs[i].stats.range_faults += 1;
             return 0;
+        }
+        let own = self.owner[addr as usize];
+        if own >= FIRST_ID && own != self.orgs[i].id {
+            self.orgs[i].stats.reads_foreign += 1;
         }
         self.bytes[addr as usize]
     }
@@ -258,6 +400,14 @@ impl Sim {
         };
         if self.orgs[i].energy < base || cap_left < base {
             return None;
+        }
+        let own = self.owner[ip as usize];
+        if own >= FIRST_ID {
+            if own != self.orgs[i].id {
+                self.orgs[i].stats.exec_foreign += 1;
+            }
+        } else {
+            self.orgs[i].stats.exec_unowned += 1;
         }
         let mut cost = base;
         let next = self.wrap(ip + op.len());
@@ -316,12 +466,13 @@ impl Sim {
             Op::Copy => {
                 let a = self.orgs[i].regs[0];
                 let b = self.orgs[i].regs[1];
+                self.orgs[i].stats.copies += 1;
                 let v = self.read(i, b);
                 // Record the copy source for lineage: owner of the first byte
                 // copied into the pending region.
                 if self.orgs[i].pending_source.is_none() {
                     if let Some((ps, pl)) = self.orgs[i].pending {
-                        if self.wrap(a.wrapping_sub(ps)) < pl {
+                        if self.off(a, -(ps as i64)) < pl {
                             self.orgs[i].pending_source = Some(self.owner[self.wrap(b) as usize]);
                         }
                     }
@@ -336,7 +487,7 @@ impl Sim {
                         _ => db = 2,
                     }
                     if let Some((ps, pl)) = self.orgs[i].pending {
-                        if self.wrap(a.wrapping_sub(ps)) < pl {
+                        if self.off(a, -(ps as i64)) < pl {
                             self.orgs[i].pending_slips += 1;
                         }
                     }
@@ -445,11 +596,13 @@ impl Sim {
                         }
                         self.orgs[i].pending = Some((s, want));
                         self.orgs[i].regs[0] = s;
+                        self.orgs[i].stats.allocs_ok += 1;
                         cost += self.cfg.cost_alloc_per_byte * want as i64;
                     }
                     None => {
                         self.orgs[i].regs[0] = 0;
                         self.orgs[i].flag = true;
+                        self.orgs[i].stats.allocs_fail += 1;
                     }
                 }
             }
@@ -458,55 +611,103 @@ impl Sim {
                     let ask = self.orgs[i].regs[r] as i64 * MILLI;
                     let give = ask.min(self.orgs[i].energy - base).max(0);
                     self.orgs[i].energy -= give;
-                    let genome: Vec<u8> = (0..pl).map(|k| self.bytes[self.wrap(ps + k) as usize]).collect();
+                    let genome = self.region(ps, pl);
                     let parent_id = self.orgs[i].id;
                     let parent_hash = self.orgs[i].genome_hash;
+                    let parent_now_hash = fnv1a(&self.region(self.orgs[i].start, self.orgs[i].len));
                     let source = self.orgs[i].pending_source.take().unwrap_or(DEBRIS);
+                    let source_hash = if source >= FIRST_ID {
+                        self.org_index(source).map_or(0, |j| self.orgs[j].genome_hash)
+                    } else {
+                        0
+                    };
                     let errs = std::mem::take(&mut self.orgs[i].pending_errors);
                     let slips = std::mem::take(&mut self.orgs[i].pending_slips);
                     self.orgs[i].offspring += 1;
+                    let st = &mut self.orgs[i].stats;
+                    st.divides_ok += 1;
+                    st.endowed_m += give;
+                    st.last_divide_tick = self.tick as i64;
                     let child = self.seed(ps, &genome, give, parent_id);
                     self.events.push(Event::Birth {
                         tick: self.tick,
                         child,
                         executor: parent_id,
                         source,
+                        start: ps,
                         len: pl,
                         copy_errors: errs,
                         slips,
                         genome_hash: fnv1a(&genome),
                         parent_hash,
+                        parent_now_hash,
+                        source_hash,
                         endowment: give,
                     });
                 }
-                None => self.orgs[i].flag = true,
+                None => {
+                    self.orgs[i].flag = true;
+                    self.orgs[i].stats.divides_fail += 1;
+                }
             },
             Op::Absorb => {
                 let p = self.patch_of(ip);
                 let room = (self.cfg.store_cap_per_byte * self.orgs[i].len as i64 - self.orgs[i].energy).max(0);
-                let take = self.patches[p].pool.min(self.cfg.absorb_rate).min(room);
+                let pool = self.patches[p].pool;
+                let take = pool.min(self.cfg.absorb_rate).min(room);
                 self.patches[p].pool -= take;
-                self.orgs[i].energy += take;
+                self.patches[p].absorbed += take;
+                let o = &mut self.orgs[i];
+                o.energy += take;
+                o.stats.absorbs += 1;
+                o.stats.absorb_gain_m += take;
+                o.stats.max_energy_m = o.stats.max_energy_m.max(o.energy);
+                if take < self.cfg.absorb_rate {
+                    if pool <= room {
+                        o.stats.absorb_short += 1;
+                    } else {
+                        o.stats.absorb_capped += 1;
+                    }
+                }
             }
         }
 
         let charge = cost.min(self.orgs[i].energy);
-        self.orgs[i].energy -= charge;
+        let o = &mut self.orgs[i];
+        o.energy -= charge;
+        o.ip = new_ip;
+        o.stats.executed += 1;
+        o.stats.spent_m += charge;
         self.energy_out += charge;
-        self.orgs[i].ip = new_ip;
-        self.orgs[i].executed += 1;
         Some(charge)
     }
 
     // ---- death ----------------------------------------------------------
 
     fn kill(&mut self, i: usize, cause: DeathCause) {
+        // Snapshot for the death record before anything changes.
+        let o = &self.orgs[i];
+        let death = Event::Death {
+            tick: self.tick,
+            id: o.id,
+            cause,
+            age: self.tick - o.birth_tick,
+            offspring: o.offspring,
+            start: o.start,
+            len: o.len,
+            pending_len: o.pending.map_or(0, |(_, l)| l),
+            ip_off: self.ip_off(o),
+            op_at_ip: decode(self.bytes[o.ip as usize]).0,
+            energy: o.energy,
+            pool: self.patches[self.patch_of(o.start)].pool,
+            birth_hash: o.genome_hash,
+            now_hash: fnv1a(&self.region(o.start, o.len)),
+            stats: o.stats,
+        };
         let o = &mut self.orgs[i];
         o.alive = false;
         let regions = [Some((o.start, o.len)), o.pending.take()];
         let id = o.id;
-        let age = self.tick - o.birth_tick;
-        let offspring = o.offspring;
         // Leftover energy dissipates (dead bodies carry no energy in Phase 1).
         self.energy_out += o.energy;
         o.energy = 0;
@@ -518,7 +719,7 @@ impl Sim {
                 }
             }
         }
-        self.events.push(Event::Death { tick: self.tick, id, cause, age, offspring });
+        self.events.push(death);
     }
 
     /// Single-genome harness support: remove every organism except `keep`.
@@ -540,7 +741,9 @@ impl Sim {
             p.pool += self.cfg.patch_income;
             self.energy_in += self.cfg.patch_income;
             if p.pool > self.cfg.patch_cap {
-                self.energy_overflow += p.pool - self.cfg.patch_cap;
+                let over = p.pool - self.cfg.patch_cap;
+                self.energy_overflow += over;
+                p.overflow += over;
                 p.pool = self.cfg.patch_cap;
             }
         }
@@ -559,15 +762,23 @@ impl Sim {
                 continue;
             }
             self.orgs[i].energy -= upkeep;
+            self.orgs[i].stats.upkeep_m += upkeep;
             self.energy_out += upkeep;
 
             let cap = self.cfg.cap_c0 + self.cfg.cap_c1 * self.orgs[i].len as i64;
             let mut left = cap;
+            let mut ran = false;
             while left > 0 {
                 match self.step(i, left) {
-                    Some(c) => left -= c,
+                    Some(c) => {
+                        left -= c;
+                        ran = true;
+                    }
                     None => break,
                 }
+            }
+            if !ran {
+                self.orgs[i].stats.starved_ticks += 1;
             }
         }
 
@@ -625,6 +836,67 @@ impl Sim {
     pub fn genome_of(&self, id: u32) -> Option<&Org> {
         self.org_index(id).map(|i| &self.orgs[i])
     }
+
+    /// Hash of everything that can influence the future of the run: tick,
+    /// PRNG state, world bytes and owners, pools, and each organism's VM and
+    /// energy state. Two runs that agree on this agree on every later tick.
+    /// Counters (`OrgStats`, patch totals) are left out: they never feed back.
+    pub fn state_hash(&self) -> u64 {
+        let mut h = Fnv::new();
+        h.u64(self.tick);
+        for w in self.rng.state() {
+            h.u64(w);
+        }
+        h.bytes(&self.bytes);
+        for &o in &self.owner {
+            h.u64(o as u64);
+        }
+        for p in &self.patches {
+            h.u64(p.pool as u64);
+        }
+        h.u64(self.next_id as u64);
+        for o in &self.orgs {
+            h.u64(o.id as u64);
+            for r in o.regs {
+                h.u64(r as u64);
+            }
+            h.u64(o.ip as u64);
+            h.u64(o.flag as u64);
+            h.u64(o.energy as u64);
+            h.u64(o.start as u64);
+            h.u64(o.len as u64);
+            let (ps, pl) = o.pending.unwrap_or((u32::MAX, 0));
+            h.u64(ps as u64);
+            h.u64(pl as u64);
+            h.u64(o.pending_source.map_or(u64::MAX, |s| s as u64));
+            h.u64(o.alive as u64);
+        }
+        h.0
+    }
+}
+
+/// Incremental FNV-1a, same constants as `fnv1a`.
+struct Fnv(u64);
+
+impl Fnv {
+    fn new() -> Fnv {
+        Fnv(0xcbf29ce484222325)
+    }
+    fn bytes(&mut self, b: &[u8]) {
+        for &x in b {
+            self.0 ^= x as u64;
+            self.0 = self.0.wrapping_mul(0x100000001b3);
+        }
+    }
+    fn u64(&mut self, v: u64) {
+        self.bytes(&v.to_le_bytes());
+    }
+}
+
+/// Hash of the canonical form (docs/instrumentation.md): equal for genomes
+/// that differ only in bits the decoder ignores.
+pub fn func_hash(bytes: &[u8]) -> u64 {
+    fnv1a(&crate::isa::canonical(bytes))
 }
 
 // ---- the ancestor ---------------------------------------------------------

@@ -57,6 +57,52 @@ pub struct Config {
     pub p_debris_decay: f64,
 }
 
+impl Config {
+    /// Every field as (name, value text), for run metadata. The destructuring
+    /// has no `..`, so adding a field without listing it here fails to compile.
+    pub fn fields(&self) -> Vec<(&'static str, String)> {
+        let Config {
+            seed, world_size, patch_size, pools_start_full, locality,
+            patch_income, patch_cap, absorb_rate, upkeep_per_byte,
+            store_cap_per_byte, cap_c0, cap_c1, write_protection, alloc_far,
+            cost_simple, cost_load, cost_store, cost_copy, cost_search_base,
+            cost_search_per16, cost_alloc_base, cost_alloc_per_byte, cost_divide,
+            cost_absorb, p_write_flip, q_slip, p_bit_rot, p_debris_decay,
+        } = self;
+        vec![
+            ("seed", seed.to_string()),
+            ("world_size", world_size.to_string()),
+            ("patch_size", patch_size.to_string()),
+            ("pools_start_full", pools_start_full.to_string()),
+            ("locality", locality.to_string()),
+            ("patch_income", patch_income.to_string()),
+            ("patch_cap", patch_cap.to_string()),
+            ("absorb_rate", absorb_rate.to_string()),
+            ("upkeep_per_byte", upkeep_per_byte.to_string()),
+            ("store_cap_per_byte", store_cap_per_byte.to_string()),
+            ("cap_c0", cap_c0.to_string()),
+            ("cap_c1", cap_c1.to_string()),
+            ("write_protection", write_protection.to_string()),
+            ("alloc_far", alloc_far.to_string()),
+            ("cost_simple", cost_simple.to_string()),
+            ("cost_load", cost_load.to_string()),
+            ("cost_store", cost_store.to_string()),
+            ("cost_copy", cost_copy.to_string()),
+            ("cost_search_base", cost_search_base.to_string()),
+            ("cost_search_per16", cost_search_per16.to_string()),
+            ("cost_alloc_base", cost_alloc_base.to_string()),
+            ("cost_alloc_per_byte", cost_alloc_per_byte.to_string()),
+            ("cost_divide", cost_divide.to_string()),
+            ("cost_absorb", cost_absorb.to_string()),
+            // `{:?}` prints f64 with enough digits to round-trip exactly.
+            ("p_write_flip", format!("{p_write_flip:?}")),
+            ("q_slip", format!("{q_slip:?}")),
+            ("p_bit_rot", format!("{p_bit_rot:?}")),
+            ("p_debris_decay", format!("{p_debris_decay:?}")),
+        ]
+    }
+}
+
 impl Default for Config {
     fn default() -> Config {
         Config {

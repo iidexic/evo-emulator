@@ -146,6 +146,42 @@ pub const ALL: [Op; OP_COUNT] = [
     Op::Store, Op::Absorb, Op::Copy, Op::Alloc, Op::Divide,
 ];
 
+/// Whether an op reads its register-select modifier (`mod & 3`).
+pub fn uses_reg(op: Op) -> bool {
+    matches!(
+        op,
+        Op::Inc | Op::Dec | Op::Shl | Op::Shr | Op::Add | Op::Sub | Op::Zero
+            | Op::Lit | Op::Swap | Op::Load | Op::Store | Op::Skipz | Op::Skipnz
+            | Op::Jmpr | Op::Jmpa | Op::Alloc | Op::Divide
+    )
+}
+
+/// One encoding per meaning (docs/instrumentation.md, "Two genome hashes").
+/// Parses linearly from offset 0: register ops keep `mod & 3`, `self` keeps
+/// `min(mod, 2)`, other ops get modifier 0, unassigned opcodes become `pad`,
+/// and a `lit` operand byte is kept verbatim.
+pub fn canonical(bytes: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let (op, m) = decode(bytes[i]);
+        let cm = if uses_reg(op) {
+            m & 3
+        } else if op == Op::Self_ {
+            m.min(2)
+        } else {
+            0
+        };
+        out.push(encode(op, cm));
+        if op == Op::Lit && i + 1 < bytes.len() {
+            out.push(bytes[i + 1]);
+            i += 1;
+        }
+        i += 1;
+    }
+    out
+}
+
 /// Disassemble one instruction at `bytes[i]`. Returns text and length.
 pub fn disasm_at(bytes: &[u8], i: usize) -> (String, usize) {
     let (op, m) = decode(bytes[i]);
@@ -203,5 +239,29 @@ mod tests {
         assert_eq!(decode(g[1]), (Op::Swap, REG_B));
         assert_eq!(g[3] as i8, -4);
         assert_eq!(disasm_at(&g, 2).0, "lit D -4");
+    }
+
+    #[test]
+    fn canonical_collapses_aliases_only() {
+        let g = assemble("self\nswap B\nlit A 64\nabsorb\ndec A\n").unwrap();
+        let mut alias = g.clone();
+        alias[1] |= 0b100 << 5; // swap B via its second encoding
+        alias[4] |= 0b111 << 5; // absorb ignores its modifier
+        alias[0] = encode(Op::Self_, 0); // already canonical
+        alias[5] = 23 | (2 << 5); // unassigned opcode 23: decodes as pad
+        let mut g_pad = g.clone();
+        g_pad[5] = 0;
+        assert_ne!(alias, g_pad);
+        assert_eq!(canonical(&alias), canonical(&g_pad));
+        // lit operand kept verbatim even if it looks like an aliased op.
+        let mut lit = g.clone();
+        lit[3] = 64 | (1 << 5);
+        assert_ne!(canonical(&lit), canonical(&g));
+        // A real mutation (dec A -> dec B) stays distinct.
+        let mut m = g.clone();
+        m[5] = encode(Op::Dec, REG_B);
+        assert_ne!(canonical(&m), canonical(&g));
+        // self 2..7 all read the flag.
+        assert_eq!(canonical(&[encode(Op::Self_, 7)]), vec![encode(Op::Self_, 2)]);
     }
 }
