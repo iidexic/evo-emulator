@@ -283,3 +283,67 @@ E003: the 23 survivors across control seeds 1–5 are 23,145–49,906 ticks
 old, and 22 of 23 sit in a 4-instruction absorb loop. Upkeep, store cap,
 bit rot and decay together still do not turn them over within 50,000
 ticks. Status: mixed, leaning refuted for the current constants.
+
+---
+
+## H11. Replication is limited by room, not by the crash itself (2026-10-05)
+
+**Prediction.** The E001–E003 worlds hold 5–30 organisms in 2 of 16
+patches: a patch feeds about 7.5 organisms running at full speed, and
+nearest-free `alloc` keeps a colony far smaller than a patch, so it never
+reaches the other 14. Give the population room (8× the sunlight per byte,
+in 512-byte patches that each match a control patch, so a child can land
+in the next patch in one generation) and replication persists to 50,000
+ticks in most seeds, even with the current absorb rule and bit rot.
+
+**Reasoning.** In E003 every patch crash took the whole colony, because
+the whole colony was one or two patches. With many occupied patches,
+crashes are local and replicators re-seed emptied patches from their
+neighbors. Far `alloc` seed 8, the only E002/E003 run that reached 11
+patches, kept exact births going to tick 31,875.
+
+**Confirms.** E004 arm p512 has at least 5 of 10 seeds replicating at the
+end (exact births by replicator-class parents in the last 5,000 ticks) and
+sun8 (same energy, control layout) fewer.
+
+**Refutes.** p512 no better than control, or sun8 as good as p512 (then
+energy, not spread, was the limit).
+
+**Status.** Open. E004 (`experiments/2026-10-05-e004-physics-pass.md`).
+
+## H11 note (2026-10-05)
+
+E004: refuted as written. 512-byte patches at 8× sun with nearest-free
+`alloc` (arm p512) stayed in 2 patches with about 4 organisms at the end,
+0 of 10 replicating, the same as control. Room helps only with dispersal:
+the same world with far `alloc` (p512_far) had 10 of 10 replicating and
+about 960 organisms over all 128 patches. sun8 (same energy, control
+layout, nearest `alloc`) had 63 organisms and 0 of 10. Status: refuted;
+the supported version is H10's, below.
+
+## H10 note (2026-10-05)
+
+E004: dispersal sustains replication when every patch it reaches can feed
+a founder and patches are small enough to be many. p512_far (far `alloc`,
+128 patches of 512 bytes at 8× sun) kept replicating to 50,000 ticks in
+38 of 40 runs across its four variants; far `alloc` with 1× sun (far) 0
+of 10; far `alloc` with 8× sun in 16 patches of 4,096 (sun8_far, post hoc)
+2 of 10. Status: supported, with that condition.
+
+## H5 note (2026-10-05)
+
+E004: bit rot at 1e-4 (10×) turns loafers over in a large population: in
+p512_far the median age of the living at tick 50,000 fell from 10,736 to
+1,176, and replicator-class bodies rose from about 178 to 249 (medians).
+In small populations it ends them: all 60 runs of the six small-colony
+rot arms went extinct, because only loafers were left to remove. Status:
+mixed; supported at 1e-4 in a large, spread population.
+
+## H6 note (2026-10-05)
+
+E004 tested the design response (proportional absorb). It halved the
+share of replicator-class deaths that are newborns (0.60 to 0.30 in
+p512_far; 0.39 to 0.07 in the control layout) and did not change
+persistence or the class mix. The takeover seen in E002/E003 was not
+extra absorbs in the copy loop but a broken loop exit, so H6 itself is
+still open.

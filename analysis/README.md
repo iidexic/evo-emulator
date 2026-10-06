@@ -12,7 +12,9 @@ uv add <package>                # add a dependency (updates pyproject + lock)
 ```
 
 Experiment runners build `evo-core` in release mode themselves, so cargo
-must be on PATH.
+must be on PATH. `e004_physics.py` records every run (`--out`), classifies
+it, and writes `runs/e004/summary.md`; its big-world arms take about
+300 MB of event files per run.
 
 ## Looking at a run
 

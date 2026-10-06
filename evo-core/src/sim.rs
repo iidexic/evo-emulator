@@ -654,7 +654,13 @@ impl Sim {
                 let p = self.patch_of(ip);
                 let room = (self.cfg.store_cap_per_byte * self.orgs[i].len as i64 - self.orgs[i].energy).max(0);
                 let pool = self.patches[p].pool;
-                let take = pool.min(self.cfg.absorb_rate).min(room);
+                let ration = if self.cfg.absorb_proportional {
+                    self.cfg.absorb_rate * pool / self.cfg.patch_cap
+                } else {
+                    self.cfg.absorb_rate
+                };
+                let avail = pool.min(ration);
+                let take = avail.min(room);
                 self.patches[p].pool -= take;
                 self.patches[p].absorbed += take;
                 let o = &mut self.orgs[i];
@@ -662,11 +668,14 @@ impl Sim {
                 o.stats.absorbs += 1;
                 o.stats.absorb_gain_m += take;
                 o.stats.max_energy_m = o.stats.max_energy_m.max(o.energy);
+                // Short: the pool gave less than a full ration (under the
+                // proportional rule, any pool below the cap). Capped: the
+                // store was too full to take what the pool offered.
                 if take < self.cfg.absorb_rate {
-                    if pool <= room {
-                        o.stats.absorb_short += 1;
-                    } else {
+                    if room < avail {
                         o.stats.absorb_capped += 1;
+                    } else {
+                        o.stats.absorb_short += 1;
                     }
                 }
             }
@@ -1029,6 +1038,27 @@ self 2
         // `self 2` moved the flag into A and cleared it.
         assert_eq!(sim.orgs[1].regs[0], 1);
         assert!(!sim.orgs[1].flag);
+    }
+
+    #[test]
+    fn absorb_proportional_scales_with_pool() {
+        // One `absorb` from a half-full pool: the fixed rule gives a full
+        // ration, the proportional rule half of one.
+        for (prop, gain) in [(false, 8 * MILLI), (true, 4 * MILLI)] {
+            let mut cfg = Config::default();
+            quiet(&mut cfg);
+            cfg.absorb_proportional = prop;
+            let mut sim = Sim::new(cfg.clone());
+            let g = crate::isa::assemble("absorb
+").unwrap();
+            sim.seed(1000, &g, 10 * MILLI, 0);
+            let p = sim.patch_of(1000);
+            sim.patches[p].pool = cfg.patch_cap / 2;
+            assert!(sim.step(0, cfg.cap_c0).is_some());
+            assert_eq!(sim.orgs[0].energy, 10 * MILLI + gain - cfg.cost_absorb);
+            assert_eq!(sim.patches[p].pool, cfg.patch_cap / 2 - gain);
+            assert_eq!(sim.orgs[0].stats.absorb_short, prop as u64);
+        }
     }
 
     #[test]

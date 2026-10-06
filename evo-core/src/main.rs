@@ -2,11 +2,16 @@
 //!
 //! evo-core [--ticks N] [--seed S] [--report N] [--log PATH] [--k K] [--e E]
 //!          [--no-protect] [--p P] [--world N] [--patch N] [--alloc-far]
-//!          [--locality N] [--out DIR] [--census N]
+//!          [--locality N] [--out DIR] [--census N] [--sun N]
+//!          [--absorb-prop] [--rot P]
 //! evo-core --classify DIR [--harness-ticks N]
 //!
 //! --patch N sets the patch size and scales per-patch income and cap so
-//! energy per byte stays at the default density (E002).
+//! energy per byte stays at the default density (E002). --sun N then
+//! multiplies per-patch income and cap by N (E004).
+//!
+//! --absorb-prop makes `absorb` take a ration proportional to how full the
+//! pool is. --rot P sets the per-byte per-tick bit-rot probability.
 //!
 //! --out DIR writes a run directory (docs/instrumentation.md): event CSVs,
 //! census/organism/patch snapshots every --census ticks (default: the
@@ -34,6 +39,7 @@ fn main() {
     let mut k: i8 = 64;
     let mut e: i8 = 16;
     let mut patch: Option<u32> = None;
+    let mut sun: i64 = 1;
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
     while i < args.len() {
@@ -53,7 +59,10 @@ fn main() {
             "--world" => { cfg.world_size = next().parse().unwrap(); i += 1; }
             "--patch" => { patch = Some(next().parse().unwrap()); i += 1; }
             "--locality" => { cfg.locality = next().parse().unwrap(); i += 1; }
+            "--sun" => { sun = next().parse().unwrap(); i += 1; }
+            "--rot" => { cfg.p_bit_rot = next().parse().unwrap(); i += 1; }
             "--alloc-far" => cfg.alloc_far = true,
+            "--absorb-prop" => cfg.absorb_proportional = true,
             "--no-protect" => cfg.write_protection = false,
             other => { eprintln!("unknown arg {other}"); std::process::exit(2); }
         }
@@ -72,6 +81,9 @@ fn main() {
         cfg.patch_cap = cfg.patch_cap * ps as i64 / base;
         cfg.patch_size = ps;
     }
+    assert!(sun > 0, "--sun must be positive");
+    cfg.patch_income *= sun;
+    cfg.patch_cap *= sun;
     let census = census.unwrap_or(report);
     assert!(census > 0 && report > 0, "--census and --report must be positive");
 

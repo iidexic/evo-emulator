@@ -393,6 +393,11 @@ ancestor cannot pay for replication or when nothing bothers to absorb.
   after the first run (E001) showed non-replicating absorbers hoarding
   without bound: income from a tight absorb loop was 30x upkeep, so upkeep
   alone killed nothing. Bit rot is on by default for the same reason.
+- Absorb rule (E004 switch `absorb_proportional`): the ration is
+  `absorb_rate × pool / patch_cap` instead of `min(pool, absorb_rate)`.
+  Uptake of a dilute resource scales with its concentration, so a draining
+  pool is felt by everyone in the patch instead of as a lottery once it is
+  empty. E004: newborn starvation halved, persistence unchanged.
 - Energy is compute. There is no separate scheduler fairness; an organism runs
   as many instructions per tick as it can pay for, up to a per-tick cap of
   cap = c0 + c1 × body length. This cap is the analog of Tierra's CPU slice,
@@ -468,6 +473,9 @@ speciation (populations separated by distance drift apart).
   turnover (Nanopond reseeds random cells, Cosmos culls at a population
   cap, Evoloops dissolves loops). Here upkeep plus decay is that turnover;
   whether it suffices is a Phase 1 measurement (§11).
+- Bit rot: 1e-5 per byte per tick by default; E004 tested 1e-4, which
+  turns over loafers in a large population (median age of the living
+  1,176 instead of 10,736 at tick 50,000) and kills off a small one.
 - Rates: set by mutation load per genome copy, p × L, not by p alone.
   Reference loads: Tierra about 0.13 per 80-byte copy (about 1 bit per
   1,000–2,500 instructions moved), Avida default 0.85 per copy, evolved
@@ -617,6 +625,21 @@ copies one byte per child gets working replicators because the claimed
 region already holds dead ancestors' bytes. The parasite criterion cannot be
 met until replication persists, so the next design pass is physics (E003
 lists the options).
+Physics pass, E004 (2026-10-05,
+`docs/research/experiments/2026-10-05-e004-physics-pass.md`): replication
+persists when children disperse into a world of many small patches that
+can each feed a founder. 128 patches of 512 bytes, each with a control
+patch's income and cap (8× sun per byte), with far `alloc`: replicating at
+tick 50,000 in 38 of 40 runs, about 950 organisms over all 128 patches.
+Every arm without all three of small patches, more sun and far `alloc`
+failed (0 of 10, or 2 of 10 for 8× sun and far `alloc` in 16 large
+patches). Proportional absorb (§5.4) halves newborn starvation; bit rot
+1e-4 turns loafers over in a large population and wipes out a small one.
+Standard world from here on (recorded 2026-10-05; code defaults
+unchanged for now): `--patch 512 --sun 8 --alloc-far --absorb-prop
+--rot 1e-4` (E004 "Decision"). Next:
+look for parasites in the p512_far runs (possible signs: 0.2–0.8% of
+births copied from another living organism).
 
 **Phase 3 — Richer physics.** 2D torus, per-patch parameters, bit rot,
 seasons, slow drift, debris, drain/defense ops. Success criteria: spatial
@@ -662,6 +685,11 @@ resource types). Multi-day runs. Compare ISA variants for evolvability.
 - Seedless soup needs a rule that starts execution on random bytes
   (Coreworld injected random pointers at p = 0.05 per update; Amoeba gave
   5% of CPUs to random code). Not needed while seeded. Phase 4.
+- Dispersal: far `alloc` (child at the edge of the locality radius) is a
+  fixed rule standing in for dispersal, and E004 shows dispersal is what
+  keeps replication going. Candidate: make the distance evolvable, e.g.
+  `alloc`'s spare modifier bit picks nearest or farthest, or a register
+  gives the distance.
 - Upkeep u and tick-cap slope c1 are the two knobs that set size selection.
   Defaults u small, c1 = 0. Sweep in Phase 3. Variant worth testing: scale
   the cap by distinct bytes executed last tick rather than bytes owned, so
