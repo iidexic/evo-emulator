@@ -3,7 +3,7 @@
 //! evo-core [--ticks N] [--seed S] [--report N] [--log PATH] [--k K] [--e E]
 //!          [--no-protect] [--p P] [--world N] [--patch N] [--alloc-far]
 //!          [--locality N] [--out DIR] [--census N] [--sun N]
-//!          [--absorb-prop] [--rot P]
+//!          [--absorb-prop] [--rot P] [--self-owner]
 //! evo-core --classify DIR [--harness-ticks N] [--classes-out NAME]
 //!          [--patch N] [--sun N] [--alloc-far] [--absorb-prop] ...
 //! evo-core --host HEX [--host-pad] [--harness-ticks N] [physics flags]
@@ -14,6 +14,8 @@
 //!
 //! --absorb-prop makes `absorb` take a ration proportional to how full the
 //! pool is. --rot P sets the per-byte per-tick bit-rot probability.
+//! --self-owner makes `self` name the living owner of the byte at IP
+//! instead of the executing organism (E006, H8).
 //!
 //! --out DIR writes a run directory (docs/instrumentation.md): event CSVs,
 //! census/organism/patch snapshots every --census ticks (default: the
@@ -79,6 +81,7 @@ fn main() {
             "--rot" => { cfg.p_bit_rot = next().parse().unwrap(); i += 1; }
             "--alloc-far" => cfg.alloc_far = true,
             "--absorb-prop" => cfg.absorb_proportional = true,
+            "--self-owner" => cfg.self_owner = true,
             "--no-protect" => cfg.write_protection = false,
             other => { eprintln!("unknown arg {other}"); std::process::exit(2); }
         }
@@ -106,11 +109,11 @@ fn main() {
             g.iter_mut().for_each(|b| *b = 0);
         }
         let r = harness::run_with_host(&g, &ancestor(k, e), harness_ticks, &cfg);
-        println!("len,births,exact_births,host_exact_births,alive,host_alive,executed,exec_foreign");
+        println!("len,births,exact_births,host_copies,host_exact_births,alive,host_alive,executed,exec_foreign");
         println!(
-            "{},{},{},{},{},{},{},{}",
-            g.len(), r.births, r.exact_births, r.host_exact_births, r.alive, r.host_alive,
-            r.executed, r.exec_foreign
+            "{},{},{},{},{},{},{},{},{}",
+            g.len(), r.births, r.exact_births, r.host_copies, r.host_exact_births, r.alive,
+            r.host_alive, r.executed, r.exec_foreign
         );
         return;
     }

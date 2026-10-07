@@ -42,7 +42,7 @@ import polars as pl
 
 from evo_run import HASH_COLS, ROOT, binary, load
 
-E004 = ROOT / "runs" / "e004"
+RUNS = ROOT / "runs" / "e004"  # run directories read (E006 overrides)
 OUT = ROOT / "runs" / "e005"
 HARNESS_TICKS = 3000
 AFTER_TICK = 10_000  # prediction 1 counts exact births after this tick
@@ -71,7 +71,7 @@ def ensure_world_classes(exe: Path, arm: str, seed: int) -> str:
     """Write classes_world.csv unless it exists with one row per genome.
     Six of the 2026-10-06 files were cut short, so a file that exists is not
     enough; the row count must match genomes.csv."""
-    d = E004 / arm / f"s{seed}"
+    d = RUNS / arm / f"s{seed}"
     want = _rows(d / "genomes.csv")
     have = _rows(d / "classes_world.csv")
     if have == want:
@@ -113,7 +113,7 @@ def generation_depth(exact: pl.DataFrame, genomes: set[str]) -> dict[str, int]:
 
 
 def analyse(arm: str, seed: int, exe: Path | None) -> dict:
-    d = E004 / arm / f"s{seed}"
+    d = RUNS / arm / f"s{seed}"
     run = load(d)
     world = _read_classes(d / "classes_world.csv").select(
         pl.col("raw_hash"), pl.col("class").alias("world_class")
@@ -360,6 +360,31 @@ def summarize(df: pl.DataFrame) -> str:
             f"| {f0(r['host_exact'])} / {f0(r['host_pad_exact'])} | `{r['main_parasite_disasm']}` |"
         )
     return "\n".join(lines)
+
+
+def run_all(arm_names: list[str], seeds: int, jobs: int, host: bool) -> pl.DataFrame:
+    """Classify (if needed) and analyse every arm x seed; writes runs.csv
+    and summary.md under OUT and returns the per-run frame."""
+    OUT.mkdir(parents=True, exist_ok=True)
+    exe = binary()
+    jobs_ = [(arm, s) for arm in arm_names for s in range(1, seeds + 1)
+             if (RUNS / arm / f"s{s}" / "genomes.csv").exists()]
+    with ThreadPoolExecutor(jobs) as ex:
+        for msg in ex.map(lambda j: ensure_world_classes(exe, *j), jobs_):
+            print(msg, flush=True)
+    rows = []
+    for arm, s in jobs_:
+        rows.append(analyse(arm, s, exe if host else None))
+        r = rows[-1]
+        print(f"{arm}/s{s}: dependent {r['dependent']}, parasites {r['parasites']}, "
+              f"main parasite len {r['main_parasite_len']}", flush=True)
+    df = pl.DataFrame(rows)
+    df.write_csv(OUT / "runs.csv")
+    text = summarize(df)
+    (OUT / "summary.md").write_text(text + "
+", encoding="utf-8")
+    print(text)
+    return df
 
 
 def main() -> None:

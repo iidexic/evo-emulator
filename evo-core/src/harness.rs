@@ -102,6 +102,9 @@ pub struct HostResult {
     pub births: u32,
     /// Of those, children whose bytes equal the genome.
     pub exact_births: u32,
+    /// Children whose `divide` was executed by the genome and equal the host
+    /// (the genome ran the host's loop under `self_owner`).
+    pub host_copies: u32,
     /// Children whose `divide` was executed by the host and equal the host.
     pub host_exact_births: u32,
     pub alive: bool,
@@ -124,6 +127,7 @@ pub fn run_with_host(genome: &[u8], host: &[u8], ticks: u64, cfg: &Config) -> Ho
     let mut r = HostResult {
         births: 0,
         exact_births: 0,
+        host_copies: 0,
         host_exact_births: 0,
         alive: true,
         host_alive: true,
@@ -138,6 +142,8 @@ pub fn run_with_host(genome: &[u8], host: &[u8], ticks: u64, cfg: &Config) -> Ho
                     r.births += 1;
                     if genome_hash == me {
                         r.exact_births += 1;
+                    } else if genome_hash == hh {
+                        r.host_copies += 1;
                     }
                 } else if executor == host_id && genome_hash == hh {
                     r.host_exact_births += 1;
@@ -175,6 +181,28 @@ mod tests {
         assert!(r.host_exact_births >= 10);
         // Alone it is `dies`: the harness class is what makes it dependent.
         assert_eq!(run_alone(&g, 3000).class(), "dies");
+    }
+
+    #[test]
+    fn self_owner_makes_the_intruder_copy_the_host() {
+        // E006 (H8): with `self` naming the owner of the byte at IP, a body
+        // of pads that falls into the host runs the host's loop and produces
+        // host copies, paid for by its own energy; none of its children
+        // equal itself. A one-byte body cannot: its store cap (64 per body
+        // byte) is below the cost of one host cycle, so it starves.
+        let host = ancestor(64, 16);
+        let mut cfg = Config::default();
+        cfg.self_owner = true;
+        let g = vec![0u8; 21];
+        let r = run_with_host(&g, &host, 3000, &cfg);
+        assert_eq!(r.exact_births, 0);
+        assert!(r.host_copies >= 10, "only {} host copies", r.host_copies);
+        assert!(r.exec_foreign * 10 > r.executed * 9);
+        let one = run_with_host(&assemble("pad\n").unwrap(), &host, 3000, &cfg);
+        assert_eq!(one.births, 0);
+        assert!(!one.alive);
+        // Alone, `self` still names the executor: the ancestor is unchanged.
+        assert_eq!(run_alone_with(&host, 3000, &cfg).class(), "replicator");
     }
 
     #[test]

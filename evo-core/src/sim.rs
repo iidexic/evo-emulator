@@ -444,8 +444,17 @@ impl Sim {
             Op::Jmpa => new_ip = self.wrap(self.orgs[i].regs[r]),
             Op::Self_ => match m {
                 0 => {
-                    self.orgs[i].regs[0] = self.orgs[i].start;
-                    self.orgs[i].regs[1] = self.orgs[i].len;
+                    // Phase 1: the executing organism. With `self_owner`
+                    // (E006, H8): the living owner of the byte at IP, so a
+                    // host's copy loop run by an intruder copies the host.
+                    let mut who = i;
+                    if self.cfg.self_owner && own >= FIRST_ID && own != self.orgs[i].id {
+                        if let Some(j) = self.org_index(own) {
+                            who = j;
+                        }
+                    }
+                    self.orgs[i].regs[0] = self.orgs[who].start;
+                    self.orgs[i].regs[1] = self.orgs[who].len;
                 }
                 1 => self.orgs[i].regs[0] = ip,
                 _ => {
