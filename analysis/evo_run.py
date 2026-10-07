@@ -16,6 +16,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import polars as pl
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -34,7 +35,7 @@ HASH_COLS = {
     "classes": ["raw_hash"],
 }
 
-CLASSES = ["replicator", "inexact", "loafer", "dies", "unknown"]
+CLASSES = ["replicator", "one_shot", "inexact", "loafer", "dies", "unknown"]
 
 
 @dataclass
@@ -74,6 +75,40 @@ def classify(run_dir: str | Path, harness_ticks: int = 3000) -> None:
         [str(binary()), "--classify", str(run_dir), "--harness-ticks", str(harness_ticks)],
         check=True,
     )
+
+
+def disasm(data: bytes | np.ndarray) -> str:
+    """Disassemble bytes with evo-core (`--disasm`), e.g. a slice of a world
+    snapshot: `disasm(w.bytes[17:40])`."""
+    hx = bytes(data).hex()
+    return subprocess.run([str(binary()), "--disasm", hx], capture_output=True, text=True, check=True).stdout.strip()
+
+
+@dataclass
+class World:
+    """One world snapshot: `bytes[a]` is the byte at address a, `state[a]`
+    is 0 free, 1 debris, 2 owned by a living organism."""
+    tick: int
+    bytes: np.ndarray
+    state: np.ndarray
+
+
+def world(run_dir: str | Path) -> dict[int, World]:
+    """Every world snapshot in RUN_DIR/world.bin, keyed by tick (written at
+    census ticks since 2026-10-07; older runs have no file and get {})."""
+    p = Path(run_dir) / "world.bin"
+    if not p.exists():
+        return {}
+    raw = np.fromfile(p, dtype=np.uint8)
+    out: dict[int, World] = {}
+    pos = 0
+    while pos + 12 <= raw.size:
+        tick = int(raw[pos:pos + 8].view(np.uint64)[0])
+        n = int(raw[pos + 8:pos + 12].view(np.uint32)[0])
+        pos += 12
+        out[tick] = World(tick, raw[pos:pos + n].copy(), raw[pos + n:pos + 2 * n].copy())
+        pos += 2 * n
+    return out
 
 
 # Non-hash text columns. Everything else is numeric.

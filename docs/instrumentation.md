@@ -96,6 +96,15 @@ All CSV with a header row. Written by `record.rs` (`Recorder`).
 - `census.csv` (every census tick): `tick,now_hash,count`. Hash of current body bytes.
 - `orgs.csv` (every census tick, one row per living organism): `tick,id,parent,birth_tick,start,len,pending_len,energy_m,ip_off,op_at_ip,birth_hash,now_hash,offspring,` then every `OrgStats` field.
 - `patches.csv` (every census tick): `tick,patch,pool_m,orgs,absorbed_m,overflow_m`. `orgs` counts living body starts in the patch; `absorbed_m` and `overflow_m` are totals since the previous census row.
+- `world.bin` (every census tick, since 2026-10-07): binary, one record
+  per snapshot: `tick` (u64 little-endian), `n` (u32 little-endian, the
+  world size), then `n` bytes of world memory, then `n` state bytes (0
+  free, 1 debris, 2 owned by a living organism). Owner ids are not
+  stored; `orgs.csv` at the same tick gives every living body's start and
+  length. 128 KB per snapshot at the default world size. Added because
+  E005 found genomes running dead code left in free memory and could not
+  read it. `analysis/evo_run.world(run_dir)` loads it; `evo-core --disasm
+  HEX` and `evo_run.disasm(bytes)` decode a slice.
 - `genomes.csv` (written at the end): `raw_hash,func_hash,len,first_tick,first_id,origin,parent_hash,bytes_hex,disasm`. One row per raw hash ever seen. `origin` is `seed`, `birth`, or `somatic`. For `birth`, `parent_hash` is the executor's body at `divide` (`parent_now_hash`), so a lineage runs birth genome, then somatic variant, then child. A `somatic` row is a body that changed after birth, seen at a census or at a `divide`; its `parent_hash` is that body's birth hash. Under parasitism (copy source not the executor) the lineage parent is still the executor; `births.csv` has `source_hash` for other rules. A body's state at death is not stored (its bytes can be reused within the tick), so `deaths.now_hash` may be missing from this file.
 
 `--census N` sets the census interval (default: the `--report` interval).
@@ -123,7 +132,8 @@ written after it. Columns:
 | class | rule |
 |---|---|
 | `replicator` | at least 2 children whose bytes equal the parent's |
-| `inexact` | at least 1 child, but fewer than 2 exact ones |
+| `one_shot` | exactly 1 child, an exact one, and no other birth in the run: a working copy loop whose tail leaves the body for good (added 2026-10-07 after E005; before that these were `inexact`) |
+| `inexact` | at least 1 child, but fewer than 2 exact ones, and not `one_shot` |
 | `loafer` | no children, alive at the end |
 | `dies` | no children, dead at the end |
 

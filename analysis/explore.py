@@ -152,7 +152,7 @@ def _(ROOT, mo):
 @app.cell
 def _(births_typed, classify, classify_btn, deaths_with_signature, load, picker, run_dirs):
     # Load the picked run. The button first runs `evo-core --classify`, which
-    # labels every genome replicator / inexact / loafer / dies by running it
+    # labels every genome replicator / one_shot / inexact / loafer / dies by running it
     # alone from a fresh start. Without classes.csv every class is "unknown".
     run_dir = run_dirs[picker.value]
     if classify_btn.value:

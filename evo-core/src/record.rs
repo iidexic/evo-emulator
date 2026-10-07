@@ -44,6 +44,8 @@ pub struct Recorder {
     census: BufWriter<File>,
     orgs: BufWriter<File>,
     patches: BufWriter<File>,
+    /// `world.bin`: world bytes and ownership state at every census tick.
+    world: BufWriter<File>,
     genomes: HashMap<u64, GenomeRec>,
     /// Patch counters at the previous census row, to write per-interval totals.
     last_absorbed: Vec<i64>,
@@ -92,6 +94,7 @@ impl Recorder {
             census: csv(dir, "census.csv", "tick,now_hash,count")?,
             orgs: csv(dir, "orgs.csv", &format!("tick,id,parent,birth_tick,start,len,pending_len,energy_m,ip_off,op_at_ip,birth_hash,now_hash,offspring,{s}"))?,
             patches: csv(dir, "patches.csv", "tick,patch,pool_m,orgs,absorbed_m,overflow_m")?,
+            world: BufWriter::new(File::create(dir.join("world.bin"))?),
             genomes: HashMap::new(),
             last_absorbed: sim.patches.iter().map(|p| p.absorbed).collect(),
             last_overflow: sim.patches.iter().map(|p| p.overflow).collect(),
@@ -200,6 +203,19 @@ impl Recorder {
             self.last_absorbed[k] = p.absorbed;
             self.last_overflow[k] = p.overflow;
         }
+        // World snapshot: one record per census tick (docs/instrumentation.md).
+        // Dead bodies keep their bytes in free memory (E005's trampolines),
+        // so the bytes are the only way to read what an IP ran there.
+        let n = sim.bytes.len() as u32;
+        self.world.write_all(&t.to_le_bytes())?;
+        self.world.write_all(&n.to_le_bytes())?;
+        self.world.write_all(&sim.bytes)?;
+        let state: Vec<u8> = sim
+            .owner
+            .iter()
+            .map(|&o| if o == crate::sim::FREE { 0 } else if o == crate::sim::DEBRIS { 1 } else { 2 })
+            .collect();
+        self.world.write_all(&state)?;
         Ok(())
     }
 
@@ -244,7 +260,7 @@ impl Recorder {
         }
         g.flush()?;
         self.write_meta(&sim.cfg, Some(sim.tick))?;
-        for w in [&mut self.births, &mut self.deaths, &mut self.census, &mut self.orgs, &mut self.patches] {
+        for w in [&mut self.births, &mut self.deaths, &mut self.census, &mut self.orgs, &mut self.patches, &mut self.world] {
             w.flush()?;
         }
         Ok(())

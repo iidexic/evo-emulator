@@ -19,6 +19,11 @@ p512_far runs, completes their world-physics classes
 (`classes_world.csv`), and writes `runs/e005/summary.md` plus a
 dependent-genome table per run.
 
+World memory at every census tick is in `world.bin` (since 2026-10-07):
+`evo_run.world(run_dir)[tick]` gives `.bytes` and `.state` (0 free, 1
+debris, 2 owned) as numpy arrays, and `evo_run.disasm(w.bytes[a:b])`
+decodes a slice through `evo-core --disasm`.
+
 To see what one genome does, tick by tick, without reading its
 disassembly: `cargo run --release --example trace -- HEX [ticks]
 [ADDR=HEX ...]` in `evo-core/` (the last form plants dead code in free

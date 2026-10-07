@@ -338,3 +338,38 @@ the executor. The two-genome harness and the E005 runner apply unchanged.
 World snapshots at census ticks are the instrumentation gap this
 experiment found; they go in before any experiment whose result depends
 on free-space contents.
+
+## Addendum (2026-10-07): the trampoline read from a world snapshot
+
+World snapshots (`world.bin`, every census tick) were added the same day
+and p512_far seed 1 was re-run with them (`runs/e005/p512_far_s1_world/`,
+flags `--absorb-fixed --rot 1e-5` against the new default; `births.csv`
+is byte-identical to the E004 run). The trampoline genome
+(`42eae76bbc902862`, 1,088 exact births, active ticks 19,958–24,046)
+jumps to address 17. Bytes 17–20 at every snapshot from tick 19,500 to
+24,000 read:
+
+```
+zero A ; divide A ; self 0 ; jmpa A
+```
+
+Four instructions in free memory (state 0, a decayed dead body): `zero A`
+and a `divide` that fails for lack of a pending region, then `self 0`
+(A = own start under the executor rule) and `jmpa A`, home. Exactly the
+4 unowned instructions per child the counters showed. At tick 10,000
+the same bytes were all zero, and at tick 24,500 they were zero again
+(a body of pads was born and died there), which is when the lineage
+ended. Mechanism 2 is confirmed by direct reading, not inference.
+
+Also added after this experiment: harness class `one_shot` (exactly one
+exact child, then nothing) for mechanism 3, which used to be labelled
+`inexact`. Re-classifying the seed 1 re-run under its own physics
+(`--absorb-fixed`): of its 1,212 dependent genomes, 619 are `one_shot`
+(49% of the dependent exact births after tick 10,000), 504 `dies` (41%),
+82 `inexact` (9%), 7 `loafer`. Whole run: 2,587 replicator, 3,421
+one_shot, 4,124 inexact, 7,605 loafer, 26,160 dies out of 43,897
+genomes. A caveat on the label: 394 of the 619 one-shot genomes had
+carriers with two or more children in the world, because falling into
+a neighbour after the one child adds children the harness cannot see;
+20 of them are parasite lineages by the 2+-children test. `one_shot`
+says what the genome does alone, as every harness class does.

@@ -18,12 +18,18 @@ pub struct HarnessResult {
 }
 
 impl HarnessResult {
-    /// `replicator`: at least 2 exact children. `inexact`: some children but
-    /// fewer than 2 exact. `loafer`: no children, still alive. `dies`: no
+    /// `replicator`: at least 2 exact children. `one_shot`: exactly one
+    /// child, an exact one, and nothing after it in the harness run (a
+    /// working copy loop whose tail leaves the body for good; E005 found
+    /// these making 29–53% of the dependent class's exact births, each
+    /// carrier one child). `inexact`: some children but fewer than 2 exact,
+    /// not a one-shot. `loafer`: no children, still alive. `dies`: no
     /// children, died alone.
     pub fn class(&self) -> &'static str {
         if self.exact_births >= 2 {
             "replicator"
+        } else if self.births == 1 && self.exact_births == 1 {
+            "one_shot"
         } else if self.births >= 1 {
             "inexact"
         } else if self.alive {
@@ -220,6 +226,15 @@ mod tests {
         assert_eq!(r.class(), "loafer");
         assert!(r.absorbs > 1000);
         assert_eq!(run_alone(&assemble("pad\n").unwrap(), 3000).class(), "dies");
+        // E005's trampoline genome: the ancestor with `self 0` before the
+        // restart replaced by `pad`, so after one child it jumps to address
+        // 17 (the endowment literal in A) and walks free memory until it
+        // starves. Alone: one exact child, then nothing.
+        let hex = "13325271fc1160b605086c5a384548ec11111c1b0d";
+        let g: Vec<u8> = (0..hex.len()).step_by(2).map(|j| u8::from_str_radix(&hex[j..j + 2], 16).unwrap()).collect();
+        let r = run_alone(&g, 3000);
+        assert_eq!((r.births, r.exact_births, r.alive), (1, 1, false));
+        assert_eq!(r.class(), "one_shot");
     }
 
     #[test]

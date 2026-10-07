@@ -565,8 +565,14 @@ functional hashes and parent links, periodic census from current body
 bytes, per-patch series, single-genome classifier (`--classify`, which
 since 2026-10-06 can run under a given world's physics with
 `--classes-out`), and a
-whole-state hash with determinism tests. Not yet: the ALife phylogeny
-export, snapshots and replay from a mid-run tick, activity statistics, a
+whole-state hash with determinism tests. 2026-10-07: world snapshots
+(bytes and ownership state) at every census tick in `world.bin`, added
+after E005 found genomes running dead code in free memory and could
+not read it; the first use confirmed the trampoline bytes directly
+(E005 addendum). Harness class `one_shot` added for genomes that make
+exactly one exact child and leave. Not yet: the ALife phylogeny
+export, replay from a mid-run tick (needs PRNG state and organism
+registers in the snapshot, not only memory), activity statistics, a
 full interactive viewer (a marimo notebook over the run files stands in
 for now, §6.2).
 

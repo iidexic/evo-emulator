@@ -7,6 +7,7 @@
 //!          [--self-owner] [--world-e001]
 //! evo-core --classify DIR [--harness-ticks N] [--classes-out NAME] [physics flags]
 //! evo-core --host HEX [--host-pad] [--harness-ticks N] [physics flags]
+//! evo-core --disasm HEX
 //!
 //! The default physics is the E004 world (`Config::default()`: 128 patches
 //! of 512 bytes at 8x the Phase 1 sunlight per byte, far `alloc`,
@@ -80,6 +81,8 @@ fn main() {
             "--harness-ticks" => { harness_ticks = next().parse().unwrap(); i += 1; }
             "--classes-out" => { classes_out = next(); i += 1; }
             "--host" => { host = Some(next()); i += 1; }
+            // Disassemble hex bytes and exit: for reading world.bin from Python.
+            "--disasm" => { println!("{}", evo_core::record::disasm(&parse_hex(&next()))); return; }
             "--host-pad" => host_pad = true,
             "--k" => { k = next().parse().unwrap(); i += 1; }
             "--e" => { e = next().parse().unwrap(); i += 1; }
