@@ -377,3 +377,31 @@ code) were unaffected. Status: supported in kind, the rule decides
 whether an intruder is a parasite or a donor; the executor rule stays
 the default because parasitism is the interaction the project wants to
 see evolve defences against.
+
+## H12. Hosts do not evolve resistance to parasites that cost them nothing (2026-10-07)
+
+**Prediction.** In the standard world (E004 p512_far_prop_rot, `self` =
+executor) a fall-through parasite runs the host's copy loop with its own
+energy and writes into its own `alloc` region; the host's bytes are
+write-protected and its energy untouched. There is no cost for selection
+to act on, so over 250,000 ticks the parasites' yield against the hosts
+that evolved alongside them stays where it was at tick 50,000.
+
+**Reasoning.** A defence is possible in principle: an intruder arrives
+with registers set by its own code and a newborn host has them zeroed,
+so a `skipz D ; trap` prefix would separate the two, but the host's own
+restart must then skip the prefix. Several coordinated mutations with no
+payoff until all are present, and the payoff itself (fewer intruders
+using the loop) is a space effect at most. Expected not to happen on
+this timescale; if it does, it is the first evolved defence.
+
+**Confirms.** E007 prediction 4: the main parasite of each run, in the
+two-genome harness before the top host of the last 25,000-tick window,
+makes at least half as many exact children as before the ancestor in at
+least 8 of the surviving seeds, and the median ratio in the last window
+is within 0.5–1.5 of the median in the second window.
+
+**Refutes.** The ratio falls below 0.5 of its window-2 value in most
+seeds; then the late top hosts are read for the mechanism.
+
+**Status.** Open. E007 (`experiments/2026-10-07-e007-long-run.md`).

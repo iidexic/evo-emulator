@@ -27,7 +27,10 @@ decodes a slice through `evo-core --disasm`.
 To see what one genome does, tick by tick, without reading its
 disassembly: `cargo run --release --example trace -- HEX [ticks]
 [ADDR=HEX ...]` in `evo-core/` (the last form plants dead code in free
-memory). To test a genome against a host: `evo-core --host HEX`.
+memory). To test a genome against a host: `evo-core --host HEX`, with
+`--host-body HEX` to use a genome from a run as the host instead of the
+ancestor (E007). `e007_long_run.py` runs the standard world for 250,000
+ticks and reads it in windows (`runs/e007/summary_windows.md`).
 
 ## Looking at a run
 
@@ -62,7 +65,32 @@ Pick a run (any folder under `runs/` with a `meta.json`), narrow the tick
 window, hover charts for values, and click a body in the space-time view
 to see that organism's energy, children and genome listing. The
 **Classify genomes** button runs `--classify` for runs without
-`classes.csv`. The last cell is scratch space for polars queries.
+`classes.csv`. Further down: interactions (share of births copied from
+another organism's bytes or from free memory, and of instructions run
+outside the own body), diversity (top genotypes over time by birth
+genome or current body, genotype counts, share of bodies changed since
+birth, body length), and for a selected genome its ancestry back to the
+seed with the bytes each step changed, plus buttons that run it through
+`examples/trace.rs` or `--host` (both in the code's default physics). The
+last cell is scratch space for polars queries.
+
+`world.py` is the companion notebook for runs with a `world.bin`:
+
+```
+uv run marimo edit world.py
+```
+
+It classifies every address at every snapshot as living body, pending
+region (claimed for an unfinished child), intact dead body (unowned bytes
+at a death site that still equal a known genome), debris or free; plots
+that over time; draws the world map at a chosen snapshot (one row per
+patch, bodies colored by class, dead bodies faded, off-body IPs marked);
+and has an inspector that decodes any address span at that snapshot,
+with the owner of each byte and whose IP is on it, and the same span at
+every snapshot. Two tables find what to inspect: organisms whose IP was
+outside their own body at the snapshot, and the addresses where the most
+organisms had an off-body IP across the run (dead-code trampolines).
+Loading a 100-snapshot run takes a few seconds.
 
 marimo notebooks are plain `.py` files. Cells re-run on their own when a
 value they read changes, so each name may be defined in only one cell;
