@@ -361,3 +361,19 @@ births; 1–2-byte bodies do the same in the proportional-absorb arms.
 Under the alternative rule (`self` = owner of the byte at IP) the same
 layout should make the intruder copy the host instead. Status: open, now
 the next experiment (E006).
+
+## H8 note (2026-10-07, E006)
+
+E006 (`experiments/2026-10-07-e006-self-owner.md`) ran the E004 world
+with `self` naming the living owner of the byte at IP. Persistence
+unchanged (9 and 10 of 10). Parasitism through living hosts vanished: in
+the two-genome harness the main parasite of each run made 0–2 exact
+children before an ancestor (60–180 under the executor rule), and births
+copied from another living organism rose from 0.4–0.5% to 3.9–4.1%,
+intruders copying their hosts. Hosts gained nothing measurable
+(replicator-class bodies 231 and 173 at the end, against 249 and 178).
+Dead-code users (trampolines, 1–2-byte bodies running dead replicator
+code) were unaffected. Status: supported in kind, the rule decides
+whether an intruder is a parasite or a donor; the executor rule stays
+the default because parasitism is the interaction the project wants to
+see evolve defences against.

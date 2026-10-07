@@ -661,7 +661,16 @@ under proportional absorb. Parasites are 0.4–0.8% of exact births.
 Also found: genomes that jump to a fixed address and come home through
 `self ; jmpa` left in free memory by a dead body (dead-code
 trampolines), as common as the parasites; and that world snapshots are
-needed to read such cases (§7). Next: E006, the `self` switch (H8).
+needed to read such cases (§7).
+E006 (2026-10-07, `docs/research/experiments/2026-10-07-e006-self-owner.md`):
+the same world with `self` naming the owner of the byte at IP
+(`--self-owner`). Persistence unchanged; parasitism through living
+hosts gone (host harness 0–2 exact children against 60–180), replaced
+by intruders copying their hosts (3.9–4.1% of births, from 0.4–0.5%)
+with no measurable gain to the hosts; dead-code users unchanged. H8
+supported in kind. Decision: `self` = executor stays the default, since
+parasites are the interaction to evolve defences against; the switch
+stays for Phase 4 ISA comparisons.
 
 **Phase 3 — Richer physics.** 2D torus, per-patch parameters,
 seasons, slow drift, drain/defense ops (bit rot and debris exist since
@@ -718,11 +727,14 @@ resource types). Multi-day runs. Compare ISA variants for evolvability.
   E004 seed 10 lost its founder lineage by tick 1,179. Seeding several
   founders in separate patches is the cheap fix; whether it changes
   anything after the founder phase is untested.
-- `self` = executing organism makes a one-byte body that falls into a
+- `self` = executing organism makes a body that falls into a
   neighbouring replicator into a parasite of it (E005). `self` = owner of
-  the byte at IP (H8) would make the same layout copy the host instead.
-  The switch is cheap and E005's result decides whether it is the next
-  experiment.
+  the byte at IP makes the same layout copy the host instead (E006:
+  parasitism gone, 4% of births become gifts to hosts, hosts gain
+  nothing). Decided 2026-10-07: executor rule stays the default;
+  `--self-owner` kept for Phase 4. Open: whether hosts can evolve to
+  exploit the owner rule (Tierra's hyper-parasites did), which needs a
+  longer run than 50,000 ticks.
 - Upkeep u and tick-cap slope c1 are the two knobs that set size selection.
   Defaults u small, c1 = 0. Sweep in Phase 3. Variant worth testing: scale
   the cap by distinct bytes executed last tick rather than bytes owned, so
