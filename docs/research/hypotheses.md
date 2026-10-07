@@ -347,3 +347,17 @@ p512_far; 0.39 to 0.07 in the control layout) and did not change
 persistence or the class mix. The takeover seen in E002/E003 was not
 extra absorbs in the copy loop but a broken loop exit, so H6 itself is
 still open.
+
+## H8 note (2026-10-07)
+
+E005 (`experiments/2026-10-06-e005-parasite-search.md`) found that the
+Phase 1 rule (`self` = executing organism) is what makes parasitism
+possible in the E004 world. A replicator whose restart is broken by a
+mutation runs off its end into the next body; the host's `self` names
+the intruder, so the host's copy loop copies the intruder and the host's
+restart sends it home. Such lineages appear in every surviving run (13–72
+genomes per run, depth up to 63 generations) and are 0.4–0.8% of exact
+births; 1–2-byte bodies do the same in the proportional-absorb arms.
+Under the alternative rule (`self` = owner of the byte at IP) the same
+layout should make the intruder copy the host instead. Status: open, now
+the next experiment (E006).

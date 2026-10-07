@@ -653,6 +653,15 @@ noticed while reviewing the design: any body that ends without a jump and
 sits right before a replicator reproduces by falling into it, and the
 smallest such body is one byte, so a "parasite lineage" may be a
 placement lineage rather than a code lineage. E005 reports both.
+Result 2026-10-07: criterion met in the letter. Every surviving run has
+13–72 lineages (depth up to 63 generations) that replicate by running a
+neighbour's copy loop, almost all of them the ancestor with a broken
+restart falling into the body behind it; 1–2-byte bodies do the same
+under proportional absorb. Parasites are 0.4–0.8% of exact births.
+Also found: genomes that jump to a fixed address and come home through
+`self ; jmpa` left in free memory by a dead body (dead-code
+trampolines), as common as the parasites; and that world snapshots are
+needed to read such cases (§7). Next: E006, the `self` switch (H8).
 
 **Phase 3 — Richer physics.** 2D torus, per-patch parameters,
 seasons, slow drift, drain/defense ops (bit rot and debris exist since

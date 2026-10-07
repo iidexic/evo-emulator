@@ -14,7 +14,15 @@ uv add <package>                # add a dependency (updates pyproject + lock)
 Experiment runners build `evo-core` in release mode themselves, so cargo
 must be on PATH. `e004_physics.py` records every run (`--out`), classifies
 it, and writes `runs/e004/summary.md`; its big-world arms take about
-300 MB of event files per run.
+300 MB of event files per run. `e005_parasites.py` reads the E004
+p512_far runs, completes their world-physics classes
+(`classes_world.csv`), and writes `runs/e005/summary.md` plus a
+dependent-genome table per run.
+
+To see what one genome does, tick by tick, without reading its
+disassembly: `cargo run --release --example trace -- HEX [ticks]
+[ADDR=HEX ...]` in `evo-core/` (the last form plants dead code in free
+memory). To test a genome against a host: `evo-core --host HEX`.
 
 ## Looking at a run
 
