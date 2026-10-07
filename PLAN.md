@@ -560,7 +560,9 @@ Status 2026-10-03: first cut built, spec and file formats in
 `docs/instrumentation.md`. Done: per-organism counters, structured
 birth/death logs with executor and copy source, genome store with raw and
 functional hashes and parent links, periodic census from current body
-bytes, per-patch series, single-genome classifier (`--classify`), and a
+bytes, per-patch series, single-genome classifier (`--classify`, which
+since 2026-10-06 can run under a given world's physics with
+`--classes-out`), and a
 whole-state hash with determinism tests. Not yet: the ALife phylogeny
 export, snapshots and replay from a mid-run tick, activity statistics, a
 full interactive viewer (a marimo notebook over the run files stands in
@@ -637,12 +639,24 @@ patches). Proportional absorb (§5.4) halves newborn starvation; bit rot
 1e-4 turns loafers over in a large population and wipes out a small one.
 Standard world from here on (recorded 2026-10-05; code defaults
 unchanged for now): `--patch 512 --sun 8 --alloc-far --absorb-prop
---rot 1e-4` (E004 "Decision"). Next:
-look for parasites in the p512_far runs (possible signs: 0.2–0.8% of
-births copied from another living organism).
+--rot 1e-4` (E004 "Decision"). Decision 2026-10-07: the code defaults
+stay as they are until E005 is recorded, because E005 reads the E004
+run files and the harness yardstick must not move under it. After E005,
+one dedicated commit makes the E004 world the default, with the E001–E003
+flag set written down next to it; every run's `meta.json` already carries
+every config field, so older runs stay reproducible either way.
+E005 (2026-10-06, `docs/research/experiments/2026-10-06-e005-parasite-search.md`):
+parasite search in the 40 p512_far runs, pre-registered before any query
+of the files. Definitions, predictions and the runner are in the record.
+A consequence of Phase 1 `self` (executing organism) plus far `alloc`,
+noticed while reviewing the design: any body that ends without a jump and
+sits right before a replicator reproduces by falling into it, and the
+smallest such body is one byte, so a "parasite lineage" may be a
+placement lineage rather than a code lineage. E005 reports both.
 
-**Phase 3 — Richer physics.** 2D torus, per-patch parameters, bit rot,
-seasons, slow drift, debris, drain/defense ops. Success criteria: spatial
+**Phase 3 — Richer physics.** 2D torus, per-patch parameters,
+seasons, slow drift, drain/defense ops (bit rot and debris exist since
+Phase 1, §5.7). Success criteria: spatial
 differentiation of lineages; some form of producer/consumer split;
 evidence for or against evolved repair.
 
@@ -690,6 +704,16 @@ resource types). Multi-day runs. Compare ISA variants for evolvability.
   keeps replication going. Candidate: make the distance evolvable, e.g.
   `alloc`'s spare modifier bit picks nearest or farthest, or a register
   gives the distance.
+- Founders: every run so far seeds one ancestor at byte 32,768. Under bit
+  rot 1e-4 a lone 21-byte founder takes a flip about every 480 ticks, and
+  E004 seed 10 lost its founder lineage by tick 1,179. Seeding several
+  founders in separate patches is the cheap fix; whether it changes
+  anything after the founder phase is untested.
+- `self` = executing organism makes a one-byte body that falls into a
+  neighbouring replicator into a parasite of it (E005). `self` = owner of
+  the byte at IP (H8) would make the same layout copy the host instead.
+  The switch is cheap and E005's result decides whether it is the next
+  experiment.
 - Upkeep u and tick-cap slope c1 are the two knobs that set size selection.
   Defaults u small, c1 = 0. Sweep in Phase 3. Variant worth testing: scale
   the cap by distinct bytes executed last tick rather than bytes owned, so
@@ -724,7 +748,9 @@ test them.
   (§5.4, §5.7), H6 absorb-loop takeover (§5.4), H7 seedless emergence needs
   a start-execution rule (§9), H8 `self` semantics change the ecology (§9),
   H9 environmental drift delays equilibrium (§5.6). H10 (2026-10-01):
-  dispersal across patches sustains replication (E002).
+  dispersal across patches sustains replication (E002; supported by E004
+  when every patch can feed a founder). H11 (2026-10-05): room alone
+  sustains replication (refuted by E004).
 - `docs/research/notes/`: raw per-source notes from the 2026-09-30 review,
   one file per cluster, URL on every fact, UNVERIFIED tags kept.
 - `docs/research-historic/`: the earlier Codex pass. Superseded by

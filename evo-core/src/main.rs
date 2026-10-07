@@ -4,7 +4,9 @@
 //!          [--no-protect] [--p P] [--world N] [--patch N] [--alloc-far]
 //!          [--locality N] [--out DIR] [--census N] [--sun N]
 //!          [--absorb-prop] [--rot P]
-//! evo-core --classify DIR [--harness-ticks N]
+//! evo-core --classify DIR [--harness-ticks N] [--classes-out NAME]
+//!          [--patch N] [--sun N] [--alloc-far] [--absorb-prop] ...
+//! evo-core --host HEX [--host-pad] [--harness-ticks N] [physics flags]
 //!
 //! --patch N sets the patch size and scales per-patch income and cap so
 //! energy per byte stays at the default density (E002). --sun N then
@@ -18,7 +20,15 @@
 //! --report interval), genomes.csv, and meta.json.
 //!
 //! --classify DIR reads DIR/genomes.csv, runs each genome alone in the
-//! single-genome harness, and writes DIR/classes.csv.
+//! single-genome harness, and writes DIR/classes.csv (or DIR/NAME with
+//! --classes-out). The harness uses the physics given on the command line
+//! (default physics if none) with every noise source off (E005).
+//!
+//! --host HEX runs the genome given as hex immediately before the ancestor
+//! (two-genome harness, E005) and prints one CSV line: the genome's births
+//! and exact births, the host's exact births, who is alive, and the
+//! genome's foreign-execution share. --host-pad replaces every byte of the
+//! genome with `pad` first, to test whether its content matters.
 
 use evo_core::config::{Config, MILLI};
 use evo_core::harness;
@@ -36,6 +46,9 @@ fn main() {
     let mut out: Option<String> = None;
     let mut classify: Option<String> = None;
     let mut harness_ticks: u64 = 3000;
+    let mut classes_out = String::from("classes.csv");
+    let mut host: Option<String> = None;
+    let mut host_pad = false;
     let mut k: i8 = 64;
     let mut e: i8 = 16;
     let mut patch: Option<u32> = None;
@@ -53,6 +66,9 @@ fn main() {
             "--out" => { out = Some(next()); i += 1; }
             "--classify" => { classify = Some(next()); i += 1; }
             "--harness-ticks" => { harness_ticks = next().parse().unwrap(); i += 1; }
+            "--classes-out" => { classes_out = next(); i += 1; }
+            "--host" => { host = Some(next()); i += 1; }
+            "--host-pad" => host_pad = true,
             "--k" => { k = next().parse().unwrap(); i += 1; }
             "--e" => { e = next().parse().unwrap(); i += 1; }
             "--p" => { cfg.p_write_flip = next().parse().unwrap(); cfg.q_slip = cfg.p_write_flip / 4.0; i += 1; }
@@ -69,11 +85,6 @@ fn main() {
         i += 1;
     }
 
-    if let Some(dir) = classify {
-        run_classify(Path::new(&dir), harness_ticks);
-        return;
-    }
-
     if let Some(ps) = patch {
         assert!(ps > 0 && cfg.world_size % ps == 0, "--patch must divide the world size");
         let base = cfg.patch_size as i64;
@@ -84,6 +95,25 @@ fn main() {
     assert!(sun > 0, "--sun must be positive");
     cfg.patch_income *= sun;
     cfg.patch_cap *= sun;
+
+    if let Some(dir) = classify {
+        run_classify(Path::new(&dir), &classes_out, harness_ticks, &cfg);
+        return;
+    }
+    if let Some(hex) = host {
+        let mut g = parse_hex(&hex);
+        if host_pad {
+            g.iter_mut().for_each(|b| *b = 0);
+        }
+        let r = harness::run_with_host(&g, &ancestor(k, e), harness_ticks, &cfg);
+        println!("len,births,exact_births,host_exact_births,alive,host_alive,executed,exec_foreign");
+        println!(
+            "{},{},{},{},{},{},{},{}",
+            g.len(), r.births, r.exact_births, r.host_exact_births, r.alive, r.host_alive,
+            r.executed, r.exec_foreign
+        );
+        return;
+    }
     let census = census.unwrap_or(report);
     assert!(census > 0 && report > 0, "--census and --report must be positive");
 
@@ -169,25 +199,30 @@ fn main() {
     }
 }
 
+/// Genome bytes from the `bytes_hex` form (two lowercase hex digits per byte).
+fn parse_hex(hex: &str) -> Vec<u8> {
+    assert!(hex.len() % 2 == 0, "odd-length hex");
+    (0..hex.len())
+        .step_by(2)
+        .map(|j| u8::from_str_radix(&hex[j..j + 2], 16).expect("bad bytes_hex"))
+        .collect()
+}
+
 /// `--classify DIR`: label every genome in DIR/genomes.csv with the
-/// single-genome harness and write DIR/classes.csv.
-fn run_classify(dir: &Path, ticks: u64) {
+/// single-genome harness under `cfg`'s physics and write DIR/`out`.
+fn run_classify(dir: &Path, out: &str, ticks: u64, cfg: &Config) {
     let text = std::fs::read_to_string(dir.join("genomes.csv")).expect("read genomes.csv");
     let mut lines = text.lines();
     let header: Vec<&str> = lines.next().expect("empty genomes.csv").split(',').collect();
     let col = |name: &str| header.iter().position(|&h| h == name).unwrap_or_else(|| panic!("no column {name}"));
     let (c_hash, c_bytes) = (col("raw_hash"), col("bytes_hex"));
-    let mut w = std::io::BufWriter::new(std::fs::File::create(dir.join("classes.csv")).expect("create classes.csv"));
+    let mut w = std::io::BufWriter::new(std::fs::File::create(dir.join(out)).expect("create classes file"));
     writeln!(w, "raw_hash,class,births,exact_births,first_birth_tick,alive,final_energy_m,executed,absorbs").unwrap();
     let mut n = 0;
     for line in lines {
         let f: Vec<&str> = line.split(',').collect();
-        let hex = f[c_bytes];
-        let bytes: Vec<u8> = (0..hex.len())
-            .step_by(2)
-            .map(|j| u8::from_str_radix(&hex[j..j + 2], 16).expect("bad bytes_hex"))
-            .collect();
-        let r = harness::run_alone(&bytes, ticks);
+        let bytes = parse_hex(f[c_bytes]);
+        let r = harness::run_alone_with(&bytes, ticks, cfg);
         writeln!(
             w,
             "{},{},{},{},{},{},{},{},{}",

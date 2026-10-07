@@ -733,8 +733,13 @@ impl Sim {
 
     /// Single-genome harness support: remove every organism except `keep`.
     pub fn cull_all_but(&mut self, keep: usize) {
+        self.cull_except(&[keep]);
+    }
+
+    /// Remove every living organism whose index is not in `keep`.
+    pub fn cull_except(&mut self, keep: &[usize]) {
         for i in 0..self.orgs.len() {
-            if i != keep && self.orgs[i].alive {
+            if !keep.contains(&i) && self.orgs[i].alive {
                 self.kill(i, DeathCause::Harness);
             }
         }

@@ -105,9 +105,14 @@ after each tick so long runs do not grow memory.
 ## Classifier (`--classify DIR`)
 
 Reads `DIR/genomes.csv`, runs each genome alone in a clean world (noise
-off, default energy physics, 100 units of seed energy, children removed
-every tick; the harness from `ancestor_pays_for_itself`) for
-`--harness-ticks` ticks (default 3,000), and writes `DIR/classes.csv`:
+off, 100 units of seed energy, children removed every tick; the harness
+from `ancestor_pays_for_itself`) for `--harness-ticks` ticks (default
+3,000), and writes `DIR/classes.csv`. The energy and `alloc` physics are
+whatever the command line gives (`--patch`, `--sun`, `--alloc-far`,
+`--absorb-prop`; default physics if none); noise flags are ignored. With
+`--classes-out NAME` the file is `DIR/NAME` instead, so one run can carry
+both a default-physics `classes.csv` and a world-physics
+`classes_world.csv` (E005, 2026-10-06). Columns:
 
 `raw_hash,class,births,exact_births,first_birth_tick,alive,final_energy_m,executed,absorbs`
 

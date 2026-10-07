@@ -36,7 +36,11 @@ impl HarnessResult {
 
 /// Config the harness runs under: defaults with every noise source off.
 pub fn quiet_config() -> Config {
-    let mut cfg = Config::default();
+    quiet(Config::default())
+}
+
+/// `cfg` with every noise source off.
+pub fn quiet(mut cfg: Config) -> Config {
     cfg.p_write_flip = 0.0;
     cfg.q_slip = 0.0;
     cfg.p_bit_rot = 0.0;
@@ -45,9 +49,14 @@ pub fn quiet_config() -> Config {
 }
 
 /// Run `genome` alone for `ticks` ticks with 100 units of seed energy,
-/// removing its children at the end of every tick.
+/// removing its children at the end of every tick. Default physics.
 pub fn run_alone(genome: &[u8], ticks: u64) -> HarnessResult {
-    let cfg = quiet_config();
+    run_alone_with(genome, ticks, &Config::default())
+}
+
+/// `run_alone` under `cfg`'s physics, noise off (E005: world-physics class).
+pub fn run_alone_with(genome: &[u8], ticks: u64, cfg: &Config) -> HarnessResult {
+    let cfg = quiet(cfg.clone());
     let mut sim = Sim::new(cfg.clone());
     sim.seed(cfg.world_size / 2, genome, 100 * MILLI, 0);
     let me = fnv1a(genome);
@@ -86,11 +95,87 @@ pub fn run_alone(genome: &[u8], ticks: u64) -> HarnessResult {
     r
 }
 
+/// Two-genome harness result (E005): `genome` placed immediately before
+/// `host`, both with 100 units of seed energy, children removed every tick.
+pub struct HostResult {
+    /// Children whose `divide` was executed by the genome.
+    pub births: u32,
+    /// Of those, children whose bytes equal the genome.
+    pub exact_births: u32,
+    /// Children whose `divide` was executed by the host and equal the host.
+    pub host_exact_births: u32,
+    pub alive: bool,
+    pub host_alive: bool,
+    pub executed: u64,
+    /// Of the genome's instructions, how many ran at an address the host owned.
+    pub exec_foreign: u64,
+}
+
+/// Run `genome` immediately before `host` under `cfg`'s physics, noise off,
+/// for `ticks` ticks. Says whether the genome reproduces by falling into
+/// the host (foreign execution), without reading its disassembly.
+pub fn run_with_host(genome: &[u8], host: &[u8], ticks: u64, cfg: &Config) -> HostResult {
+    let cfg = quiet(cfg.clone());
+    let mut sim = Sim::new(cfg.clone());
+    let mid = cfg.world_size / 2;
+    let host_id = sim.seed(mid, host, 100 * MILLI, 0);
+    let me_id = sim.seed(mid.wrapping_sub(genome.len() as u32), genome, 100 * MILLI, 0);
+    let (me, hh) = (fnv1a(genome), fnv1a(host));
+    let mut r = HostResult {
+        births: 0,
+        exact_births: 0,
+        host_exact_births: 0,
+        alive: true,
+        host_alive: true,
+        executed: 0,
+        exec_foreign: 0,
+    };
+    for _ in 0..ticks {
+        sim.run_tick();
+        for ev in sim.events.drain(..) {
+            if let Event::Birth { executor, genome_hash, .. } = ev {
+                if executor == me_id {
+                    r.births += 1;
+                    if genome_hash == me {
+                        r.exact_births += 1;
+                    }
+                } else if executor == host_id && genome_hash == hh {
+                    r.host_exact_births += 1;
+                }
+            }
+        }
+        sim.cull_except(&[0, 1]);
+        if !sim.orgs[1].alive {
+            break;
+        }
+    }
+    r.alive = sim.orgs[1].alive;
+    r.host_alive = sim.orgs[0].alive;
+    r.executed = sim.orgs[1].stats.executed;
+    r.exec_foreign = sim.orgs[1].stats.exec_foreign;
+    r
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::isa::assemble;
     use crate::sim::ancestor;
+
+    #[test]
+    fn one_byte_pad_reproduces_through_a_host() {
+        // E005 mechanism: a body that falls off its end into a replicator
+        // runs the host's loop, and `self` makes that loop copy the body.
+        let g = assemble("pad\n").unwrap();
+        let host = ancestor(64, 16);
+        let r = run_with_host(&g, &host, 3000, &Config::default());
+        assert!(r.exact_births >= 10, "only {} exact births", r.exact_births);
+        assert!(r.alive && r.host_alive);
+        assert!(r.exec_foreign * 10 > r.executed * 9, "foreign {} of {}", r.exec_foreign, r.executed);
+        assert!(r.host_exact_births >= 10);
+        // Alone it is `dies`: the harness class is what makes it dependent.
+        assert_eq!(run_alone(&g, 3000).class(), "dies");
+    }
 
     #[test]
     fn labels() {
@@ -107,5 +192,23 @@ mod tests {
         assert_eq!(r.class(), "loafer");
         assert!(r.absorbs > 1000);
         assert_eq!(run_alone(&assemble("pad\n").unwrap(), 3000).class(), "dies");
+    }
+
+    #[test]
+    fn world_physics_class() {
+        // E004 world (--patch 512 --sun 8 --alloc-far --absorb-prop): the
+        // ancestor is still a replicator, and the harness runs noiseless
+        // whatever noise the config carries.
+        let mut cfg = Config::default();
+        cfg.patch_size = 512;
+        cfg.patch_income = 256 * MILLI;
+        cfg.patch_cap = 4096 * MILLI;
+        cfg.alloc_far = true;
+        cfg.absorb_proportional = true;
+        cfg.p_bit_rot = 1e-4;
+        let r = run_alone_with(&ancestor(64, 16), 3000, &cfg);
+        assert_eq!(r.class(), "replicator");
+        assert_eq!(r.births, r.exact_births, "noise leaked into the harness");
+        assert!(r.exact_births >= 100, "only {} exact births", r.exact_births);
     }
 }
