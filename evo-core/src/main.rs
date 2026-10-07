@@ -6,7 +6,7 @@
 //!          [--locality N] [--out DIR] [--census N] [--sun N] [--rot P]
 //!          [--self-owner] [--world-e001]
 //! evo-core --classify DIR [--harness-ticks N] [--classes-out NAME] [physics flags]
-//! evo-core --host HEX [--host-pad] [--harness-ticks N] [physics flags]
+//! evo-core --host HEX [--host-body HEX] [--host-pad] [--harness-ticks N] [physics flags]
 //! evo-core --disasm HEX
 //!
 //! The default physics is the E004 world (`Config::default()`: 128 patches
@@ -40,6 +40,8 @@
 //! and exact births, the host's exact births, who is alive, and the
 //! genome's foreign-execution share. --host-pad replaces every byte of the
 //! genome with `pad` first, to test whether its content matters.
+//! --host-body HEX uses that genome as the host instead of the ancestor
+//! (E007: a parasite against the hosts that evolved alongside it).
 
 use evo_core::config::{Config, MILLI};
 use evo_core::harness;
@@ -62,6 +64,7 @@ fn main() {
     let mut harness_ticks: u64 = 3000;
     let mut classes_out = String::from("classes.csv");
     let mut host: Option<String> = None;
+    let mut host_body: Option<String> = None;
     let mut host_pad = false;
     let mut k: i8 = 64;
     let mut e: i8 = 16;
@@ -81,6 +84,7 @@ fn main() {
             "--harness-ticks" => { harness_ticks = next().parse().unwrap(); i += 1; }
             "--classes-out" => { classes_out = next(); i += 1; }
             "--host" => { host = Some(next()); i += 1; }
+            "--host-body" => { host_body = Some(next()); i += 1; }
             // Disassemble hex bytes and exit: for reading world.bin from Python.
             "--disasm" => { println!("{}", evo_core::record::disasm(&parse_hex(&next()))); return; }
             "--host-pad" => host_pad = true,
@@ -124,7 +128,8 @@ fn main() {
         if host_pad {
             g.iter_mut().for_each(|b| *b = 0);
         }
-        let r = harness::run_with_host(&g, &ancestor(k, e), harness_ticks, &cfg);
+        let h = host_body.map(|hx| parse_hex(&hx)).unwrap_or_else(|| ancestor(k, e));
+        let r = harness::run_with_host(&g, &h, harness_ticks, &cfg);
         println!("len,births,exact_births,host_copies,host_exact_births,alive,host_alive,executed,exec_foreign");
         println!(
             "{},{},{},{},{},{},{},{},{}",
