@@ -381,8 +381,7 @@ def run_all(arm_names: list[str], seeds: int, jobs: int, host: bool) -> pl.DataF
     df = pl.DataFrame(rows)
     df.write_csv(OUT / "runs.csv")
     text = summarize(df)
-    (OUT / "summary.md").write_text(text + "
-", encoding="utf-8")
+    (OUT / "summary.md").write_text(text + "\n", encoding="utf-8")
     print(text)
     return df
 
