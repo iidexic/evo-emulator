@@ -49,13 +49,13 @@ AFTER_TICK = 10_000  # prediction 1 counts exact births after this tick
 ANCESTOR_LEN = 21
 
 # Physics flags per arm, for the world-physics classify and the host
-# harness. Noise flags are ignored by the harness, so --rot is left out.
-WORLD = ["--patch", "512", "--sun", "8", "--alloc-far"]
+# harness, relative to the code default (the E004 world since 2026-10-07).
+# Noise flags are ignored by the harness, so --rot is left out.
 ARMS = {
-    "p512_far": WORLD,
-    "p512_far_prop": WORLD + ["--absorb-prop"],
-    "p512_far_rot": WORLD,
-    "p512_far_prop_rot": WORLD + ["--absorb-prop"],
+    "p512_far": ["--absorb-fixed"],
+    "p512_far_prop": [],
+    "p512_far_rot": ["--absorb-fixed"],
+    "p512_far_prop_rot": [],
 }
 
 

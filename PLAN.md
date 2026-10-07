@@ -473,9 +473,11 @@ speciation (populations separated by distance drift apart).
   turnover (Nanopond reseeds random cells, Cosmos culls at a population
   cap, Evoloops dissolves loops). Here upkeep plus decay is that turnover;
   whether it suffices is a Phase 1 measurement (§11).
-- Bit rot: 1e-5 per byte per tick by default; E004 tested 1e-4, which
-  turns over loafers in a large population (median age of the living
-  1,176 instead of 10,736 at tick 50,000) and kills off a small one.
+- Bit rot: 1e-4 per byte per tick by default since 2026-10-07 (1e-5
+  before, the E001–E003 value, still used by `--world-e001`). E004
+  tested both: 1e-4 turns over loafers in a large population (median
+  age of the living 1,176 instead of 10,736 at tick 50,000) and kills
+  off a small one.
 - Rates: set by mutation load per genome copy, p × L, not by p alone.
   Reference loads: Tierra about 0.13 per 80-byte copy (about 1 bit per
   1,000–2,500 instructions moved), Avida default 0.85 per copy, evolved
@@ -641,10 +643,17 @@ Standard world from here on (recorded 2026-10-05; code defaults
 unchanged for now): `--patch 512 --sun 8 --alloc-far --absorb-prop
 --rot 1e-4` (E004 "Decision"). Decision 2026-10-07: the code defaults
 stay as they are until E005 is recorded, because E005 reads the E004
-run files and the harness yardstick must not move under it. After E005,
-one dedicated commit makes the E004 world the default, with the E001–E003
-flag set written down next to it; every run's `meta.json` already carries
-every config field, so older runs stay reproducible either way.
+run files and the harness yardstick must not move under it. Done the
+same day, after E005 and E006: `Config::default()` is now the E004 world
+(`Config::e001()` and `--world-e001` give the Phase 1 world; `--alloc-near`
+and `--absorb-fixed` undo the two new rules), checked byte-for-byte
+against the recorded E004 stdout of the control, p512_far and
+p512_far_prop_rot arms over 3,000 ticks. The single-genome harness
+therefore labels genomes under the E004 world from now on; `classes.csv`
+files written before this date used the Phase 1 physics, and E005's
+`classes_world.csv` is the same yardstick as a new `classes.csv`. Every
+run's `meta.json` carries every config field, so older runs stay
+reproducible either way.
 E005 (2026-10-06, `docs/research/experiments/2026-10-06-e005-parasite-search.md`):
 parasite search in the 40 p512_far runs, pre-registered before any query
 of the files. Definitions, predictions and the runner are in the record.

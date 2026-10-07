@@ -108,11 +108,15 @@ Reads `DIR/genomes.csv`, runs each genome alone in a clean world (noise
 off, 100 units of seed energy, children removed every tick; the harness
 from `ancestor_pays_for_itself`) for `--harness-ticks` ticks (default
 3,000), and writes `DIR/classes.csv`. The energy and `alloc` physics are
-whatever the command line gives (`--patch`, `--sun`, `--alloc-far`,
-`--absorb-prop`; default physics if none); noise flags are ignored. With
-`--classes-out NAME` the file is `DIR/NAME` instead, so one run can carry
-both a default-physics `classes.csv` and a world-physics
-`classes_world.csv` (E005, 2026-10-06). Columns:
+whatever the command line gives (`--world-e001`, `--patch`, `--sun`,
+`--alloc-far`/`--alloc-near`, `--absorb-prop`/`--absorb-fixed`; the code
+default if none); noise flags are ignored. With `--classes-out NAME` the
+file is `DIR/NAME` instead, so one run can carry classes under two
+physics (E005, 2026-10-06). The code default changed on 2026-10-07 from
+the Phase 1 world to the E004 world: a `classes.csv` written before that
+date used Phase 1 physics (what E005 calls the default class), and E005's
+`classes_world.csv` files are the same yardstick as a `classes.csv`
+written after it. Columns:
 
 `raw_hash,class,births,exact_births,first_birth_tick,alive,final_energy_m,executed,absorbs`
 

@@ -34,7 +34,9 @@ uv run report.py ../runs/diag/control_s1 --classify
 ```
 
 `--classify` runs every genome in the run through the single-genome harness
-(writes `classes.csv`); `report.py` prints summary tables and writes PNGs to
+(writes `classes.csv`, under the code's default physics, which has been
+the E004 world since 2026-10-07; `classes.csv` files older than that used
+the Phase 1 physics); `report.py` prints summary tables and writes PNGs to
 `RUN_DIR/report/`. File formats: `docs/instrumentation.md`. For ad-hoc
 queries, `evo_run.load(run_dir)` returns polars frames for every file.
 

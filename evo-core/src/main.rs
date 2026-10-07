@@ -1,21 +1,29 @@
 //! CLI: run a seeded world and print a census.
 //!
 //! evo-core [--ticks N] [--seed S] [--report N] [--log PATH] [--k K] [--e E]
-//!          [--no-protect] [--p P] [--world N] [--patch N] [--alloc-far]
-//!          [--locality N] [--out DIR] [--census N] [--sun N]
-//!          [--absorb-prop] [--rot P] [--self-owner]
-//! evo-core --classify DIR [--harness-ticks N] [--classes-out NAME]
-//!          [--patch N] [--sun N] [--alloc-far] [--absorb-prop] ...
+//!          [--no-protect] [--p P] [--world N] [--patch N]
+//!          [--alloc-far | --alloc-near] [--absorb-prop | --absorb-fixed]
+//!          [--locality N] [--out DIR] [--census N] [--sun N] [--rot P]
+//!          [--self-owner] [--world-e001]
+//! evo-core --classify DIR [--harness-ticks N] [--classes-out NAME] [physics flags]
 //! evo-core --host HEX [--host-pad] [--harness-ticks N] [physics flags]
 //!
+//! The default physics is the E004 world (`Config::default()`: 128 patches
+//! of 512 bytes at 8x the Phase 1 sunlight per byte, far `alloc`,
+//! proportional absorb, bit rot 1e-4). --world-e001 starts from the Phase 1
+//! world of E001–E003 instead (`Config::e001()`); every other flag then
+//! modifies that base. To reproduce an E004 arm: control = `--world-e001`,
+//! p512_far = `--absorb-fixed --rot 1e-5`, p512_far_prop_rot = no flags.
+//!
 //! --patch N sets the patch size and scales per-patch income and cap so
-//! energy per byte stays at the default density (E002). --sun N then
+//! energy per byte stays at the base world's density (E002). --sun N then
 //! multiplies per-patch income and cap by N (E004).
 //!
-//! --absorb-prop makes `absorb` take a ration proportional to how full the
-//! pool is. --rot P sets the per-byte per-tick bit-rot probability.
-//! --self-owner makes `self` name the living owner of the byte at IP
-//! instead of the executing organism (E006, H8).
+//! --absorb-prop / --absorb-fixed choose whether `absorb` takes a ration
+//! proportional to how full the pool is, or a fixed one. --rot P sets the
+//! per-byte per-tick bit-rot probability. --self-owner makes `self` name
+//! the living owner of the byte at IP instead of the executing organism
+//! (E006, H8).
 //!
 //! --out DIR writes a run directory (docs/instrumentation.md): event CSVs,
 //! census/organism/patch snapshots every --census ticks (default: the
@@ -40,7 +48,10 @@ use std::io::Write;
 use std::path::Path;
 
 fn main() {
-    let mut cfg = Config::default();
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    // The world flag sets the base every other flag modifies, so it is read
+    // first wherever it appears.
+    let mut cfg = if args.iter().any(|a| a == "--world-e001") { Config::e001() } else { Config::default() };
     let mut ticks: u64 = 10_000;
     let mut report: u64 = 1000;
     let mut census: Option<u64> = None;
@@ -55,7 +66,6 @@ fn main() {
     let mut e: i8 = 16;
     let mut patch: Option<u32> = None;
     let mut sun: i64 = 1;
-    let args: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
     while i < args.len() {
         let next = || args.get(i + 1).expect("missing value").clone();
@@ -80,8 +90,11 @@ fn main() {
             "--sun" => { sun = next().parse().unwrap(); i += 1; }
             "--rot" => { cfg.p_bit_rot = next().parse().unwrap(); i += 1; }
             "--alloc-far" => cfg.alloc_far = true,
+            "--alloc-near" => cfg.alloc_far = false,
             "--absorb-prop" => cfg.absorb_proportional = true,
+            "--absorb-fixed" => cfg.absorb_proportional = false,
             "--self-owner" => cfg.self_owner = true,
+            "--world-e001" => {}
             "--no-protect" => cfg.write_protection = false,
             other => { eprintln!("unknown arg {other}"); std::process::exit(2); }
         }

@@ -968,7 +968,9 @@ mod tests {
 
     #[test]
     fn ancestor_replicates_exactly_without_noise() {
-        let mut cfg = Config::default();
+        // Phase 1 world: nearest-free `alloc`, so the child sits adjacent.
+        // The default (E004) world is covered by alloc_far_places_child_at_locality_edge.
+        let mut cfg = Config::e001();
         quiet(&mut cfg);
         let mut sim = Sim::new(cfg);
         let g = ancestor(64, 16);

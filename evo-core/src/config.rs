@@ -115,12 +115,34 @@ impl Config {
     }
 }
 
+impl Config {
+    /// The Phase 1 world of E001–E003 (and the E004 control arm): 16
+    /// patches of 4,096 bytes, nearest-free `alloc`, fixed absorb ration,
+    /// bit rot 1e-5. Replication died out in it within 10,000 ticks in
+    /// every run (E003). CLI: `--world-e001`.
+    pub fn e001() -> Config {
+        Config {
+            patch_size: 1 << 12,
+            alloc_far: false,
+            absorb_proportional: false,
+            p_bit_rot: 1e-5,
+            ..Config::default()
+        }
+    }
+}
+
+/// The E004 world (`docs/research/experiments/2026-10-05-e004-physics-pass.md`,
+/// default since 2026-10-07): 128 patches of 512 bytes, each with the
+/// income and cap of a Phase 1 patch (8x the sunlight per byte), farthest
+/// free `alloc`, proportional absorb, bit rot 1e-4. Replication persisted
+/// to 50,000 ticks in 9 of 10 seeds. Before this date `Config::default()`
+/// was `Config::e001()`; run directories carry every field in `meta.json`.
 impl Default for Config {
     fn default() -> Config {
         Config {
             seed: 1,
             world_size: 1 << 16,
-            patch_size: 1 << 12,
+            patch_size: 1 << 9,
             locality: 512,
             pools_start_full: true,
             patch_income: 256 * MILLI,
@@ -131,8 +153,8 @@ impl Default for Config {
             cap_c0: 32 * MILLI,
             cap_c1: 0,
             write_protection: true,
-            alloc_far: false,
-            absorb_proportional: false,
+            alloc_far: true,
+            absorb_proportional: true,
             self_owner: false,
             cost_simple: MILLI,
             cost_load: 2 * MILLI,
@@ -146,7 +168,7 @@ impl Default for Config {
             cost_absorb: MILLI,
             p_write_flip: 0.1 / 21.0,
             q_slip: 0.1 / 21.0 / 4.0,
-            p_bit_rot: 1e-5,
+            p_bit_rot: 1e-4,
             p_debris_decay: 0.001,
         }
     }

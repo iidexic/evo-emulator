@@ -321,6 +321,12 @@ tenth lost its single founder by tick 1,179). Without the last two
 switches it is p512_far (10 of 10). Making it the code default is still
 open; doing so means reworking tests that assume nearest-free `alloc`,
 the harness yardstick, and flags to reproduce E001–E003.
+(Done 2026-10-07 after E005 and E006: `Config::default()` is this world;
+`--world-e001` gives the control world; the arms above are reproduced
+with `--world-e001` for control, `--absorb-fixed --rot 1e-5` for
+p512_far, and no flags for p512_far_prop_rot, checked against the
+recorded stdout. The flags listed in this file are relative to the old
+default; `meta.json` in each run has the full config.)
 
 Recommendation at the time of writing: make the p512_far world the default (128
 patches of 512 bytes, income 256 and cap 4,096 each, far `alloc`), with

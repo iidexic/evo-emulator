@@ -31,29 +31,33 @@ OUT = ROOT / "runs" / "e004"
 CENSUS = 500
 LATE_WINDOW = 5000  # "replicating at the end" looks at the last this-many ticks
 
-# World -> CLI args. 512-byte patches at 8x sun: each patch gets the
-# income and cap of a control patch (--patch scales to keep the default
-# density, --sun then multiplies it).
+# World -> CLI args. Since 2026-10-07 the code default is the E004 world
+# (128 patches of 512 bytes at 8x sun, far `alloc`, proportional absorb,
+# bit rot 1e-4), so the arms are written as deviations from it:
+# `--world-e001` is the Phase 1 control world, and the plain arms turn
+# proportional absorb and bit rot 1e-4 off. Flags before 2026-10-07 were
+# relative to the old default; meta.json in each run has the full config.
 WORLDS = {
-    "control": [],
-    "far": ["--alloc-far"],
-    "p512": ["--patch", "512", "--sun", "8"],
-    "p512_far": ["--patch", "512", "--sun", "8", "--alloc-far"],
+    "control": ["--world-e001"],
+    "far": ["--world-e001", "--alloc-far"],
+    "p512": ["--alloc-near"],
+    "p512_far": [],
 }
-PROP = ["--absorb-prop"]
-ROT = ["--rot", "1e-4"]
+BASE = ["--absorb-fixed", "--rot", "1e-5"]  # the "plain" arm of each world
+PROP = ["--rot", "1e-5"]
+ROT = ["--absorb-fixed"]
 
 
 def arms() -> dict[str, list[str]]:
     out = {}
     for w, args in WORLDS.items():
-        for suffix, extra in [("", []), ("_prop", PROP), ("_rot", ROT), ("_prop_rot", PROP + ROT)]:
+        for suffix, extra in [("", BASE), ("_prop", PROP), ("_rot", ROT), ("_prop_rot", [])]:
             name = (w + suffix) if w != "control" or not suffix else suffix[1:]
             out[name] = args + extra
-    out["sun8"] = ["--sun", "8"]
+    out["sun8"] = ["--world-e001", "--sun", "8", *BASE]
     # Added after the main results (post hoc): 8x sun and far `alloc` in the
     # control patch layout, to separate patch size from sun plus dispersal.
-    out["sun8_far"] = ["--sun", "8", "--alloc-far"]
+    out["sun8_far"] = ["--world-e001", "--sun", "8", "--alloc-far", *BASE]
     return out
 
 

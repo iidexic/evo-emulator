@@ -28,15 +28,17 @@ import e005_parasites as e005
 from evo_run import ROOT, binary
 
 OUT = ROOT / "runs" / "e006"
-WORLD = ["--patch", "512", "--sun", "8", "--alloc-far"]
+# Relative to the code default, the E004 world (since 2026-10-07; the E006
+# runs themselves were made before the flip with the equivalent explicit
+# flags, see meta.json).
 ARMS = {
-    "owner_prop_rot": WORLD + ["--absorb-prop", "--rot", "1e-4", "--self-owner"],
-    "owner": WORLD + ["--self-owner"],
+    "owner_prop_rot": ["--self-owner"],
+    "owner": ["--absorb-fixed", "--rot", "1e-5", "--self-owner"],
 }
 # Harness flags per arm (noise flags are ignored by the harness).
 HARNESS = {
-    "owner_prop_rot": WORLD + ["--absorb-prop", "--self-owner"],
-    "owner": WORLD + ["--self-owner"],
+    "owner_prop_rot": ["--self-owner"],
+    "owner": ["--absorb-fixed", "--self-owner"],
 }
 
 
