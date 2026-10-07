@@ -98,8 +98,7 @@ fn ledger_balances_for_every_living_organism() {
     }
     // Patch totals agree with the organisms' absorb totals.
     let absorbed: i64 = sim.patches.iter().map(|p| p.absorbed).sum();
-    let gained: i64 = sim.orgs.iter().map(|o| o.stats.absorb_gain_m).sum();
-    assert_eq!(absorbed, gained);
+    assert_eq!(absorbed, sim.absorb_gain_total());
 }
 
 #[test]

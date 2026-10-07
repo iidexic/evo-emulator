@@ -8,7 +8,7 @@
 //! (dead code left by an earlier body), to test what a genome does with it.
 use evo_core::config::{Config, MILLI};
 use evo_core::isa::disasm_at;
-use evo_core::sim::Sim;
+use evo_core::sim::{Sim, FIRST_ID};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -54,7 +54,7 @@ fn main() {
         };
         println!("{line}");
         let alive = sim.orgs[0].alive;
-        sim.cull_all_but(0);
+        sim.cull_all_but(FIRST_ID);
         if !alive {
             break;
         }

@@ -3,7 +3,7 @@
 //! by test (`--classify`), not by reading their disassembly.
 
 use crate::config::{Config, MILLI};
-use crate::sim::{fnv1a, Event, Sim};
+use crate::sim::{fnv1a, Event, Sim, FIRST_ID};
 
 pub struct HarnessResult {
     pub births: u32,
@@ -88,11 +88,12 @@ pub fn run_alone_with(genome: &[u8], ticks: u64, cfg: &Config) -> HarnessResult 
                 }
             }
         }
-        sim.cull_all_but(0);
+        sim.cull_all_but(FIRST_ID);
         if !sim.orgs[0].alive {
             break;
         }
     }
+    // The genome is orgs[0] while alive, and until the next tick once dead.
     let o = &sim.orgs[0];
     r.alive = o.alive;
     r.final_energy = o.energy;
@@ -156,15 +157,18 @@ pub fn run_with_host(genome: &[u8], host: &[u8], ticks: u64, cfg: &Config) -> Ho
                 }
             }
         }
-        sim.cull_except(&[0, 1]);
-        if !sim.orgs[1].alive {
+        sim.cull_except(&[host_id, me_id]);
+        if !sim.genome_of(me_id).map_or(false, |o| o.alive) {
             break;
         }
     }
-    r.alive = sim.orgs[1].alive;
-    r.host_alive = sim.orgs[0].alive;
-    r.executed = sim.orgs[1].stats.executed;
-    r.exec_foreign = sim.orgs[1].stats.exec_foreign;
+    // A dead organism stays readable until the next tick; a host that died
+    // earlier has been retired, which counts as dead.
+    let me_org = sim.genome_of(me_id).expect("genome readable at the tick it died or later");
+    r.alive = me_org.alive;
+    r.host_alive = sim.genome_of(host_id).map_or(false, |o| o.alive);
+    r.executed = me_org.stats.executed;
+    r.exec_foreign = me_org.stats.exec_foreign;
     r
 }
 

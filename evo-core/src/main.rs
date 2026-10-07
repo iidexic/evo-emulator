@@ -214,7 +214,7 @@ fn main() {
     if let Some(r) = rec {
         r.finish(&sim).unwrap();
     }
-    let executed: u64 = sim.orgs.iter().map(|o| o.stats.executed).sum();
+    let executed = sim.executed_total();
     eprintln!("# {:.2}s, {} instructions, {:.1} M instr/s", dt, executed, executed as f64 / dt / 1e6);
     // Top genotypes with disassembly.
     for (h, count, len) in sim.census().into_iter().take(5) {

@@ -175,7 +175,11 @@ pub struct Org {
     pub start: u32,
     pub len: u32,
     pub pending: Option<(u32, u32)>, // (start, len)
-    pub pending_source: Option<u32>,
+    /// Owner of the first byte copied into the pending region, with that
+    /// owner's birth genome hash (0 for free or debris bytes). The hash is
+    /// taken at copy time because the owner may be dead and retired by
+    /// `divide`.
+    pub pending_source: Option<(u32, u64)>,
     pub pending_errors: u32,
     pub pending_slips: u32,
     pub alive: bool,
@@ -202,7 +206,19 @@ pub struct Sim {
     pub bytes: Vec<u8>,
     pub owner: Vec<u32>,
     pub patches: Vec<Patch>,
+    /// Living organisms in birth order, plus those that died since the
+    /// last `retire` (the start of the next tick). Dead organisms are
+    /// dropped then, so the per-tick scans stay proportional to the
+    /// population rather than to every birth so far (E007 found a 250,000
+    /// tick run slowing to a fifth of its starting speed before this).
     pub orgs: Vec<Org>,
+    /// Position in `orgs` of each id ever issued (id - FIRST_ID), or
+    /// `u32::MAX` once retired.
+    index: Vec<u32>,
+    /// Instructions executed and energy absorbed by organisms already
+    /// retired (`executed_total`, `absorb_gain_total`).
+    retired_executed: u64,
+    retired_absorb_gain_m: i64,
     pub tick: u64,
     pub events: Vec<Event>,
     next_id: u32,
@@ -239,6 +255,9 @@ impl Sim {
                 })
                 .collect(),
             orgs: Vec::new(),
+            index: Vec::new(),
+            retired_executed: 0,
+            retired_absorb_gain_m: 0,
             tick: 0,
             events: Vec::new(),
             next_id: FIRST_ID,
@@ -281,9 +300,44 @@ impl Sim {
     }
 
     fn org_index(&self, id: u32) -> Option<usize> {
-        // ids are allocated sequentially from FIRST_ID, so index = id - FIRST_ID.
-        let i = id.checked_sub(FIRST_ID)? as usize;
-        if i < self.orgs.len() { Some(i) } else { None }
+        // ids are allocated sequentially from FIRST_ID, so `index` is
+        // addressed by id - FIRST_ID; retired organisms are not found.
+        let i = *self.index.get(id.checked_sub(FIRST_ID)? as usize)?;
+        if i == u32::MAX { None } else { Some(i as usize) }
+    }
+
+    /// Drop the organisms that have died, keeping the living in birth
+    /// order. Called at the start of every tick, so a death is visible
+    /// (with its final state) until the next `run_tick`.
+    fn retire(&mut self) {
+        if self.orgs.iter().all(|o| o.alive) {
+            return;
+        }
+        let mut kept = 0usize;
+        for i in 0..self.orgs.len() {
+            let o = &self.orgs[i];
+            let slot = (o.id - FIRST_ID) as usize;
+            if o.alive {
+                self.index[slot] = kept as u32;
+                self.orgs.swap(kept, i);
+                kept += 1;
+            } else {
+                self.index[slot] = u32::MAX;
+                self.retired_executed += o.stats.executed;
+                self.retired_absorb_gain_m += o.stats.absorb_gain_m;
+            }
+        }
+        self.orgs.truncate(kept);
+    }
+
+    /// Instructions executed by every organism so far, retired ones included.
+    pub fn executed_total(&self) -> u64 {
+        self.retired_executed + self.orgs.iter().map(|o| o.stats.executed).sum::<u64>()
+    }
+
+    /// Energy every organism so far gained by `absorb`, retired ones included.
+    pub fn absorb_gain_total(&self) -> i64 {
+        self.retired_absorb_gain_m + self.orgs.iter().map(|o| o.stats.absorb_gain_m).sum::<i64>()
     }
 
     // ---- seeding --------------------------------------------------------
@@ -292,6 +346,7 @@ impl Sim {
     pub fn seed(&mut self, start: u32, genome: &[u8], energy: i64, parent: u32) -> u32 {
         let id = self.next_id;
         self.next_id += 1;
+        self.index.push(self.orgs.len() as u32);
         for (k, &b) in genome.iter().enumerate() {
             let a = self.wrap(start + k as u32) as usize;
             self.bytes[a] = b;
@@ -482,7 +537,13 @@ impl Sim {
                 if self.orgs[i].pending_source.is_none() {
                     if let Some((ps, pl)) = self.orgs[i].pending {
                         if self.off(a, -(ps as i64)) < pl {
-                            self.orgs[i].pending_source = Some(self.owner[self.wrap(b) as usize]);
+                            let s = self.owner[self.wrap(b) as usize];
+                            let sh = if s >= FIRST_ID {
+                                self.org_index(s).map_or(0, |j| self.orgs[j].genome_hash)
+                            } else {
+                                0
+                            };
+                            self.orgs[i].pending_source = Some((s, sh));
                         }
                     }
                 }
@@ -624,12 +685,7 @@ impl Sim {
                     let parent_id = self.orgs[i].id;
                     let parent_hash = self.orgs[i].genome_hash;
                     let parent_now_hash = fnv1a(&self.region(self.orgs[i].start, self.orgs[i].len));
-                    let source = self.orgs[i].pending_source.take().unwrap_or(DEBRIS);
-                    let source_hash = if source >= FIRST_ID {
-                        self.org_index(source).map_or(0, |j| self.orgs[j].genome_hash)
-                    } else {
-                        0
-                    };
+                    let (source, source_hash) = self.orgs[i].pending_source.take().unwrap_or((DEBRIS, 0));
                     let errs = std::mem::take(&mut self.orgs[i].pending_errors);
                     let slips = std::mem::take(&mut self.orgs[i].pending_slips);
                     self.orgs[i].offspring += 1;
@@ -740,15 +796,15 @@ impl Sim {
         self.events.push(death);
     }
 
-    /// Single-genome harness support: remove every organism except `keep`.
-    pub fn cull_all_but(&mut self, keep: usize) {
+    /// Single-genome harness support: remove every organism except id `keep`.
+    pub fn cull_all_but(&mut self, keep: u32) {
         self.cull_except(&[keep]);
     }
 
-    /// Remove every living organism whose index is not in `keep`.
-    pub fn cull_except(&mut self, keep: &[usize]) {
+    /// Remove every living organism whose id is not in `keep`.
+    pub fn cull_except(&mut self, keep: &[u32]) {
         for i in 0..self.orgs.len() {
-            if !keep.contains(&i) && self.orgs[i].alive {
+            if !keep.contains(&self.orgs[i].id) && self.orgs[i].alive {
                 self.kill(i, DeathCause::Harness);
             }
         }
@@ -757,6 +813,7 @@ impl Sim {
     // ---- one tick -------------------------------------------------------
 
     pub fn run_tick(&mut self) {
+        self.retire();
         self.tick += 1;
 
         // Sunlight.
@@ -891,7 +948,7 @@ impl Sim {
             let (ps, pl) = o.pending.unwrap_or((u32::MAX, 0));
             h.u64(ps as u64);
             h.u64(pl as u64);
-            h.u64(o.pending_source.map_or(u64::MAX, |s| s as u64));
+            h.u64(o.pending_source.map_or(u64::MAX, |(s, _)| s as u64));
             h.u64(o.alive as u64);
         }
         h.0
@@ -1005,7 +1062,7 @@ mod tests {
         let mut min_energy = i64::MAX;
         for _ in 0..3000 {
             sim.run_tick();
-            sim.cull_all_but(0);
+            sim.cull_all_but(FIRST_ID);
             min_energy = min_energy.min(sim.orgs[0].energy);
         }
         let births = sim.events.iter().filter(|e| matches!(e, Event::Birth { .. })).count();
@@ -1144,7 +1201,9 @@ alloc C
         for _ in 0..100 {
             sim.run_tick();
         }
-        assert!(!sim.orgs[0].alive);
+        // Dead organisms are retired at the next tick, so it is gone.
+        assert_eq!(sim.alive_count(), 0);
+        assert!(sim.genome_of(FIRST_ID).is_none());
         assert_eq!(sim.owner[100], DEBRIS);
     }
 }
