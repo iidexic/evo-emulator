@@ -537,7 +537,11 @@ H3 (§11).
   a marimo notebook over the same files: run picker, tick window, hover
   tooltips, click an organism in the space-time view to see its life and
   genome. It is a stopgap. Derek wants a fuller viewer later; whether it
-  is Rust, Python, or something else is open.
+  is Rust, Python, or something else is open. 2026-10-07: `explore.py`
+  gained interaction, diversity and ancestry views, and `world.py` reads
+  the world snapshots (world map by class per snapshot, intact dead
+  bodies in free memory, address inspector, off-body IPs), a first cut
+  of the §7 lineage image colored by class rather than lineage.
 
 ### 6.3 Interface between them
 

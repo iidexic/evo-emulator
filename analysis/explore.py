@@ -18,6 +18,12 @@ def _(mo):
     uv run marimo run explore.py      # app: controls and charts only
     ```
 
+    Sections: population, space-time, one organism, patches,
+    interactions (copies from foreign bytes, code run outside the own
+    body), deaths, diversity, and genomes (listing, ancestry, and the
+    single- and two-genome tests). The memory itself, from the world
+    snapshots in `world.bin`, has its own notebook: `world.py`.
+
     **How marimo works.** Each cell is a Python function. A name that a cell
     defines (without a leading `_`) is visible to every other cell, and
     marimo runs cells in dependency order, not page order. Change a control
@@ -35,12 +41,16 @@ def _():
     # Libraries, plus two local modules from this folder: evo_run loads a
     # run directory into polars frames; report has the derived tables
     # (birth kinds, death signatures) and the palette of the static report.
+    import io
+    import subprocess
+
     import altair as alt
     import marimo as mo
     import polars as pl
 
-    from evo_run import ROOT, classify, load
+    from evo_run import CORE, ROOT, binary, classify, load
     from report import (
+        AQUA,
         BIRTH_COLOR,
         BIRTH_ORDER,
         BLUE,
@@ -50,6 +60,7 @@ def _():
         GRID,
         INK,
         INK_2,
+        ORANGE,
         SEQ_STEPS,
         SIG_COLOR,
         SIG_ORDER,
@@ -66,29 +77,35 @@ def _():
     # tick window rather than let the page grow.
     alt.data_transformers.disable_max_rows()
     return (
+        AQUA,
         BIRTH_COLOR,
         BIRTH_ORDER,
         BLUE,
         CLASS_COLOR,
+        CORE,
         GRAY,
         GRAY_LIGHT,
         GRID,
         INK,
         INK_2,
+        ORANGE,
         ROOT,
         SEQ_STEPS,
         SIG_COLOR,
         SIG_ORDER,
         SURFACE,
         alt,
+        binary,
         births_typed,
         class_order,
         classify,
         deaths_with_signature,
+        io,
         load,
         mo,
         pl,
         population_by_class,
+        subprocess,
     )
 
 
@@ -440,6 +457,97 @@ def _(SEQ_STEPS, alt, every, look, mo, patch_metric, pl, run, window):
 
 
 @app.cell
+def _(AQUA, INK_2, ORANGE, alt, births, deaths, every, look, mo, pl, run, window):
+    # Organisms using bytes or code that are not their own (the E005/E006
+    # questions). Top: of the births in each census interval, the share
+    # whose bytes were copied from another living organism, or from free
+    # memory or debris; the rest copied the executor's own body. `source`
+    # in births.csv is the owner of the first byte copied, and ids 0 and 1
+    # stand for free memory and debris. Bottom: of all instructions run by
+    # the organisms that died in the interval, the share run at an address
+    # owned by another organism (exec_foreign) or by nobody (exec_unowned).
+    # Lifetime totals counted at death, so they lag the top chart by a
+    # lifetime.
+    _lo, _hi = window.value
+    _x = alt.Scale(domain=[_lo, _hi], nice=False)
+    # Half-open, so the last point is a whole interval, not the events of
+    # the single tick at the window's end.
+    _in = pl.col("tick").is_between(_lo, _hi, closed="left")
+    _bin = ((pl.col("tick") // every) * every).alias("bin")
+    _other = (pl.col("source") >= 2) & (pl.col("source") != pl.col("executor"))
+
+    _b = (
+        births.filter(_in).group_by(_bin)
+        .agg(births=pl.len(), other=_other.sum(), free=(pl.col("source") < 2).sum())
+        .with_columns(**{
+            "another living organism": pl.col("other") / pl.col("births"),
+            "free memory or debris": pl.col("free") / pl.col("births"),
+        })
+    )
+    _src = ["another living organism", "free memory or debris"]
+    _top = alt.Chart(_b.unpivot(index=["bin", "births"], on=_src, variable_name="copied from", value_name="share")).mark_line(
+        point=alt.OverlayMarkDef(size=12)).encode(
+        x=alt.X("bin:Q", scale=_x, title=None),
+        y=alt.Y("share:Q", axis=alt.Axis(format="%"), title="share of births"),
+        color=alt.Color("copied from:N", scale=alt.Scale(domain=_src, range=[ORANGE, AQUA])),
+        tooltip=[alt.Tooltip("bin:Q", title="interval from tick", format=","), "copied from:N",
+                 alt.Tooltip("share:Q", format=".1%"), "births:Q"],
+    ).properties(width="container", height=170, title="Births copied from bytes that were not the executor's")
+
+    _d = (
+        deaths.filter(_in).group_by(_bin)
+        .agg(deaths=pl.len(), executed=pl.col("executed").sum(),
+             f=pl.col("exec_foreign").sum(), u=pl.col("exec_unowned").sum())
+        .with_columns(**{
+            "another organism's": pl.col("f") / pl.col("executed").clip(lower_bound=1),
+            "nobody's (free or debris)": pl.col("u") / pl.col("executed").clip(lower_bound=1),
+        })
+    )
+    _own = ["another organism's", "nobody's (free or debris)"]
+    _bottom = alt.Chart(_d.unpivot(index=["bin", "deaths"], on=_own, variable_name="address owned by", value_name="share")).mark_line(
+        point=alt.OverlayMarkDef(size=12)).encode(
+        x=alt.X("bin:Q", scale=_x, title="tick"),
+        y=alt.Y("share:Q", axis=alt.Axis(format="%"), title="share of instructions"),
+        color=alt.Color("address owned by:N", scale=alt.Scale(domain=_own, range=[ORANGE, AQUA])),
+        tooltip=[alt.Tooltip("bin:Q", title="interval from tick", format=","), "address owned by:N",
+                 alt.Tooltip("share:Q", format=".2%"), "deaths:Q"],
+    ).properties(width="container", height=170,
+                 title="Instructions run outside the own body, lifetime totals of the organisms that died")
+
+    # Every birth that did not copy the executor's own body, by who ran it
+    # and whose bytes it copied. parent_class: class of the executor's body
+    # at `divide`. source_class: class of the source organism's birth
+    # genome. exact: the child equals the executor's body (the executor
+    # copied itself through foreign code). copy_of_source: the child equals
+    # the source's birth genome (a parasite copied by its host, or a host
+    # copied by an intruder, E006's donors).
+    _t = (
+        run.class_of(births.filter(_in & (pl.col("source") != pl.col("executor"))), "source_hash", "source_class")
+        .with_columns(
+            copied_from=pl.when(pl.col("source") < 2).then(pl.lit("free memory or debris"))
+            .otherwise(pl.lit("another living organism")),
+            source_class=pl.when(pl.col("source") < 2).then(pl.lit("")).otherwise("source_class"),
+        )
+        .group_by("copied_from", "parent_class", "source_class")
+        .agg(
+            births=pl.len(),
+            exact=(pl.col("kind") == "exact").sum(),
+            copy_of_source=(pl.col("raw_hash") == pl.col("source_hash")).sum(),
+            stillborn=(pl.col("kind") == "stillborn").sum(),
+        )
+        .sort("births", descending=True)
+    )
+    mo.vstack([
+        mo.md("## Interactions"),
+        look(_top),
+        look(_bottom),
+        mo.md("Births that did not copy the executor's own body, in the tick window"),
+        mo.ui.table(_t, selection=None, page_size=10, show_column_summaries=False),
+    ])
+    return
+
+
+@app.cell
 def _(GRAY, SIG_COLOR, SIG_ORDER, alt, deaths, look, mo, pl, window):
     # Every death as a dot: when it died and how old it was (log scale).
     # Signatures, assigned in this order: stillborn (born with 0 energy),
@@ -483,6 +591,105 @@ def _(GRAY, SIG_COLOR, SIG_ORDER, alt, deaths, look, mo, pl, window):
 
 
 @app.cell
+def _(mo):
+    geno_by = mo.ui.dropdown(
+        options={"birth genome": "birth_hash", "current body": "now_hash"},
+        value="birth genome", label="count genotypes by",
+    )
+    return (geno_by,)
+
+
+@app.cell
+def _(AQUA, BLUE, GRAY, GRID, ORANGE, SURFACE, alt, class_color, geno_by, look, mo, orgs, pl, run, window):
+    # Genotypes over time, from orgs.csv (every living organism at every
+    # census). A genotype is either the birth genome or the current body
+    # bytes, which differ once a body has changed after birth (bit rot or
+    # a foreign write); where most bodies have changed, the current-body
+    # count is nearly one genotype per organism.
+    # Top: the 12 genotypes with the highest peak count in the window, one
+    # band each, oldest at the bottom, colored by harness class; a sweep
+    # shows as one band swelling while the others shrink. Everything else
+    # is the gray band on top.
+    _lo, _hi = window.value
+    _x = alt.Scale(domain=[_lo, _hi], nice=False)
+    _key = geno_by.value
+    _gen = run.class_of(run.genomes.select("raw_hash", "func_hash", "len", "first_tick"), "raw_hash")
+    _o = orgs.filter(pl.col("tick").is_between(_lo, _hi)).select("tick", "birth_hash", "now_hash", "len")
+    _c = _o.group_by("tick", genotype=_key).agg(count=pl.len())
+    _top = _c.group_by("genotype").agg(peak=pl.col("count").max()).sort("peak", "genotype", descending=True).head(12)
+    _ticks = run.patches.filter(pl.col("tick").is_between(_lo, _hi)).select("tick").unique()
+    _bands = (
+        _c.with_columns(genotype=pl.when(pl.col("genotype").is_in(_top["genotype"].implode()))
+                        .then("genotype").otherwise(pl.lit("other")))
+        .group_by("tick", "genotype").agg(pl.col("count").sum())
+    )
+    # Every genotype at every census tick, zero where absent, so the
+    # stacked areas do not interpolate across gaps.
+    _info = (
+        _gen.filter(pl.col("raw_hash").is_in(_top["genotype"].implode()))
+        .select(genotype="raw_hash", cls="class", len="len", first_tick="first_tick")
+        .vstack(pl.DataFrame({"genotype": ["other"], "cls": ["other"], "len": [None], "first_tick": [None]},
+                             schema={"genotype": pl.Utf8, "cls": pl.Utf8, "len": pl.Int64, "first_tick": pl.Int64}))
+        .with_columns(rank=pl.col("first_tick").rank("ordinal").fill_null(len(_top) + 1))
+    )
+    _bands = (
+        _ticks.join(_info, how="cross")
+        .join(_bands, on=["tick", "genotype"], how="left")
+        .with_columns(pl.col("count").fill_null(0))
+    )
+    _cls_scale = class_color([k for k in _info["cls"].to_list() if k != "other"])
+    _muller = alt.Chart(_bands).mark_area(stroke=SURFACE, strokeWidth=0.6).encode(
+        x=alt.X("tick:Q", scale=_x, title=None),
+        y=alt.Y("count:Q", stack=True, title="organisms"),
+        color=alt.Color("cls:N", title="class", scale=alt.Scale(
+            domain=list(_cls_scale.domain) + ["other"], range=list(_cls_scale.range) + [GRID])),
+        detail="genotype:N",
+        order=alt.Order("rank:Q"),
+        tooltip=["genotype:N", alt.Tooltip("cls:N", title="class"), "len:Q",
+                 alt.Tooltip("first_tick:Q", title="first seen", format=","), alt.Tooltip("tick:Q", format=","), "count:Q"],
+    ).properties(width="container", height=240,
+                 title=f"Top 12 genotypes ({geno_by.selected_key}) by peak count, the rest in gray")
+
+    # Diversity and size per census tick. Effective genotypes: exp of the
+    # Shannon entropy of genotype frequencies, the number of equally common
+    # genotypes that would give the same entropy; it discounts the many
+    # rare genotypes that dominate the plain count.
+    _p = pl.col("count") / pl.col("count").sum()
+    _eff = _c.group_by("tick").agg(**{"effective genotypes": (-(_p * _p.log()).sum()).exp()})
+    _s = (
+        _o.group_by("tick").agg(**{
+            "birth genomes": pl.col("birth_hash").n_unique(),
+            "current bodies": pl.col("now_hash").n_unique(),
+            "changed since birth": (pl.col("now_hash") != pl.col("birth_hash")).mean(),
+            "mean length": pl.col("len").mean(),
+            "max length": pl.col("len").max(),
+        })
+        .join(_eff, on="tick").sort("tick")
+    )
+
+    def _lines(cols, colors, title, y_title, log=False, fmt=",.1f", axis_fmt=None, height=150):
+        return look(alt.Chart(_s.unpivot(index="tick", on=cols, variable_name="series", value_name="v")).mark_line().encode(
+            x=alt.X("tick:Q", scale=_x, title="tick"),
+            y=alt.Y("v:Q", title=y_title, scale=alt.Scale(type="log") if log else alt.Scale(zero=False),
+                    axis=alt.Axis(format=axis_fmt) if axis_fmt else alt.Axis()),
+            color=alt.Color("series:N", title=None, scale=alt.Scale(domain=cols, range=colors)),
+            tooltip=[alt.Tooltip("tick:Q", format=","), "series:N", alt.Tooltip("v:Q", format=fmt)],
+        ).properties(width="container", height=height, title=title))
+
+    mo.vstack([
+        mo.md("## Diversity"),
+        geno_by,
+        look(_muller),
+        _lines(["current bodies", "birth genomes", "effective genotypes"], [BLUE, AQUA, ORANGE],
+               f"Genotypes alive at each census (effective: by {geno_by.selected_key})", "genotypes (log)", log=True),
+        _lines(["changed since birth"], [BLUE], "Living bodies whose bytes changed since birth", "share",
+               fmt=".1%", axis_fmt="%", height=110),
+        _lines(["mean length", "max length"], [BLUE, GRAY], "Body length of living organisms", "bytes", height=120),
+    ])
+    return
+
+
+@app.cell
 def _(births, end, mo, pl, run):
     # Every genome seen in the run. raw_hash is over the bytes; func_hash
     # ignores modifier bits the decoder does not read, so genomes that only
@@ -493,22 +700,96 @@ def _(births, end, mo, pl, run):
         run.class_of(run.genomes, "raw_hash")
         .join(_births, on="raw_hash", how="left")
         .join(_alive, on="raw_hash", how="left")
-        .fill_null(0)
-        .select("raw_hash", "func_hash", "class", "len", "origin", "first_tick", "births_in_run", "alive_at_end", "disasm")
+        .with_columns(pl.col("births_in_run", "alive_at_end").fill_null(0))
         .sort("births_in_run", descending=True)
     )
-    genome_table = mo.ui.table(_g, selection="single", page_size=10, show_column_summaries=False,
-                               label=f"{_g.height} raw genomes, {_g['func_hash'].n_unique()} functional")
+    # Every column of every genome by raw hash, for the ancestry walk.
+    genome_by_hash = {r["raw_hash"]: r for r in _g.iter_rows(named=True)}
+    genome_table = mo.ui.table(
+        _g.select("raw_hash", "func_hash", "class", "len", "origin", "first_tick", "births_in_run", "alive_at_end", "disasm"),
+        selection="single", page_size=10, show_column_summaries=False,
+        label=f"{_g.height} raw genomes, {_g['func_hash'].n_unique()} functional")
     mo.vstack([mo.md("## Genomes"), genome_table])
-    return (genome_table,)
+    return genome_by_hash, genome_table
 
 
 @app.cell
-def _(genome_table, listing, mo):
+def _(genome_by_hash, genome_table, listing, mo, pl):
+    # The selected genome: its listing, and its ancestry back to the seed
+    # through genomes.csv parent links. A `birth` genome's parent is the
+    # executor's body at `divide`; a `somatic` genome is a body that
+    # changed after birth (bit rot or a foreign write), and its parent is
+    # that body's birth genome. Exact copies add no step, so one step is
+    # one change of bytes. changed: byte offsets that differ from the
+    # parent (the next row), or the change in length.
     _sel = genome_table.value
-    mo.stop(len(_sel) == 0, mo.md("_Select a genome above to see its listing._"))
-    _r = _sel.row(0, named=True)
-    mo.md(f"**{_r['raw_hash']}** ({_r['class']}, {_r['len']} bytes, {_r['origin']})\n```\n{listing(_r['disasm'])}\n```")
+    mo.stop(len(_sel) == 0, mo.md("_Select a genome above to see its listing, ancestry and trace._"))
+    genome_pick = _sel["raw_hash"][0]
+    _r = genome_by_hash[genome_pick]
+
+    _chain, _h = [], genome_pick
+    while _h in genome_by_hash and len(_chain) < 300:
+        _chain.append(genome_by_hash[_h])
+        if _chain[-1]["origin"] == "seed":
+            break
+        _h = _chain[-1]["parent_hash"]
+
+    def _changed(child, parent):
+        if parent is None:
+            return "" if child["origin"] == "seed" else "parent not in genomes.csv"
+        a, b = bytes.fromhex(child["bytes_hex"]), bytes.fromhex(parent["bytes_hex"])
+        if len(a) != len(b):
+            return f"length {len(b)} to {len(a)}"
+        return ", ".join(str(i) for i in range(len(a)) if a[i] != b[i])
+
+    _anc = pl.DataFrame([
+        {"step": i, "raw_hash": c["raw_hash"], "origin": c["origin"], "first_tick": c["first_tick"],
+         "class": c["class"], "len": c["len"], "births_in_run": c["births_in_run"],
+         "changed": _changed(c, _chain[i + 1] if i + 1 < len(_chain) else None), "disasm": c["disasm"]}
+        for i, c in enumerate(_chain)
+    ])
+    _note = "" if _chain[-1]["origin"] == "seed" else f" (stopped after {len(_chain)} steps)"
+
+    trace_ticks = mo.ui.number(start=10, stop=5000, step=10, value=200, label="ticks")
+    trace_btn = mo.ui.run_button(label="Trace alone", tooltip="Run it alone, one line per tick (examples/trace.rs)")
+    host_btn = mo.ui.run_button(label="Test against a host", tooltip="Two-genome harness: before the ancestor (evo-core --host)")
+    mo.vstack([
+        mo.md(f"**{_r['raw_hash']}** ({_r['class']}, {_r['len']} bytes, {_r['origin']})\n```\n{listing(_r['disasm'])}\n```"),
+        mo.md(f"**Ancestry**, newest first{_note}"),
+        mo.ui.table(_anc, selection=None, page_size=10, show_column_summaries=False),
+        mo.hstack([trace_ticks, trace_btn, host_btn], justify="start", gap=1),
+    ])
+    return genome_pick, host_btn, trace_btn, trace_ticks
+
+
+@app.cell
+def _(CORE, binary, genome_by_hash, genome_pick, host_btn, io, mo, pl, subprocess, trace_btn, trace_ticks):
+    # Run the selected genome through one of the two genome tests, in the
+    # code's default physics (the E004 world), which need not be this run's.
+    mo.stop(not (trace_btn.value or host_btn.value))
+    _hex = genome_by_hash[genome_pick]["bytes_hex"]
+    if trace_btn.value:
+        _out = subprocess.run(
+            ["cargo", "run", "--release", "--quiet", "--example", "trace", "--", _hex, str(trace_ticks.value)],
+            cwd=CORE, capture_output=True, text=True, check=True,
+        ).stdout
+        _view = mo.vstack([
+            mo.md("Alone in the E004 world with noise off, its children removed every tick, until it "
+                  "dies or the ticks run out. Per tick: IP offset in the body and the instruction there "
+                  "(or the address and its owner id once the IP has left the body; owner 0 is free, 1 "
+                  "debris), registers A to D, energy E in units, instructions executed, of those the ones "
+                  "run at free or debris addresses, children so far."),
+            mo.md(f"```\n{_out}\n```").style(max_height="420px", overflow="auto"),
+        ])
+    else:
+        _out = subprocess.run([str(binary()), "--host", _hex], capture_output=True, text=True, check=True).stdout
+        _view = mo.vstack([
+            mo.md("Two-genome harness (E005): this genome directly before the ancestor, 3,000 ticks, "
+                  "noise off. `births`, `exact_births`: this genome's children; `host_copies`: children "
+                  "with the host's bytes that it made; `exec_foreign`: its instructions run in the host's body."),
+            mo.ui.table(pl.read_csv(io.StringIO(_out)), selection=None, show_column_summaries=False),
+        ])
+    _view
     return
 
 

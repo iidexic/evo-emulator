@@ -163,6 +163,12 @@ shows each survivor's activity over the last census interval.
 - `explore.py` (added after this spec): a marimo notebook over the same
   files, with the same derived tables and palette. Interactive, but not
   the full viewer PLAN.md §7 has in mind (`analysis/README.md`).
+- `world.py` (2026-10-07): a marimo notebook over `world.bin`. Labels
+  every address at every snapshot as living body, pending region, intact
+  dead body (unowned bytes at a death site equal to a known genome),
+  debris or free; world map per snapshot; an address inspector across
+  snapshots; and off-body IPs (organisms whose IP is outside their own
+  body at a census) with the kind of address they are at.
 
 ## Acceptance
 
