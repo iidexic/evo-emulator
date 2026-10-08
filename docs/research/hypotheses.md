@@ -405,3 +405,20 @@ is within 0.5–1.5 of the median in the second window.
 seeds; then the late top hosts are read for the mechanism.
 
 **Status.** Open. E007 (`experiments/2026-10-07-e007-long-run.md`).
+
+## H12 note (2026-10-07)
+
+E007: the registered test passes. The main parasite (`pad`) before the
+top host of each 25,000-tick window makes 0.53–0.55 of its exact
+children before the ancestor, flat from window 2 to window 10 in all 9
+surviving seeds (last/window-2 median ratio 1.00). The baseline needs
+restating: the ratio is 0.55 rather than 1 because the hosts' absorb
+loop lengthened from 64 to 112–127 in a population-wide sweep over the
+first 10,000 ticks, which the parasite inherits by running the host's
+code (byte 6 alone reproduces the harness numbers). The sweep happens
+the same way in three self-owner runs without fall-through parasites,
+so it is not a defence. Hosts with a large divide endowment (about 35
+or more; 13–15% of births by the end) starve a one-byte `pad` after
+its first child, a side effect of a byte that drifts. Status:
+supported; the hosts changed fast when something was in it for them,
+and did not change against the parasites.
