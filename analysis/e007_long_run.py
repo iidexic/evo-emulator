@@ -19,6 +19,17 @@ and summary_e004.md (persistence, as E004), runs.csv and summary.md
 (parasites, as E005), windows.csv and summary_windows.md (per-window
 measures and the prediction checks). Protocol and predictions:
 docs/research/experiments/2026-10-07-e007-long-run.md.
+
+Added after the run (not pre-registered; the original columns are
+unchanged and come first): per window, canonical genotypes
+(`genotypes_func`, `top_func_hash`, `top_func_share`: `genotypes` and
+`top_share` counted by `func_hash` instead of raw hash) and the
+absorb-count and endowment bytes from traits.py (`absorb_*`, `endow_*`:
+median, share at or above the threshold, share at the ancestor's value,
+share whose guard byte is no longer `lit`), over replicator-class exact
+births of 21-byte bodies. E007's review found the raw-hash measures blind
+to the absorb-count sweep. summary_windows.md shows them in a second
+table at the end.
 """
 
 from __future__ import annotations
@@ -33,6 +44,7 @@ import polars as pl
 
 import e004_physics as e004
 import e005_parasites as e005
+import traits
 from evo_run import ROOT, binary, load
 
 OUT = ROOT / "runs" / "e007"
@@ -77,6 +89,7 @@ def windows(seed: int, exe: Path | None) -> list[dict]:
     exact_all = run.class_of(b.filter(pl.col("exact")), "raw_hash")
     first_tick = dict(exact_all.group_by("raw_hash").agg(pl.col("tick").min()).iter_rows())
     orgs = run.class_of(run.orgs, "now_hash")
+    tr = {r["bin"]: r for r in traits.track(run, WINDOW).iter_rows(named=True)}
 
     base = host_harness(exe, main_par["bytes_hex"], None) if (exe and main_par) else None
     n_windows = TICKS // WINDOW
@@ -129,6 +142,13 @@ def windows(seed: int, exe: Path | None) -> list[dict]:
             r["resistance"] = h["exact_births"] / base["exact_births"] if base["exact_births"] else None
             if top_par:
                 r["top_par_vs_top"] = host_harness(exe, hexes[top_par["raw_hash"]], hexes[top["raw_hash"]])["exact_births"]
+        t = tr.get(w, {})
+        r["genotypes_func"] = t.get("geno_func", 0)
+        r["top_func_hash"] = t.get("top_func_hash")
+        r["top_func_share"] = t.get("top_func_share")
+        for tt in traits.DEFAULTS:
+            for c in (f"{tt.name}_med", tt.ge, f"{tt.name}_anc", f"{tt.name}_excl"):
+                r[c] = t.get(c)
         rows.append(r)
     return rows
 
@@ -240,6 +260,30 @@ def summarize_windows(wdf: pl.DataFrame, persist: pl.DataFrame) -> str:
         f"6. Sweeps: median {f0(sweeps_med)} top-host changes out of {n_windows - 1} (>= 3 wanted).",
         f"7. Genotypes with >= 2 exact births, last window / window 2 = {f2(div_ratio)} (0.5–2 wanted).",
     ]
+
+    # Added after the run, not pre-registered (module docstring).
+    a, e = traits.ABSORB, traits.ENDOW
+    lines += [
+        "",
+        "Added after the run (not pre-registered): canonical genotypes and two trait bytes. Medians across the "
+        f"same {n_surv} seeds. Genotypes by `func_hash` (bit-7 flips in register operands collapsed) over all exact "
+        "births; top canonical host share of the window's exact births; trait columns over replicator-class exact "
+        f"births of 21-byte bodies (traits.py): absorb count (byte {a.offset}, ancestor {a.ancestor}) and endowment "
+        f"(byte {e.offset}, ancestor {e.ancestor}); 'not lit' is the share whose byte {e.guard} is no longer `lit`.",
+        "",
+        "| window | genotypes (>= 2 exact) | canonical genotypes (>= 2 exact) | top canonical host share "
+        f"| absorb median | absorb >= {a.threshold} | absorb = {a.ancestor} "
+        f"| endowment median | endowment >= {e.threshold} | endowment = {e.ancestor} | endowment byte not lit |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    for w in range(1, n_windows + 1):
+        x = live.filter(pl.col("window") == w)
+        lines.append(
+            f"| {w} | {f0(_med(x, 'genotypes'))} | {f0(_med(x, 'genotypes_func'))} | {f3(_med(x, 'top_func_share'))} "
+            f"| {f0(_med(x, 'absorb_med'))} | {f3(_med(x, a.ge))} | {f3(_med(x, 'absorb_anc'))} "
+            f"| {f0(_med(x, 'endow_med'))} | {f3(_med(x, e.ge))} | {f3(_med(x, 'endow_anc'))} "
+            f"| {f3(_med(x, 'endow_excl'))} |"
+        )
     return "\n".join(lines)
 
 
