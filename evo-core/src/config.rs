@@ -42,6 +42,11 @@ pub struct Config {
     /// On free or debris bytes it still names the executor. E006; default
     /// off (Phase 1 rule).
     pub self_owner: bool,
+    /// An instruction whose byte at IP is owned by a living organism other
+    /// than the executor is paid for from that owner's store, not the
+    /// executor's (PLAN §9 energy location; E008: parasitism costs the
+    /// host). The executor's per-tick cap still applies. Default off.
+    pub charge_owner: bool,
 
     // Costs (milli-units)
     pub cost_simple: i64,
@@ -74,7 +79,7 @@ impl Config {
             seed, world_size, patch_size, pools_start_full, locality,
             patch_income, patch_cap, absorb_rate, upkeep_per_byte,
             store_cap_per_byte, cap_c0, cap_c1, write_protection, alloc_far,
-            absorb_proportional, self_owner,
+            absorb_proportional, self_owner, charge_owner,
             cost_simple, cost_load, cost_store, cost_copy, cost_search_base,
             cost_search_per16, cost_alloc_base, cost_alloc_per_byte, cost_divide,
             cost_absorb, p_write_flip, q_slip, p_bit_rot, p_debris_decay,
@@ -96,6 +101,7 @@ impl Config {
             ("alloc_far", alloc_far.to_string()),
             ("absorb_proportional", absorb_proportional.to_string()),
             ("self_owner", self_owner.to_string()),
+            ("charge_owner", charge_owner.to_string()),
             ("cost_simple", cost_simple.to_string()),
             ("cost_load", cost_load.to_string()),
             ("cost_store", cost_store.to_string()),
@@ -156,6 +162,7 @@ impl Default for Config {
             alloc_far: true,
             absorb_proportional: true,
             self_owner: false,
+            charge_owner: false,
             cost_simple: MILLI,
             cost_load: 2 * MILLI,
             cost_store: 2 * MILLI,

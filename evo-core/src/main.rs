@@ -4,7 +4,7 @@
 //!          [--no-protect] [--p P] [--world N] [--patch N]
 //!          [--alloc-far | --alloc-near] [--absorb-prop | --absorb-fixed]
 //!          [--locality N] [--out DIR] [--census N] [--sun N] [--rot P]
-//!          [--self-owner] [--world-e001]
+//!          [--self-owner] [--charge-owner] [--world-e001]
 //! evo-core --classify DIR [--harness-ticks N] [--classes-out NAME] [physics flags]
 //! evo-core --host HEX [--host-body HEX] [--host-pad] [--harness-ticks N] [physics flags]
 //! evo-core --disasm HEX
@@ -24,7 +24,9 @@
 //! proportional to how full the pool is, or a fixed one. --rot P sets the
 //! per-byte per-tick bit-rot probability. --self-owner makes `self` name
 //! the living owner of the byte at IP instead of the executing organism
-//! (E006, H8).
+//! (E006, H8). --charge-owner makes the living owner of the byte at IP pay
+//! for an instruction another organism executes there, instead of the
+//! executor (E008: parasitism costs the host).
 //!
 //! --out DIR writes a run directory (docs/instrumentation.md): event CSVs,
 //! census/organism/patch snapshots every --census ticks (default: the
@@ -36,10 +38,16 @@
 //! (default physics if none) with every noise source off (E005).
 //!
 //! --host HEX runs the genome given as hex immediately before the ancestor
-//! (two-genome harness, E005) and prints one CSV line: the genome's births
-//! and exact births, the host's exact births, who is alive, and the
-//! genome's foreign-execution share. --host-pad replaces every byte of the
-//! genome with `pad` first, to test whether its content matters.
+//! (two-genome harness, E005) and prints a CSV header and one row:
+//! `len,births,exact_births,host_copies,host_exact_births,alive,host_alive,
+//! executed,exec_foreign,ticks_run,stopped_early`: the genome's births and
+//! exact births, the host copies it made, the host's exact births, who is
+//! alive, the genome's foreign-execution share, and how many ticks ran.
+//! The harness stops when the genome dies, so `stopped_early` = true means
+//! fewer than --harness-ticks ticks were simulated and the counts cover only
+//! `ticks_run` ticks (E007: not evidence of a resistant host). --host-pad
+//! replaces every byte of the genome with `pad` first, to test whether its
+//! content matters.
 //! --host-body HEX uses that genome as the host instead of the ancestor
 //! (E007: a parasite against the hosts that evolved alongside it).
 
@@ -101,6 +109,7 @@ fn main() {
             "--absorb-prop" => cfg.absorb_proportional = true,
             "--absorb-fixed" => cfg.absorb_proportional = false,
             "--self-owner" => cfg.self_owner = true,
+            "--charge-owner" => cfg.charge_owner = true,
             "--world-e001" => {}
             "--no-protect" => cfg.write_protection = false,
             other => { eprintln!("unknown arg {other}"); std::process::exit(2); }
@@ -130,11 +139,13 @@ fn main() {
         }
         let h = host_body.map(|hx| parse_hex(&hx)).unwrap_or_else(|| ancestor(k, e));
         let r = harness::run_with_host(&g, &h, harness_ticks, &cfg);
-        println!("len,births,exact_births,host_copies,host_exact_births,alive,host_alive,executed,exec_foreign");
         println!(
-            "{},{},{},{},{},{},{},{},{}",
+            "len,births,exact_births,host_copies,host_exact_births,alive,host_alive,executed,exec_foreign,ticks_run,stopped_early"
+        );
+        println!(
+            "{},{},{},{},{},{},{},{},{},{},{}",
             g.len(), r.births, r.exact_births, r.host_copies, r.host_exact_births, r.alive,
-            r.host_alive, r.executed, r.exec_foreign
+            r.host_alive, r.executed, r.exec_foreign, r.ticks_run, r.stopped_early
         );
         return;
     }

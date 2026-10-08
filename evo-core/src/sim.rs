@@ -69,6 +69,9 @@ pub struct OrgStats {
     /// Tick of the last successful `divide`, -1 if none.
     pub last_divide_tick: i64,
     pub max_energy_m: i64,
+    /// Energy charged to this organism for instructions other organisms
+    /// executed in its body (`charge_owner`, E008). Included in `spent_m`.
+    pub paid_for_others_m: i64,
 }
 
 impl OrgStats {
@@ -96,21 +99,22 @@ impl OrgStats {
             starved_ticks: 0,
             last_divide_tick: -1,
             max_energy_m: born_with_m,
+            paid_for_others_m: 0,
         }
     }
 
     /// CSV column names, in the order `csv_row` writes them.
-    pub const CSV_HEADER: &'static str = "born_with_m,executed,absorbs,absorb_gain_m,absorb_short,absorb_capped,copies,reads_foreign,exec_foreign,exec_unowned,writes_blocked,range_faults,allocs_ok,allocs_fail,divides_ok,divides_fail,endowed_m,spent_m,upkeep_m,starved_ticks,last_divide_tick,max_energy_m";
+    pub const CSV_HEADER: &'static str = "born_with_m,executed,absorbs,absorb_gain_m,absorb_short,absorb_capped,copies,reads_foreign,exec_foreign,exec_unowned,writes_blocked,range_faults,allocs_ok,allocs_fail,divides_ok,divides_fail,endowed_m,spent_m,upkeep_m,starved_ticks,last_divide_tick,max_energy_m,paid_for_others_m";
 
     pub fn csv_row(&self) -> String {
         format!(
-            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
             self.born_with_m, self.executed, self.absorbs, self.absorb_gain_m,
             self.absorb_short, self.absorb_capped, self.copies, self.reads_foreign,
             self.exec_foreign, self.exec_unowned, self.writes_blocked, self.range_faults,
             self.allocs_ok, self.allocs_fail, self.divides_ok, self.divides_fail,
             self.endowed_m, self.spent_m, self.upkeep_m, self.starved_ticks,
-            self.last_divide_tick, self.max_energy_m,
+            self.last_divide_tick, self.max_energy_m, self.paid_for_others_m,
         )
     }
 }
@@ -435,7 +439,8 @@ impl Sim {
     // ---- one instruction ----------------------------------------------
 
     /// Execute one instruction for organism `i`. Returns the energy charged,
-    /// or None if the organism could not afford the base cost (nothing runs).
+    /// or None if the payer (the organism, or under `charge_owner` the owner
+    /// of the byte at IP) could not afford the base cost (nothing runs).
     /// `cap_left` is the per-tick budget still available.
     fn step(&mut self, i: usize, cap_left: i64) -> Option<i64> {
         let cfg_cost_simple = self.cfg.cost_simple;
@@ -453,10 +458,26 @@ impl Sim {
             Op::Absorb => self.cfg.cost_absorb,
             _ => cfg_cost_simple,
         };
-        if self.orgs[i].energy < base || cap_left < base {
+        let own = self.owner[ip as usize];
+        // Who pays: the executor, or with `charge_owner` (E008) the living
+        // owner of the byte at IP when that is another organism. The
+        // executor's own body and pending region count as its own. Killing
+        // an organism turns its bytes to debris, so a dead owner should not
+        // appear here; if one did, the executor would pay.
+        let mut payer = i;
+        if self.cfg.charge_owner && own >= FIRST_ID && own != self.orgs[i].id {
+            if let Some(j) = self.org_index(own) {
+                if self.orgs[j].alive {
+                    payer = j;
+                }
+            }
+        }
+        // The payer must afford the base cost and the executor's per-tick
+        // budget must cover it; otherwise nothing runs and the executor's
+        // tick ends.
+        if self.orgs[payer].energy < base || cap_left < base {
             return None;
         }
-        let own = self.owner[ip as usize];
         if own >= FIRST_ID {
             if own != self.orgs[i].id {
                 self.orgs[i].stats.exec_foreign += 1;
@@ -746,12 +767,16 @@ impl Sim {
             }
         }
 
-        let charge = cost.min(self.orgs[i].energy);
+        let charge = cost.min(self.orgs[payer].energy);
+        let p = &mut self.orgs[payer];
+        p.energy -= charge;
+        p.stats.spent_m += charge;
+        if payer != i {
+            p.stats.paid_for_others_m += charge;
+        }
         let o = &mut self.orgs[i];
-        o.energy -= charge;
         o.ip = new_ip;
         o.stats.executed += 1;
-        o.stats.spent_m += charge;
         self.energy_out += charge;
         Some(charge)
     }
@@ -1085,6 +1110,43 @@ mod tests {
         }
         let initial_pools = sim.patches.len() as i64 * sim.cfg.patch_cap;
         let lhs = seed_energy + initial_pools + sim.energy_in;
+        let rhs = sim.energy_in_organisms() + sim.energy_in_patches() + sim.energy_out + sim.energy_overflow;
+        assert_eq!(lhs, rhs);
+    }
+
+    #[test]
+    fn charge_owner_conserves_energy_and_balances_ledgers() {
+        // E008: a `pad` in front of the ancestor, noise on. The owner pays
+        // for foreign execution; world totals and every ledger still balance
+        // because `spent_m` includes what an organism paid for others.
+        let mut cfg = Config::default();
+        cfg.charge_owner = true;
+        let mut sim = Sim::new(cfg);
+        let seed_energy = 100 * MILLI;
+        let host = sim.seed(1000, &ancestor(64, 16), seed_energy, 0);
+        sim.seed(999, &[0x00], seed_energy, 0);
+        let mut host_paid = 0;
+        for _ in 0..2000 {
+            sim.run_tick();
+            for ev in sim.events.drain(..) {
+                if let Event::Death { id, stats, .. } = ev {
+                    if id == host {
+                        host_paid = stats.paid_for_others_m;
+                    }
+                }
+            }
+            for o in sim.orgs.iter().filter(|o| o.alive) {
+                let s = &o.stats;
+                assert_eq!(o.energy, s.born_with_m + s.absorb_gain_m - s.spent_m - s.upkeep_m - s.endowed_m);
+                assert!(s.paid_for_others_m <= s.spent_m);
+            }
+        }
+        if let Some(o) = sim.genome_of(host) {
+            host_paid = o.stats.paid_for_others_m;
+        }
+        assert!(host_paid > 0, "the host never paid for the pad");
+        let initial_pools = sim.patches.len() as i64 * sim.cfg.patch_cap;
+        let lhs = 2 * seed_energy + initial_pools + sim.energy_in;
         let rhs = sim.energy_in_organisms() + sim.energy_in_patches() + sim.energy_out + sim.energy_overflow;
         assert_eq!(lhs, rhs);
     }

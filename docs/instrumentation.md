@@ -62,6 +62,7 @@ Genotype counts in the census use raw hashes (as Tierra did); grouping by
 | `starved_ticks` | ticks in which it paid upkeep but could not afford one instruction |
 | `last_divide_tick` | tick of the last successful `divide`, -1 if none |
 | `max_energy_m` | highest energy held |
+| `paid_for_others_m` | energy charged for instructions other organisms executed in its body (`charge_owner`, E008); included in `spent_m`, 0 with the flag off |
 
 Ledger identity (tested): for a living organism,
 `energy = born_with + absorb_gain - spent - upkeep - endowed`.

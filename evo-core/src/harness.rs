@@ -15,6 +15,10 @@ pub struct HarnessResult {
     pub final_energy: i64,
     pub executed: u64,
     pub absorbs: u64,
+    /// Ticks actually simulated: `ticks`, or fewer if the genome died first.
+    pub ticks_run: u64,
+    /// The loop stopped before `ticks` because the genome died.
+    pub stopped_early: bool,
 }
 
 impl HarnessResult {
@@ -74,8 +78,10 @@ pub fn run_alone_with(genome: &[u8], ticks: u64, cfg: &Config) -> HarnessResult 
         final_energy: 0,
         executed: 0,
         absorbs: 0,
+        ticks_run: 0,
+        stopped_early: false,
     };
-    for _ in 0..ticks {
+    for t in 0..ticks {
         sim.run_tick();
         for ev in sim.events.drain(..) {
             if let Event::Birth { tick, genome_hash, .. } = ev {
@@ -89,7 +95,9 @@ pub fn run_alone_with(genome: &[u8], ticks: u64, cfg: &Config) -> HarnessResult 
             }
         }
         sim.cull_all_but(FIRST_ID);
+        r.ticks_run = t + 1;
         if !sim.orgs[0].alive {
+            r.stopped_early = r.ticks_run < ticks;
             break;
         }
     }
@@ -119,6 +127,14 @@ pub struct HostResult {
     pub executed: u64,
     /// Of the genome's instructions, how many ran at an address the host owned.
     pub exec_foreign: u64,
+    /// Ticks actually simulated: `ticks`, or fewer if the genome died first
+    /// (the host is not run on alone).
+    pub ticks_run: u64,
+    /// The loop stopped before `ticks` because the genome died. A run that
+    /// stops early is not evidence of a resistant host (E007: a one-byte
+    /// `pad` before a host with endowment 35 or more starves within a few
+    /// hundred ticks).
+    pub stopped_early: bool,
 }
 
 /// Run `genome` immediately before `host` under `cfg`'s physics, noise off,
@@ -140,8 +156,10 @@ pub fn run_with_host(genome: &[u8], host: &[u8], ticks: u64, cfg: &Config) -> Ho
         host_alive: true,
         executed: 0,
         exec_foreign: 0,
+        ticks_run: 0,
+        stopped_early: false,
     };
-    for _ in 0..ticks {
+    for t in 0..ticks {
         sim.run_tick();
         for ev in sim.events.drain(..) {
             if let Event::Birth { executor, genome_hash, .. } = ev {
@@ -158,7 +176,9 @@ pub fn run_with_host(genome: &[u8], host: &[u8], ticks: u64, cfg: &Config) -> Ho
             }
         }
         sim.cull_except(&[host_id, me_id]);
+        r.ticks_run = t + 1;
         if !sim.genome_of(me_id).map_or(false, |o| o.alive) {
+            r.stopped_early = r.ticks_run < ticks;
             break;
         }
     }
@@ -194,6 +214,29 @@ mod tests {
     }
 
     #[test]
+    fn harness_says_when_the_intruder_died_first() {
+        // E007 caveat: a one-byte `pad` before a host whose divide endowment
+        // is 35 or more gives its first child nearly everything and starves,
+        // and the harness stops; at 34 it lives through the whole run.
+        let g = assemble("pad\n").unwrap();
+        assert_eq!(g, vec![0x00]);
+        let cfg = Config::default();
+        let r35 = run_with_host(&g, &ancestor(64, 35), 3000, &cfg);
+        assert!(r35.stopped_early);
+        assert!(r35.ticks_run < 3000, "ran {} ticks", r35.ticks_run);
+        assert!(r35.exact_births <= 2, "{} exact births", r35.exact_births);
+        assert!(!r35.alive);
+        let r34 = run_with_host(&g, &ancestor(64, 34), 3000, &cfg);
+        assert!(!r34.stopped_early);
+        assert_eq!(r34.ticks_run, 3000);
+        assert_eq!(r34.exact_births, 340);
+        // The single-genome harness reports the same way.
+        let alone = run_alone(&g, 3000);
+        assert!(alone.stopped_early && alone.ticks_run < 3000);
+        assert!(!run_alone(&ancestor(64, 16), 3000).stopped_early);
+    }
+
+    #[test]
     fn self_owner_makes_the_intruder_copy_the_host() {
         // E006 (H8): with `self` naming the owner of the byte at IP, a body
         // of pads that falls into the host runs the host's loop and produces
@@ -213,6 +256,40 @@ mod tests {
         assert!(!one.alive);
         // Alone, `self` still names the executor: the ancestor is unchanged.
         assert_eq!(run_alone_with(&host, 3000, &cfg).class(), "replicator");
+    }
+
+    #[test]
+    fn charge_owner_makes_the_pad_kill_its_host() {
+        // E008: with the owner of the byte at IP paying, the one-byte `pad`
+        // runs the host's loop on the host's energy. The host (paying for
+        // both) dies at tick 11 before its first child; its bytes become
+        // debris but keep their code, and the pad goes on running them at
+        // its own cost. Its births are bounded by its per-tick cap, not by
+        // who pays, so they are the flag-off count again. Flag off: pad
+        // 340 exact births, host 211.
+        let g = assemble("pad\n").unwrap();
+        let host = ancestor(64, 16);
+        let off = run_with_host(&g, &host, 3000, &Config::default());
+        assert_eq!((off.exact_births, off.host_exact_births), (340, 211));
+        let mut cfg = Config::default();
+        cfg.charge_owner = true;
+        let on = run_with_host(&g, &host, 3000, &cfg);
+        assert_eq!((on.births, on.exact_births, on.host_exact_births), (340, 340, 0));
+        assert_ne!(on.host_exact_births, off.host_exact_births);
+        assert!(on.alive && !on.host_alive && !on.stopped_early);
+        // Foreign execution only while the host lived.
+        assert_eq!(on.exec_foreign, 275);
+    }
+
+    #[test]
+    fn charge_owner_leaves_a_lone_genome_alone() {
+        // No foreign execution, so nothing changes.
+        let mut cfg = Config::default();
+        cfg.charge_owner = true;
+        let off = run_alone(&ancestor(64, 16), 3000);
+        let on = run_alone_with(&ancestor(64, 16), 3000, &cfg);
+        assert_eq!(on.exact_births, off.exact_births);
+        assert_eq!((on.births, on.executed, on.final_energy), (off.births, off.executed, off.final_energy));
     }
 
     #[test]

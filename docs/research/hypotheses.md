@@ -422,3 +422,51 @@ or more; 13–15% of births by the end) starve a one-byte `pad` after
 its first child, a side effect of a byte that drifts. Status:
 supported; the hosts changed fast when something was in it for them,
 and did not change against the parasites.
+
+## H13. A cost alone does not produce a defence on the E007 timescale (2026-10-07)
+
+**Prediction.** With `--charge-owner` (an instruction executed in a
+living other organism's body is paid by that owner), a fall-through
+intruder costs its host about 260 units per pass and kills the ancestor
+in the harness before its first child. Even so, over 250,000 ticks the
+hosts do not evolve a working defence: the one-byte `pad` probe before
+the top host of the last window still kills it, or the host makes under
+50 exact children with the probe there, in all but at most 2 seeds.
+
+**Reasoning.** E007 showed selection acts within 10,000 ticks when a
+single byte pays (the absorb count), so the bottleneck is not selective
+power but the mutational path. A defence has to separate an intruder
+from the host's own restart on register state and fire within about
+100 instructions of entry, and the host's restart has to pass it: a
+prefix of two or more coordinated instructions with no payoff until all
+are in place. A cost makes the finished defence valuable; it does not
+make the path shorter. The E007 "endowment ≥ 35" side effect, which
+starved a `pad`, kills the host as well under this rule and is not a
+route.
+
+**Confirms.** E008 prediction 5: a defended top host (alive after
+3,000 harness ticks with `pad` before it, ≥ 50 exact births of its own)
+in the last window in at most 2 of the surviving seeds, and the median
+host yield with the probe present below 50.
+
+**Refutes.** Defended top hosts in 3 or more seeds; then the genomes
+are read and the mechanism recorded as the first evolved defence.
+
+**Status.** Open. E008 (`experiments/2026-10-07-e008-charge-owner.md`).
+
+## H13 note (2026-10-07)
+
+E008: the registered test passes. Under `--charge-owner` the `pad`
+probe kills the top host of every window in every surviving seed (90
+of 90 seed-windows, host dead by tick 13–18, 0 children), and the
+host's death tick, the share of replicator deaths that had paid for
+others (about 12%) and the energy paid for others (1.1–1.5% of all
+spending) are flat from window 2 to 10. The same hosts survive the
+probe under the executor rule as E007's did. The cost changed the
+ecology instead: an entered host dies within one intruder cycle, so
+foreign execution fell from 12–15% of instructions to 0.4% and unowned
+execution rose from 1.6–2.0% to 6.4–7.3%; `pad` became a debris-runner
+by the E005 test. Status: supported; a cost alone did not produce a
+defence in 250,000 ticks, and the next move is a cheaper defence to
+find (`self 1`, a self-scan) or a softer charge (a split) that leaves
+an infected host alive long enough for selection to see.
