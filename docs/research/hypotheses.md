@@ -567,6 +567,55 @@ one-pass store and placement-limited intruders, a physics question
 
 ---
 
+## H6 note (2026-10-09, from E007)
+
+Recorded late. E007 (`experiments/2026-10-07-e007-long-run.md`) found
+that the ancestor's first and only adaptation in the standard world is
+a longer absorb phase: the absorb loop constant K swept from 64 to
+112–127 inside the first 10,000 ticks in every seed, with or without
+parasites (three `--self-owner` seeds do the same), and the population
+is stationary from tick 25,000 on. That is H6's prediction in kind:
+more absorbing came first, copy efficiency did not improve, and the
+population then stalled. It is not the E002/E003 broken-loop-exit
+mechanism, and it is not extra `absorb` ops in the copy loop either;
+it is the loop count of the existing absorb phase. The design response
+(proportional absorb, E004) was already in place and did not stop it:
+the longer phase pays because it breaks even on a lower ration (about
+6.0 against 7.4 units, cost-table estimate). Status: supported in kind.
+The question H6 leaves open is whether anything beyond absorbing can
+pay in this world; E007–E010 say nothing has yet.
+
+---
+
+## H3 note (2026-10-09, from E007)
+
+The c1 = 0 point is in: over 250,000 ticks and 10 seeds the dominant
+length is 21 in every window (E007), the ancestor's own length. No
+shrinking was seen, but the prediction cannot be scored from this
+alone: whether a replicator shorter than 21 bytes exists in this ISA
+has not been checked, so the ancestor may already sit at the floor
+that Tierra took millions of instructions to reach. Two things are
+needed before H3 can move: a harness search for the shortest working
+replicator (the E009 founder tools make that cheap), and the c1 sweep,
+which has not been scheduled. Status: open; the c1 = 0 observation is
+"no change", not "shrink".
+
+---
+
+## H2 note (2026-10-09)
+
+Not yet tested, though it is testable from existing files. Every
+organism's `absorbs` and `executed` counters are in the death records,
+so the absorb-fraction distribution per genome over an E007 run is a
+query, not a new run. What E005–E007 already show: a low-absorb mode
+exists (fall-through parasites, 0.8–1.0% of exact births) and it
+depends on the high-absorb mode (it runs the host's loop), which is the
+shape H2 predicts, but it is a placement lineage rather than a code
+lineage (E005) and it is small. The bimodality check should be run on
+E007's files before H2 is scored.
+
+---
+
 ## H13, H14, H15 note (2026-10-09, from the literature review)
 
 The recent-work review (`literature.md` §6) bears on the three cost-rule

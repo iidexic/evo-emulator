@@ -751,6 +751,13 @@ one-pass store, placement-limited intruders), see §9 energy location.
 Next: the recent-literature review, then choose between the
 energy-location change and the Phase 4 BFF harness.
 
+Ordering note 2026-10-09: E005–E010 were run as Phase 2 follow-ups
+while Phase 3 (richer physics) has not started, and the next step is a
+choice between an energy-location change and the Phase 4 BFF harness.
+Phase 3 as written is therefore not next; its items (2D torus, drift,
+`drain`) stay listed but are not scheduled, and the c1 sweep it was to
+carry (H3) has no date.
+
 **Phase 3 — Richer physics.** 2D torus, per-patch parameters,
 seasons, slow drift, drain/defense ops (bit rot and debris exist since
 Phase 1, §5.7). Success criteria: spatial
@@ -851,6 +858,23 @@ proofreading, scavenging, regionally specialized metabolic strategies, some
 producer/consumer structure. Any of the latter four would exceed most prior
 work.
 
+Standing as of 2026-10-09: parasites reached in the letter (E005, as
+placement lineages that fall into a neighbour's loop, 0.8–1.0% of
+births) and stable over 250,000 ticks (E007). Immunity not reached:
+three cost rules (E008–E010) gave no defence, and the diagnosis is that
+the host's store is one pass deep, so an owner-side cost is invisible
+or fatal (§9 energy location). The one adaptation seen is a longer
+absorb phase (H6). Nothing on this list beyond parasites has been
+observed, and the expectation of immunity now rests on a physics
+change, not on more run time. What would exceed prior work, after the
+2026-10-09 literature review (`literature.md` §6.4): a traced
+mutational path to an evolved defence with the fitness of each
+intermediate (nobody has one); a cost-versus-defence comparison in an
+instruction substrate under ownership (E008–E010 are the first, and
+negative); and a rule-by-rule emergence study with energy and
+ownership (nobody has one). The owner-pays rule itself is published
+(Jha et al. 2026) and is not a claim.
+
 Not realistic: multicellularity, nervous systems, anything requiring the
 roughly 20+ orders of magnitude of scale separating a desktop from Earth.
 
@@ -878,7 +902,14 @@ test them.
   sustains replication (refuted by E004). H12 (2026-10-07): no resistance
   to parasites that cost nothing (supported by E007). H13 (2026-10-07): a
   cost alone does not produce a defence (supported by E008). H14
-  (2026-10-08): a split charge, E009.
+  (2026-10-08): a split charge selects the one-byte defence (E009;
+  the self-scan half settled against by E009a/E009b, the defence is
+  lost at a length-matched control's rate). H15 (2026-10-08): a
+  transfer makes a short eject pay (E010; falsified on its premise,
+  intruders are not energy-limited). Notes added 2026-10-09 to H2, H3
+  and H6 from E007 evidence that had not been scored (H6 supported in
+  kind: the first adaptation was a longer absorb phase). Gap review:
+  `docs/research/review-2026-10-09.md`.
 - `docs/research/notes/`: raw per-source notes from the 2026-09-30 review,
   one file per cluster, URL on every fact, UNVERIFIED tags kept; plus
   `recent-1` to `recent-4` from the 2026-10-09 review of work since
