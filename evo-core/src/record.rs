@@ -34,6 +34,13 @@ pub struct RunInfo {
     pub census_every: u64,
     pub ancestor_k: i8,
     pub ancestor_e: i8,
+    /// Founders as (genome hex, copies), in seeding order (`--founder`,
+    /// E009a); without the flag, the ancestor once.
+    pub founders: Vec<(String, u32)>,
+    /// Start address of every founder copy, in seeding order.
+    pub founder_starts: Vec<u32>,
+    /// `--inject` flags as given: (tick, genome hex, copies), E009b.
+    pub injections: Vec<(u64, String, u32)>,
 }
 
 pub struct Recorder {
@@ -50,6 +57,9 @@ pub struct Recorder {
     /// Patch counters at the previous census row, to write per-interval totals.
     last_absorbed: Vec<i64>,
     last_overflow: Vec<i64>,
+    /// Per `--inject` flag, the start of every copy (-1 if skipped); empty
+    /// until the injection's tick has run.
+    injection_starts: Vec<Vec<i64>>,
 }
 
 fn csv(dir: &Path, name: &str, header: &str) -> io::Result<BufWriter<File>> {
@@ -98,7 +108,9 @@ impl Recorder {
             genomes: HashMap::new(),
             last_absorbed: sim.patches.iter().map(|p| p.absorbed).collect(),
             last_overflow: sim.patches.iter().map(|p| p.overflow).collect(),
+            injection_starts: Vec::new(),
         };
+        r.injection_starts = vec![Vec::new(); r.info.injections.len()];
         for o in sim.orgs.iter().filter(|o| o.alive) {
             r.add_genome(o.genome_hash, &o.genome, sim.tick, o.id, "seed", 0);
         }
@@ -114,6 +126,18 @@ impl Recorder {
             origin,
             parent_hash: parent,
         });
+    }
+
+    /// Register an injection just performed (`Sim::inject_due`, E009b):
+    /// the copies placed are recorded as founders are (a `genomes.csv` row
+    /// with origin `seed` if the genome is new, no `births.csv` row; their
+    /// deaths and census rows as usual), and the starts go to `meta.json`.
+    pub fn injected(&mut self, sim: &Sim, done: &crate::sim::Injected) {
+        self.injection_starts[done.index] = done.starts.clone();
+        if let Some(o) = done.ids.first().and_then(|&id| sim.genome_of(id)) {
+            let (h, g, t, id) = (o.genome_hash, o.genome.clone(), o.birth_tick, o.id);
+            self.add_genome(h, &g, t, id, "seed", 0);
+        }
     }
 
     /// Write rows for the events of one tick. Call after `run_tick`, before
@@ -233,6 +257,26 @@ impl Recorder {
         writeln!(w, "  \"census_every\": {},", self.info.census_every)?;
         writeln!(w, "  \"ancestor_k\": {},", self.info.ancestor_k)?;
         writeln!(w, "  \"ancestor_e\": {},", self.info.ancestor_e)?;
+        let founders: Vec<String> = self
+            .info
+            .founders
+            .iter()
+            .map(|(h, n)| format!("{{\"hex\": \"{h}\", \"count\": {n}}}"))
+            .collect();
+        writeln!(w, "  \"founders\": [{}],", founders.join(", "))?;
+        let starts: Vec<String> = self.info.founder_starts.iter().map(|s| s.to_string()).collect();
+        writeln!(w, "  \"founder_starts\": [{}],", starts.join(", "))?;
+        let injections: Vec<String> = self
+            .info
+            .injections
+            .iter()
+            .zip(&self.injection_starts)
+            .map(|((t, h, n), s)| {
+                let s: Vec<String> = s.iter().map(|x| x.to_string()).collect();
+                format!("{{\"tick\": {t}, \"hex\": \"{h}\", \"count\": {n}, \"starts\": [{}]}}", s.join(", "))
+            })
+            .collect();
+        writeln!(w, "  \"injections\": [{}],", injections.join(", "))?;
         writeln!(w, "  \"config\": {{")?;
         let fields = cfg.fields();
         for (n, (k, v)) in fields.iter().enumerate() {

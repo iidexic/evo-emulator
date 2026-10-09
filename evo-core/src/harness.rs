@@ -293,6 +293,150 @@ mod tests {
     }
 
     #[test]
+    fn charge_owner_pct_splits_the_pad_cost() {
+        // E009: the split charge with `pad` before the ancestor. The pad's
+        // births never change (its per-tick cap sets them, and an owner at
+        // zero never stops it). The host pays its share and makes the
+        // flag-off 211 children up to 8%, because it rides at its store cap
+        // and pays out of energy it could not have kept; from 9% it dies.
+        let g = assemble("pad\n").unwrap();
+        let host = ancestor(64, 16);
+        let off = run_with_host(&g, &host, 3000, &Config::default());
+        let at = |pct: i64| {
+            let mut cfg = Config::default();
+            cfg.charge_owner_pct = pct;
+            run_with_host(&g, &host, 3000, &cfg)
+        };
+        let zero = at(0);
+        assert_eq!(
+            (zero.births, zero.exact_births, zero.host_exact_births, zero.executed, zero.exec_foreign),
+            (off.births, off.exact_births, off.host_exact_births, off.executed, off.exec_foreign)
+        );
+        assert_eq!((at(8).exact_births, at(8).host_exact_births, at(8).host_alive), (340, 211, true));
+        let ten = at(10);
+        assert_eq!((ten.exact_births, ten.host_exact_births), (340, 13));
+        assert!(ten.alive && !ten.host_alive && !ten.stopped_early);
+        // N = 100 is not E008: the host pays everything while it has
+        // anything, then the pad pays full price instead of stopping.
+        let all = at(100);
+        assert_eq!((all.exact_births, all.host_exact_births, all.host_alive), (340, 0, false));
+        let mut e008 = Config::default();
+        e008.charge_owner = true;
+        let e008 = run_with_host(&g, &host, 3000, &e008);
+        assert_ne!(all.exec_foreign, e008.exec_foreign);
+        // With both flags set, `charge_owner` wins.
+        let mut both = Config::default();
+        both.charge_owner = true;
+        both.charge_owner_pct = 50;
+        let both = run_with_host(&g, &host, 3000, &both);
+        assert_eq!((both.executed, both.exec_foreign), (e008.executed, e008.exec_foreign));
+    }
+
+    #[test]
+    fn charge_owner_pct_leaves_a_lone_genome_alone() {
+        let mut cfg = Config::default();
+        cfg.charge_owner_pct = 50;
+        let off = run_alone(&ancestor(64, 16), 3000);
+        let on = run_alone_with(&ancestor(64, 16), 3000, &cfg);
+        assert_eq!((on.births, on.exact_births, on.executed, on.final_energy), (off.births, off.exact_births, off.executed, off.final_energy));
+    }
+
+    /// `genome` before `host` as in `run_with_host`, but the run goes on to
+    /// `ticks` after the genome dies, so the host's own births are counted
+    /// over the whole run. Returns (genome births, genome alive, host exact
+    /// births, host alive).
+    fn run_on_with_host(genome: &[u8], host: &[u8], ticks: u64, cfg: &Config) -> (u32, bool, u32, bool) {
+        let cfg = quiet(cfg.clone());
+        let mut sim = Sim::new(cfg.clone());
+        let mid = cfg.world_size / 2;
+        let host_id = sim.seed(mid, host, 100 * MILLI, 0);
+        let me_id = sim.seed(mid.wrapping_sub(genome.len() as u32), genome, 100 * MILLI, 0);
+        let hh = fnv1a(host);
+        let (mut births, mut host_exact) = (0, 0);
+        for _ in 0..ticks {
+            sim.run_tick();
+            for ev in sim.events.drain(..) {
+                if let Event::Birth { executor, genome_hash, .. } = ev {
+                    if executor == me_id {
+                        births += 1;
+                    } else if executor == host_id && genome_hash == hh {
+                        host_exact += 1;
+                    }
+                }
+            }
+            sim.cull_except(&[host_id, me_id]);
+        }
+        let alive = |id| sim.genome_of(id).map_or(false, |o| o.alive);
+        (births, alive(me_id), host_exact, alive(host_id))
+    }
+
+    /// The ancestor with `prefix` (assembler text) inserted at byte 0.
+    fn prefixed(prefix: &str, k: i8) -> Vec<u8> {
+        let mut g = assemble(prefix).unwrap();
+        g.extend(ancestor(k, 16));
+        g
+    }
+
+    #[test]
+    fn self_scan_prefix_as_designed_breaks_the_host() {
+        // E009 path audit. The design's prefix
+        // `self 1 ; swap B ; self 0 ; sub B ; jmpr A` does not work: `self 0`
+        // sets B to the body length as well as A to the start, so the IP
+        // saved in B is gone and `sub B` leaves A = start - length, and
+        // `jmpr A` throws the host out of its own body. Its four
+        // intermediates are each `replicator` alone (the body's first `self`
+        // resets A and B); the fourth makes only 11 children and dies, which
+        // is the length, not the bytes: four inert `zero D` bytes do the
+        // same at K = 64 (a 25-byte body does not pay for its cycle).
+        let full = "self 1\nswap B\nself 0\nsub B\njmpr A\n";
+        let lines: Vec<&str> = full.lines().collect();
+        let mut kids = Vec::new();
+        for n in 1..=4 {
+            let r = run_alone(&prefixed(&lines[..n].join("\n"), 64), 3000);
+            assert_eq!(r.class(), "replicator", "intermediate {n}");
+            kids.push(r.exact_births);
+        }
+        assert_eq!(kids, vec![230, 222, 214, 11]);
+        assert_eq!(run_alone(&prefixed("zero D\nzero D\nzero D\nzero D\n", 64), 3000).exact_births, 11);
+        assert_eq!(run_alone(&prefixed(full, 64), 3000).class(), "dies");
+        assert_eq!(run_alone(&prefixed(full, 120), 3000).class(), "dies");
+    }
+
+    #[test]
+    fn self_scan_prefix_through_c_traps_the_pad() {
+        // The same prefix with the IP kept in C, which `self 0` leaves alone:
+        // `self 1 ; swap C ; self 0 ; sub C ; jmpr A`. A = own start - IP,
+        // 0 for the host at its byte 0, so `jmpr A` falls through. A `pad`
+        // right before the host gets A = -1 and spins on the `jmpr` until
+        // its store runs out, without a child. At K = 64 the 26-byte body
+        // does not pay for itself; at K = 120 (E007's evolved host) it does.
+        // Under the split the host pays N% of every spin, so the trap costs
+        // it pad's store * N / (100 - N): about 100 units at 50%, which it
+        // survives, and without bound at 100%, where the pad pays nothing
+        // per spin and the host dies.
+        let host = prefixed("self 1\nswap C\nself 0\nsub C\njmpr A\n", 120);
+        assert_eq!(host.len(), 26);
+        let alone = run_alone(&host, 3000);
+        assert_eq!((alone.class(), alone.exact_births), ("replicator", 142));
+        assert_eq!(run_alone(&prefixed("self 1\nswap C\nself 0\nsub C\njmpr A\n", 64), 3000).exact_births, 5);
+        let pad = assemble("pad\n").unwrap();
+        let at = |pct: i64| {
+            let mut cfg = Config::default();
+            cfg.charge_owner_pct = pct;
+            cfg
+        };
+        for pct in [0, 50] {
+            let r = run_with_host(&pad, &host, 3000, &at(pct));
+            assert_eq!(r.births, 0);
+            assert!(r.stopped_early && r.host_alive, "pct {pct}");
+            let (births, alive, host_exact, host_alive) = run_on_with_host(&pad, &host, 3000, &at(pct));
+            assert_eq!((births, alive, host_exact, host_alive), (0, false, 142, true), "pct {pct}");
+        }
+        let (births, _, host_exact, host_alive) = run_on_with_host(&pad, &host, 3000, &at(100));
+        assert_eq!((births, host_exact, host_alive), (0, 0, false));
+    }
+
+    #[test]
     fn labels() {
         assert_eq!(run_alone(&ancestor(64, 16), 3000).class(), "replicator");
         // E002 survivor pattern: `dec B` instead of `dec A`, so the absorb

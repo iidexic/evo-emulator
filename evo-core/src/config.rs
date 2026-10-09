@@ -47,6 +47,13 @@ pub struct Config {
     /// executor's (PLAN §9 energy location; E008: parasitism costs the
     /// host). The executor's per-tick cap still applies. Default off.
     pub charge_owner: bool,
+    /// Split charge (E009), percent 0-100: for an instruction whose byte at
+    /// IP is owned by a living organism other than the executor, the owner
+    /// pays `floor(cost * pct / 100)`, or its whole store if that is less,
+    /// and the executor pays the rest. Only the executor's share has to be
+    /// affordable, so an owner at zero slows nothing. 0 (default) is the
+    /// executor-pays rule; `charge_owner` takes precedence when both are set.
+    pub charge_owner_pct: i64,
 
     // Costs (milli-units)
     pub cost_simple: i64,
@@ -79,7 +86,7 @@ impl Config {
             seed, world_size, patch_size, pools_start_full, locality,
             patch_income, patch_cap, absorb_rate, upkeep_per_byte,
             store_cap_per_byte, cap_c0, cap_c1, write_protection, alloc_far,
-            absorb_proportional, self_owner, charge_owner,
+            absorb_proportional, self_owner, charge_owner, charge_owner_pct,
             cost_simple, cost_load, cost_store, cost_copy, cost_search_base,
             cost_search_per16, cost_alloc_base, cost_alloc_per_byte, cost_divide,
             cost_absorb, p_write_flip, q_slip, p_bit_rot, p_debris_decay,
@@ -102,6 +109,7 @@ impl Config {
             ("absorb_proportional", absorb_proportional.to_string()),
             ("self_owner", self_owner.to_string()),
             ("charge_owner", charge_owner.to_string()),
+            ("charge_owner_pct", charge_owner_pct.to_string()),
             ("cost_simple", cost_simple.to_string()),
             ("cost_load", cost_load.to_string()),
             ("cost_store", cost_store.to_string()),
@@ -163,6 +171,7 @@ impl Default for Config {
             absorb_proportional: true,
             self_owner: false,
             charge_owner: false,
+            charge_owner_pct: 0,
             cost_simple: MILLI,
             cost_load: 2 * MILLI,
             cost_store: 2 * MILLI,

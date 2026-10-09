@@ -70,8 +70,13 @@ pub struct OrgStats {
     pub last_divide_tick: i64,
     pub max_energy_m: i64,
     /// Energy charged to this organism for instructions other organisms
-    /// executed in its body (`charge_owner`, E008). Included in `spent_m`.
+    /// executed in its body (`charge_owner`, E008; the owner's share under
+    /// `charge_owner_pct`, E009). Included in `spent_m`.
     pub paid_for_others_m: i64,
+    /// Energy other organisms paid for this organism's instructions (the
+    /// owners of the bytes it ran: the whole charge under `charge_owner`,
+    /// the owner's share under `charge_owner_pct`). Not in `spent_m`.
+    pub paid_by_others_m: i64,
 }
 
 impl OrgStats {
@@ -100,21 +105,23 @@ impl OrgStats {
             last_divide_tick: -1,
             max_energy_m: born_with_m,
             paid_for_others_m: 0,
+            paid_by_others_m: 0,
         }
     }
 
     /// CSV column names, in the order `csv_row` writes them.
-    pub const CSV_HEADER: &'static str = "born_with_m,executed,absorbs,absorb_gain_m,absorb_short,absorb_capped,copies,reads_foreign,exec_foreign,exec_unowned,writes_blocked,range_faults,allocs_ok,allocs_fail,divides_ok,divides_fail,endowed_m,spent_m,upkeep_m,starved_ticks,last_divide_tick,max_energy_m,paid_for_others_m";
+    pub const CSV_HEADER: &'static str = "born_with_m,executed,absorbs,absorb_gain_m,absorb_short,absorb_capped,copies,reads_foreign,exec_foreign,exec_unowned,writes_blocked,range_faults,allocs_ok,allocs_fail,divides_ok,divides_fail,endowed_m,spent_m,upkeep_m,starved_ticks,last_divide_tick,max_energy_m,paid_for_others_m,paid_by_others_m";
 
     pub fn csv_row(&self) -> String {
         format!(
-            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
             self.born_with_m, self.executed, self.absorbs, self.absorb_gain_m,
             self.absorb_short, self.absorb_capped, self.copies, self.reads_foreign,
             self.exec_foreign, self.exec_unowned, self.writes_blocked, self.range_faults,
             self.allocs_ok, self.allocs_fail, self.divides_ok, self.divides_fail,
             self.endowed_m, self.spent_m, self.upkeep_m, self.starved_ticks,
             self.last_divide_tick, self.max_energy_m, self.paid_for_others_m,
+            self.paid_by_others_m,
         )
     }
 }
@@ -379,6 +386,79 @@ impl Sim {
         id
     }
 
+    /// Seed several founders (`--founder`, E009a): `founders` is a list of
+    /// (genome, copies); every copy gets `energy` and they are placed at
+    /// `founder_starts` in list order (the first entry's copies first).
+    /// Returns the start addresses. One entry with one copy is exactly the
+    /// single-founder seeding at `world_size / 2`.
+    ///
+    /// Rust note: `&[(Vec<u8>, u32)]` is a borrowed slice of tuples, like a
+    /// Go `[]struct{...}` passed by reference; the function cannot keep it.
+    pub fn seed_founders(&mut self, founders: &[(Vec<u8>, u32)], energy: i64) -> Vec<u32> {
+        let total: u32 = founders.iter().map(|(_, n)| *n).sum();
+        let starts = founder_starts(self.cfg.world_size, total);
+        // Bodies must not overlap: each must fit before the next start.
+        let gap = if total > 1 { self.cfg.world_size / total } else { self.cfg.world_size };
+        let mut j = 0;
+        for (g, n) in founders {
+            assert!(g.len() as u32 <= gap, "founder of {} bytes does not fit in a spacing of {gap}", g.len());
+            for _ in 0..*n {
+                self.seed(starts[j], g, energy, 0);
+                j += 1;
+            }
+        }
+        starts
+    }
+
+    /// Place `count` copies of `genome` into memory not owned by a living
+    /// organism (`--inject`, E009b), each with `energy` and birth tick
+    /// `birth_tick`, `parent` 0. Copy j targets `founder_starts(world_size,
+    /// count)[j]` and takes the first run of `genome.len()` bytes, scanning
+    /// forward from the target, in which no byte is owned by a living
+    /// organism (free and debris bytes both qualify and are overwritten, as
+    /// `alloc` plus `copy` would). The run must begin before the next copy's
+    /// target (for the last copy, before the first copy's target plus the
+    /// world size); if none does, the copy is skipped. Copies are placed in
+    /// order, so a later copy sees the earlier ones as living. No PRNG draw.
+    /// Returns, per copy, its start address or -1 if skipped, and the ids
+    /// of the copies placed.
+    pub fn inject(&mut self, genome: &[u8], count: u32, energy: i64, birth_tick: u64) -> (Vec<i64>, Vec<u32>) {
+        let n = self.cfg.world_size;
+        let len = genome.len() as u32;
+        assert!(len > 0 && len <= n, "injected genome must be 1..world_size bytes");
+        let targets = founder_starts(n, count);
+        let mut starts = Vec::with_capacity(count as usize);
+        let mut ids = Vec::new();
+        for j in 0..count as usize {
+            // Distance to the next copy's target along the ring; the last
+            // copy wraps to the first. One copy may scan the whole ring.
+            let gap = if count == 1 {
+                n
+            } else {
+                let next = targets[(j + 1) % count as usize];
+                (next + n - targets[j]) % n
+            };
+            // `(0..gap).find(...)` returns the first offset whose run is
+            // clear, or None: an Option, Rust's typed "maybe".
+            let found = (0..gap).find(|&d| {
+                let s = targets[j] + d;
+                (0..len).all(|k| self.owner[self.wrap(s + k) as usize] < FIRST_ID)
+            });
+            match found {
+                Some(d) => {
+                    let s = self.wrap(targets[j] + d);
+                    let id = self.seed(s, genome, energy, 0);
+                    let at = self.org_index(id).expect("just seeded");
+                    self.orgs[at].birth_tick = birth_tick;
+                    starts.push(s as i64);
+                    ids.push(id);
+                }
+                None => starts.push(-1),
+            }
+        }
+        (starts, ids)
+    }
+
     /// Current bytes of a region (an organism's body as it is now, which can
     /// differ from `Org.genome` after bit rot or foreign writes).
     pub fn region(&self, start: u32, len: u32) -> Vec<u8> {
@@ -438,9 +518,11 @@ impl Sim {
 
     // ---- one instruction ----------------------------------------------
 
-    /// Execute one instruction for organism `i`. Returns the energy charged,
-    /// or None if the payer (the organism, or under `charge_owner` the owner
-    /// of the byte at IP) could not afford the base cost (nothing runs).
+    /// Execute one instruction for organism `i`. Returns the energy charged
+    /// (to whoever paid it, all parts together), or None if the payer (the
+    /// organism, or under `charge_owner` the owner of the byte at IP) could
+    /// not afford the base cost, or under `charge_owner_pct` the executor
+    /// could not afford its part of it (nothing runs).
     /// `cap_left` is the per-tick budget still available.
     fn step(&mut self, i: usize, cap_left: i64) -> Option<i64> {
         let cfg_cost_simple = self.cfg.cost_simple;
@@ -464,18 +546,38 @@ impl Sim {
         // executor's own body and pending region count as its own. Killing
         // an organism turns its bytes to debris, so a dead owner should not
         // appear here; if one did, the executor would pay.
+        //
+        // Or, with `charge_owner_pct` (E009) and `charge_owner` off, the
+        // cost is split: that owner (the `sharer`) pays `floor(cost * pct /
+        // 100)` or its whole store if less, the executor the rest. When both
+        // flags are set `charge_owner` wins.
         let mut payer = i;
-        if self.cfg.charge_owner && own >= FIRST_ID && own != self.orgs[i].id {
+        // `Option<usize>` is Rust's "maybe an index": `None` here means no
+        // split. It is Zig's `?usize`; Go would use a pointer or a -1
+        // sentinel, which the compiler would not make every use check.
+        let mut sharer: Option<usize> = None;
+        let pct = self.cfg.charge_owner_pct;
+        if (self.cfg.charge_owner || pct > 0) && own >= FIRST_ID && own != self.orgs[i].id {
             if let Some(j) = self.org_index(own) {
                 if self.orgs[j].alive {
-                    payer = j;
+                    if self.cfg.charge_owner {
+                        payer = j;
+                    } else {
+                        sharer = Some(j);
+                    }
                 }
             }
         }
-        // The payer must afford the base cost and the executor's per-tick
-        // budget must cover it; otherwise nothing runs and the executor's
-        // tick ends.
-        if self.orgs[payer].energy < base || cap_left < base {
+        // The payer must afford its part of the base cost (all of it, unless
+        // the cost is split) and the executor's per-tick budget must cover
+        // the whole base cost; otherwise nothing runs and the executor's
+        // tick ends. Under the split an owner at zero pays nothing and the
+        // executor needs the full base cost, as on debris.
+        let need = match sharer {
+            Some(j) => base - (base * pct / 100).min(self.orgs[j].energy),
+            None => base,
+        };
+        if self.orgs[payer].energy < need || cap_left < base {
             return None;
         }
         if own >= FIRST_ID {
@@ -767,7 +869,19 @@ impl Sim {
             }
         }
 
-        let charge = cost.min(self.orgs[payer].energy);
+        // Split charge (E009): the sharer pays its share of the actual cost
+        // first (the op itself never changes the sharer's store, so the
+        // share is at least what the check above assumed), then the payer
+        // (here the executor) pays the rest, capped at its store as before.
+        let mut shared = 0;
+        if let Some(j) = sharer {
+            shared = (cost * pct / 100).min(self.orgs[j].energy);
+            let q = &mut self.orgs[j];
+            q.energy -= shared;
+            q.stats.spent_m += shared;
+            q.stats.paid_for_others_m += shared;
+        }
+        let charge = (cost - shared).min(self.orgs[payer].energy);
         let p = &mut self.orgs[payer];
         p.energy -= charge;
         p.stats.spent_m += charge;
@@ -777,8 +891,15 @@ impl Sim {
         let o = &mut self.orgs[i];
         o.ip = new_ip;
         o.stats.executed += 1;
-        self.energy_out += charge;
-        Some(charge)
+        if payer != i {
+            o.stats.paid_by_others_m += charge;
+        }
+        o.stats.paid_by_others_m += shared;
+        // Each unit left exactly one store: `shared` the owner's, `charge`
+        // the payer's. The executor's per-tick budget is debited by both.
+        let total = shared + charge;
+        self.energy_out += total;
+        Some(total)
     }
 
     // ---- death ----------------------------------------------------------
@@ -1004,6 +1125,63 @@ pub fn func_hash(bytes: &[u8]) -> u64 {
     fnv1a(&crate::isa::canonical(bytes))
 }
 
+// ---- founders ---------------------------------------------------------------
+
+/// Start addresses of `total` founders (`--founder`, E009a): founder j sits
+/// at `world_size / 2 + world_size * j / total` (integer division), modulo
+/// the world size. The offset `world_size / 2` is where the single founder
+/// has always been seeded, so one founder lands exactly there. Starts are
+/// at least `floor(world_size / total)` apart (also across the wrap), so
+/// when `total` is at most the number of patches no two share a patch
+/// (the default world has 128 patches of 512 bytes).
+pub fn founder_starts(world_size: u32, total: u32) -> Vec<u32> {
+    // u64 so `world_size * j` cannot overflow a u32.
+    let (n, t) = (world_size as u64, total as u64);
+    (0..t).map(|j| ((n / 2 + n * j / t) % n) as u32).collect()
+}
+
+// ---- injections -------------------------------------------------------------
+
+/// One `--inject TICK:HEX:COUNT` (E009b): `count` copies of `genome` placed
+/// at the start of tick `tick`, before any organism steps.
+#[derive(Clone, Debug)]
+pub struct Injection {
+    pub tick: u64,
+    pub genome: Vec<u8>,
+    pub count: u32,
+}
+
+/// Result of one injection: its index in the list given to `inject_due`,
+/// the start of every copy (-1 if skipped) and the ids of those placed.
+pub struct Injected {
+    pub index: usize,
+    pub starts: Vec<i64>,
+    pub ids: Vec<u32>,
+}
+
+// A second `impl` block for the same type is allowed in Rust; it keeps the
+// injection code next to its types.
+impl Sim {
+    /// Call just before `run_tick`: performs every injection whose tick is
+    /// the one about to run (`self.tick + 1`), in list order, each copy
+    /// with `energy` (100 units from the CLI) and that tick as its birth
+    /// tick. Between ticks is the start of the next one: `run_tick` only
+    /// retires the dead and adds sunlight before organisms step, and
+    /// neither depends on the new bodies. With an empty list this does
+    /// nothing, so a run without `--inject` is unchanged.
+    pub fn inject_due(&mut self, injections: &[Injection], energy: i64) -> Vec<Injected> {
+        let next = self.tick + 1;
+        let mut done = Vec::new();
+        for (index, inj) in injections.iter().enumerate() {
+            if inj.tick == next {
+                let (starts, ids) = self.inject(&inj.genome, inj.count, energy, next);
+                done.push(Injected { index, starts, ids });
+            }
+        }
+        done
+    }
+}
+
 // ---- the ancestor ---------------------------------------------------------
 
 /// PLAN.md §5.3.3 ancestor. K = absorb count, E = endowment (energy units).
@@ -1149,6 +1327,206 @@ mod tests {
         let lhs = 2 * seed_energy + initial_pools + sim.energy_in;
         let rhs = sim.energy_in_organisms() + sim.energy_in_patches() + sim.energy_out + sim.energy_overflow;
         assert_eq!(lhs, rhs);
+    }
+
+    #[test]
+    fn charge_owner_pct_conserves_energy_and_balances_ledgers() {
+        // E009: the E008 ledger test under the split charge at 50%. Each
+        // unit an owner pays for an intruder is in the owner's `spent_m` and
+        // `paid_for_others_m`, and in the intruder's `paid_by_others_m`
+        // (not its `spent_m`), so every store still balances against its
+        // own ledger, and the two counters agree summed over the world.
+        let mut cfg = Config::default();
+        cfg.charge_owner_pct = 50;
+        let mut sim = Sim::new(cfg);
+        let seed_energy = 100 * MILLI;
+        let host = sim.seed(1000, &ancestor(64, 16), seed_energy, 0);
+        let pad = sim.seed(999, &[0x00], seed_energy, 0);
+        let (mut host_paid, mut pad_helped) = (0, 0);
+        // Lifetime totals of the organisms that died, then of the living.
+        let (mut paid_for, mut paid_by) = (0, 0);
+        for _ in 0..2000 {
+            sim.run_tick();
+            for ev in sim.events.drain(..) {
+                if let Event::Death { id, stats, .. } = ev {
+                    paid_for += stats.paid_for_others_m;
+                    paid_by += stats.paid_by_others_m;
+                    if id == host {
+                        host_paid = stats.paid_for_others_m;
+                    }
+                    if id == pad {
+                        pad_helped = stats.paid_by_others_m;
+                    }
+                }
+            }
+            for o in sim.orgs.iter().filter(|o| o.alive) {
+                let s = &o.stats;
+                assert_eq!(o.energy, s.born_with_m + s.absorb_gain_m - s.spent_m - s.upkeep_m - s.endowed_m);
+                assert!(s.paid_for_others_m <= s.spent_m);
+            }
+        }
+        for o in sim.orgs.iter().filter(|o| o.alive) {
+            paid_for += o.stats.paid_for_others_m;
+            paid_by += o.stats.paid_by_others_m;
+            if o.id == host {
+                host_paid = o.stats.paid_for_others_m;
+            }
+            if o.id == pad {
+                pad_helped = o.stats.paid_by_others_m;
+            }
+        }
+        assert!(host_paid > 0, "the host never paid for the pad");
+        assert!(pad_helped > 0, "nobody paid for the pad");
+        assert_eq!(paid_for, paid_by);
+        let initial_pools = sim.patches.len() as i64 * sim.cfg.patch_cap;
+        let lhs = 2 * seed_energy + initial_pools + sim.energy_in;
+        let rhs = sim.energy_in_organisms() + sim.energy_in_patches() + sim.energy_out + sim.energy_overflow;
+        assert_eq!(lhs, rhs);
+    }
+
+    #[test]
+    fn charge_owner_pct_zero_is_the_default_world() {
+        // E009: N = 0 must leave the E007 world untouched. The full check is
+        // the CLI hash at tick 20,000 of seed 1 (census.csv 6f523da9f7e05a4e,
+        // births.csv 33b07ce87cc80ea6); this is a short version of it, with
+        // reference numbers taken from the default world at tick 2,000.
+        let run = |cfg: Config| {
+            let mut sim = Sim::new(cfg);
+            sim.seed(sim.cfg.world_size / 2, &ancestor(64, 16), 100 * MILLI, 0);
+            let (mut births, mut deaths) = (0u64, 0u64);
+            for _ in 0..2000 {
+                sim.run_tick();
+                for ev in sim.events.drain(..) {
+                    match ev {
+                        Event::Birth { .. } => births += 1,
+                        Event::Death { .. } => deaths += 1,
+                    }
+                }
+            }
+            (sim.alive_count(), births, deaths, sim.energy_in_organisms(), sim.energy_out)
+        };
+        let mut cfg = Config::default();
+        cfg.charge_owner_pct = 0;
+        let zero = run(cfg);
+        assert_eq!(zero, run(Config::default()));
+        assert_eq!(zero, (895, 28627, 27733, 688492519, 36317283733));
+    }
+
+    #[test]
+    fn founders_are_placed_by_the_formula() {
+        // E009a: two founders, one ancestor then one other genome, sit at
+        // world_size / 2 + world_size * j / 2 for j = 0, 1, in flag order.
+        let mut sim = Sim::new(Config::default());
+        let n = sim.cfg.world_size;
+        let other = crate::isa::assemble("zero D\nzero D").unwrap();
+        let starts = sim.seed_founders(&[(ancestor(120, 16), 1), (other.clone(), 1)], 100 * MILLI);
+        assert_eq!(starts, vec![n / 2, 0]);
+        assert_eq!(sim.orgs[0].start, n / 2);
+        assert_eq!(sim.orgs[0].genome, ancestor(120, 16));
+        assert_eq!(sim.orgs[1].start, 0);
+        assert_eq!(sim.orgs[1].genome, other);
+        assert_eq!(sim.region(0, 2), other);
+        assert!(sim.orgs.iter().all(|o| o.energy == 100 * MILLI));
+        // E009a's 110 founders, and 128: no two in one patch of the default world.
+        for total in [110, 128] {
+            let s = founder_starts(n, total);
+            assert_eq!(s.len(), total as usize);
+            assert_eq!(s[1], n / 2 + n / total);
+            let patches: std::collections::HashSet<usize> = s.iter().map(|&a| sim.patch_of(a)).collect();
+            assert_eq!(patches.len(), total as usize, "{total} founders share a patch");
+        }
+    }
+
+    #[test]
+    fn one_founder_is_the_default_seeding() {
+        // E009a: `--founder <ancestor hex>:1` must be the run with no flag.
+        // The founder lands at world_size / 2 (j = 0), as the default seed
+        // does, so the two sims match tick for tick.
+        let mut a = Sim::new(Config::default());
+        a.seed(a.cfg.world_size / 2, &ancestor(64, 16), 100 * MILLI, 0);
+        let mut b = Sim::new(Config::default());
+        b.seed_founders(&[(ancestor(64, 16), 1)], 100 * MILLI);
+        for _ in 0..1000 {
+            a.run_tick();
+            b.run_tick();
+        }
+        assert_eq!(a.state_hash(), b.state_hash());
+        assert_eq!(a.events.len(), b.events.len());
+    }
+
+    #[test]
+    fn inject_targets_and_skip_rule() {
+        // E009b: a 1,024-byte world, 4 copies of a 4-byte genome. Targets
+        // 512, 768, 0, 256. Ownership is set by hand (99 stands for any
+        // living id): copy 0 finds 512-513 living and lands at 514; copy 1
+        // finds 768-1022 living, and its run beginning at 1023 (the last
+        // offset before copy 2's target) wraps over debris at 0-2, so it
+        // lands at 1023; copy 2 then finds 0-2 owned by copy 1 and lands at
+        // 3 (debris and free bytes); copy 3 finds 256-510 living and the run
+        // at 511 blocked by 512, so no run begins before 512: skipped.
+        let mut cfg = Config::default();
+        quiet(&mut cfg);
+        cfg.world_size = 1024;
+        cfg.patch_size = 256;
+        let mut sim = Sim::new(cfg);
+        let live = 99;
+        for a in [512, 513].into_iter().chain(768..1023).chain(256..511) {
+            sim.owner[a] = live;
+        }
+        for a in 0..5 {
+            sim.owner[a] = DEBRIS;
+            sim.bytes[a] = 0xee;
+        }
+        let rng_before = sim.rng.state();
+        let g = vec![0x11, 0x22, 0x33, 0x44];
+        let (starts, ids) = sim.inject(&g, 4, 100 * MILLI, 7);
+        assert_eq!(starts, vec![514, 1023, 3, -1]);
+        assert_eq!(ids.len(), 3);
+        assert_eq!(sim.rng.state(), rng_before, "inject drew from the PRNG");
+        assert_eq!(sim.region(1023, 4), g);
+        assert_eq!(sim.region(3, 4), g);
+        for (&id, &s) in ids.iter().zip([514u32, 1023, 3].iter()) {
+            let o = sim.genome_of(id).unwrap();
+            assert_eq!((o.start, o.birth_tick, o.parent, o.energy), (s, 7, 0, 100 * MILLI));
+            for k in 0..4 {
+                assert_eq!(sim.owner[sim.wrap(s + k) as usize], id);
+            }
+        }
+        // Copy 2 covers 3-6; byte 7 is free and untouched.
+        assert_eq!(sim.owner[7], FREE);
+    }
+
+    #[test]
+    fn inject_leaves_earlier_ticks_identical() {
+        // An injection at tick T changes nothing before T: the state hash
+        // after tick T - 1 matches a run without it, and differs after T.
+        let t = 300;
+        let inj = [Injection { tick: t, genome: ancestor(120, 16), count: 5 }];
+        let mut a = Sim::new(Config::default());
+        let mut b = Sim::new(Config::default());
+        for s in [&mut a, &mut b] {
+            s.seed_founders(&[(ancestor(64, 16), 1)], 100 * MILLI);
+        }
+        let mut placed = Vec::new();
+        for _ in 0..t - 1 {
+            assert!(a.inject_due(&[], 100 * MILLI).is_empty());
+            a.run_tick();
+            placed.extend(b.inject_due(&inj, 100 * MILLI));
+            b.run_tick();
+        }
+        assert_eq!(a.tick, t - 1);
+        assert!(placed.is_empty());
+        assert_eq!(a.state_hash(), b.state_hash());
+        let done = b.inject_due(&inj, 100 * MILLI);
+        b.run_tick();
+        a.run_tick();
+        assert_eq!(done.len(), 1);
+        assert_eq!(done[0].starts.len(), 5);
+        assert!(!done[0].ids.is_empty());
+        for &id in &done[0].ids {
+            assert_eq!(b.genome_of(id).map(|o| o.birth_tick), Some(t));
+        }
+        assert_ne!(a.state_hash(), b.state_hash());
     }
 
     #[test]

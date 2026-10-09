@@ -690,6 +690,47 @@ with no measurable gain to the hosts; dead-code users unchanged. H8
 supported in kind. Decision: `self` = executor stays the default, since
 parasites are the interaction to evolve defences against; the switch
 stays for Phase 4 ISA comparisons.
+E007 (2026-10-07, `docs/research/experiments/2026-10-07-e007-long-run.md`):
+the standard world over 250,000 ticks, 10 seeds, on Linux (bit-identical
+to Windows over the 20,000 ticks checked). Stationary from tick 25,000
+on: population about 935, length 21 in every window of every seed,
+parasites 0.8–1.0% of exact births and reinvented at E005's rate, no
+resistance (H12 supported). The one event is a post-hoc find: the absorb
+loop count swept from 64 to 112–127 inside the first 10,000 ticks in
+every run, with or without parasites (three `--self-owner` runs do the
+same), and the landscape is flat from 112 up (K-seeded follow-up). So
+selection acts within 10,000 ticks when a byte pays, and the missing
+defence is a mutational-path problem, not a selection-strength problem.
+Lesson for measures: predictions 6 and 7 counted raw-genotype leaders
+among 2%-share near-ties and could not see the sweep; track traits (a
+byte, a loop constant) and canonical genomes (`func_hash`) from now on.
+E008 (2026-10-07, `docs/research/experiments/2026-10-07-e008-charge-owner.md`):
+`--charge-owner`, the living owner of the byte at IP pays for every
+instruction another organism executes there. H13 supported: no top host
+survives the `pad` probe in any of 90 seed-windows. The outcome was
+implied by the pre-run harness table (every host dies at tick 11–18
+before its first child), so the registered test was safe; the
+informative part is the ecology. An entered host dies within one
+intruder cycle, so foreign execution fell from 12–15% to 0.4%, unowned
+execution rose to 6–7%, and `pad`'s lineage doubled its output by
+running the hosts it killed: the full charge rewards killing. There is
+no long-lived infected host for selection to grade. Next: E009, a split
+charge, so an infected host survives and a partial defence can pay.
+E009 (2026-10-08, `docs/research/experiments/2026-10-08-e009-split-charge.md`,
+designed and built, not run): `--charge-owner-pct N`, the owner pays a
+share. Calibration found no graded cost at any N (a cliff in the
+harness; matched-age entered hosts reproduce as well as unentered ones
+in the world), so the search was gated by invasion tests of the
+finished defence, a working five-byte self-scan
+(`self 1 ; swap C ; self 0 ; sub C ; jmpr A`; the ISA already allows
+it). New tools: `--founder HEX:COUNT` and `--inject TICK:HEX:COUNT`.
+E009a (founder mix) and E009b (injected at tick 25,000 into the
+parasitised world): the defence is lost in every seed under every rule,
+at a length-matched control's rate, because few hosts are ever entered
+and an entry costs at most one pass; the saving is an order of
+magnitude below the five-byte cost. Split-charge line closed; next cost
+rule is a transfer (the intruder gains what the host loses), checked
+first by injection.
 
 **Phase 3 — Richer physics.** 2D torus, per-patch parameters,
 seasons, slow drift, drain/defense ops (bit rot and debris exist since
@@ -716,7 +757,11 @@ resource types). Multi-day runs. Compare ISA variants for evolvability.
 - Exact locality radius and whether cost grows with distance.
 - Energy location: per organism (Phase 1 decision, 2026-09-30) or per byte
   of body (makes "where the energy is" spatial, which might matter for
-  predation). Revisit with `drain` in Phase 3.
+  predation). Revisit with `drain` in Phase 3. E008 (2026-10-07) tried
+  the cheapest form of "the host pays" (`--charge-owner`, the owner of
+  the byte at IP pays for its execution): the full charge kills an
+  entered host within one intruder cycle and rewards the killer. E009
+  tries a split.
 - Locality from IP (Phase 1 decision) vs from body start. IP-relative lets
   an IP wander far from its body at a per-byte energy cost; whether that
   gets abused (organisms executing free space to reach distant debris) is a
@@ -790,7 +835,10 @@ test them.
   H9 environmental drift delays equilibrium (§5.6). H10 (2026-10-01):
   dispersal across patches sustains replication (E002; supported by E004
   when every patch can feed a founder). H11 (2026-10-05): room alone
-  sustains replication (refuted by E004).
+  sustains replication (refuted by E004). H12 (2026-10-07): no resistance
+  to parasites that cost nothing (supported by E007). H13 (2026-10-07): a
+  cost alone does not produce a defence (supported by E008). H14
+  (2026-10-08): a split charge, E009.
 - `docs/research/notes/`: raw per-source notes from the 2026-09-30 review,
   one file per cluster, URL on every fact, UNVERIFIED tags kept.
 - `docs/research-historic/`: the earlier Codex pass. Superseded by

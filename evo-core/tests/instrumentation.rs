@@ -28,7 +28,15 @@ fn scratch(name: &str) -> std::path::PathBuf {
 fn run(seed: u64, record: Option<&std::path::Path>) -> (Vec<Event>, u64) {
     let mut sim = seeded(seed);
     let mut rec = record.map(|d| {
-        let info = RunInfo { ticks_requested: TICKS, census_every: 50, ancestor_k: 64, ancestor_e: 16 };
+        let info = RunInfo {
+            ticks_requested: TICKS,
+            census_every: 50,
+            ancestor_k: 64,
+            ancestor_e: 16,
+            founders: Vec::new(),
+            founder_starts: Vec::new(),
+            injections: Vec::new(),
+        };
         Recorder::create(d, &sim, info).unwrap()
     });
     let mut all = Vec::new();

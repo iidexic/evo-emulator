@@ -470,3 +470,62 @@ by the E005 test. Status: supported; a cost alone did not produce a
 defence in 250,000 ticks, and the next move is a cheaper defence to
 find (`self 1`, a self-scan) or a softer charge (a split) that leaves
 an infected host alive long enough for selection to see.
+
+## H14. A graded cost selects the one-byte defence and not the five-byte one (2026-10-08)
+
+**Prediction.** With a split charge (`--charge-owner-pct N`, the living
+owner of the byte at IP pays a share N of each instruction another
+organism executes there and the executor pays the rest), an entered host
+survives the visit, reproduces less and dies later than an unentered
+one. Over 250,000 ticks the hosts then take up the defence that is
+already one byte away, a divide endowment of about 35 or more that
+starves a one-byte intruder at its first `divide` (E007: 2 children
+against 340), and do not take up the five-byte self-scan prefix
+`self 1 ; swap C ; self 0 ; sub C ; jmpr A`, which sends any
+fall-through intruder out of the body or traps it on the jump, but
+needs four neutral insertions before the fifth pays.
+
+**Reasoning.** E007: a paying byte sweeps in 10,000 ticks. E008: a
+cost that kills the host within one intruder pass gives selection
+nothing to grade, and the same five-byte path went unfound under the
+strongest possible payoff. The endowment byte was at 13–19% of births
+by the end of E007 with nothing paying for it; the split makes it pay
+while leaving the host alive. The self-scan path's length, not its
+payoff, is what keeps it out of reach.
+
+**Confirms.** E009 predictions 4, 5 and 6: endowment ≥ 37 above E007's
+18–19% in at least 6 surviving seeds of the `hi` arm with a median of
+at least 30%; the complete prefix below 1% of births everywhere; a
+starver top host in at least 4 seeds and a defended (self-scan class)
+top host in at most 2.
+
+**Refutes.** The endowment share does not rise although entered hosts
+measurably lose fitness (then selection on a paying byte is weaker than
+E007 suggested, or the accounting is wrong); or the self-scan prefix
+appears at length 5 in any seed (then the path is reachable and its
+reconstruction from the ancestry tables is the result).
+
+**Status.** Open. E009
+(`experiments/2026-10-08-e009-split-charge.md`), design only.
+
+## H14 note (2026-10-08)
+
+E009 was prepared (the split charge, `--charge-owner-pct N`, the
+corrected self-scan prefix `self 1 ; swap C ; self 0 ; sub C ; jmpr A`)
+and gated instead of run. Calibration: the harness shows a cliff, not a
+grade (the owner pays from energy its store cap would discard below
+N = 9, dies above), and in the world at N = 10–50 entered hosts leave
+the same exact children as unentered ones at matched age (band ratios
+0.99–1.02). Two invasion tests of the finished defence
+(`experiments/2026-10-08-e009a-invasion.md`,
+`2026-10-08-e009b-late-injection.md`): seeded among founders or injected
+at tick 25,000 into the parasitised world, the five-byte self-scan is
+lost in every seed under N = 0, 25, 50 and the E008 rule, at nearly the
+rate of a length-matched inert prefix, while a 21-byte resident injected
+the same way establishes. Only 7–14% of hosts are ever entered and an
+entry costs at most one pass, so the saving is an order of magnitude
+below the five-byte cost. Status: the self-scan half of H14 is settled
+without the search (the defence does not pay under any owner-pays rule
+tried); the endowment half is untested, and the 250,000-tick E009 is
+not run. Next cost rule: a transfer (the intruder gains what the host
+loses).

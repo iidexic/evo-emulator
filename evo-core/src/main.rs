@@ -4,7 +4,8 @@
 //!          [--no-protect] [--p P] [--world N] [--patch N]
 //!          [--alloc-far | --alloc-near] [--absorb-prop | --absorb-fixed]
 //!          [--locality N] [--out DIR] [--census N] [--sun N] [--rot P]
-//!          [--self-owner] [--charge-owner] [--world-e001]
+//!          [--self-owner] [--charge-owner] [--charge-owner-pct N]
+//!          [--world-e001] [--founder HEX:COUNT]... [--inject TICK:HEX:COUNT]...
 //! evo-core --classify DIR [--harness-ticks N] [--classes-out NAME] [physics flags]
 //! evo-core --host HEX [--host-body HEX] [--host-pad] [--harness-ticks N] [physics flags]
 //! evo-core --disasm HEX
@@ -26,7 +27,35 @@
 //! the living owner of the byte at IP instead of the executing organism
 //! (E006, H8). --charge-owner makes the living owner of the byte at IP pay
 //! for an instruction another organism executes there, instead of the
-//! executor (E008: parasitism costs the host).
+//! executor (E008: parasitism costs the host). --charge-owner-pct N
+//! (0-100, default 0) splits that cost instead (E009): the owner pays
+//! floor(cost * N / 100), or its whole store if less, and the executor the
+//! rest; only the executor's part has to be affordable, so an owner at zero
+//! never stops the intruder. If both are given, --charge-owner wins.
+//!
+//! --founder HEX:COUNT (repeatable, E009a) seeds COUNT copies of the genome
+//! HEX, 100 units each, instead of the one ancestor. All copies from all
+//! --founder flags are placed in the order given (first flag's copies
+//! first) at world_size / 2 + world_size * j / total, modulo world_size,
+//! for j = 0 .. total - 1 (`sim::founder_starts`): evenly around the ring,
+//! no two in one patch when total is at most the patch count (128 in the
+//! default world), and one founder lands where the single ancestor always
+//! has. Without the flag the run is the ancestor (--k, --e) once at
+//! world_size / 2, bit-identical to runs before the flag existed; one
+//! `--founder <that ancestor's hex>:1` gives the same run. meta.json lists
+//! the founders and their start addresses.
+//!
+//! --inject TICK:HEX:COUNT (repeatable, E009b) places COUNT copies of HEX,
+//! 100 units each, `parent` 0 and birth tick TICK, at the start of tick
+//! TICK (>= 1) before any organism steps (`Sim::inject`). Copy j targets
+//! world_size / 2 + world_size * j / COUNT modulo world_size and takes the
+//! first run of len(HEX) bytes, scanning forward from the target, with no
+//! byte owned by a living organism (free or debris; overwritten). If no
+//! such run begins before the next copy's target (for the last copy, the
+//! first copy's target plus world_size) the copy is skipped. No PRNG draw;
+//! without the flag the run is unchanged. Injected bodies are recorded as
+//! founders are (genomes.csv origin `seed`, no births.csv row); meta.json
+//! lists each injection with the start of every copy (-1 if skipped).
 //!
 //! --out DIR writes a run directory (docs/instrumentation.md): event CSVs,
 //! census/organism/patch snapshots every --census ticks (default: the
@@ -54,7 +83,7 @@
 use evo_core::config::{Config, MILLI};
 use evo_core::harness;
 use evo_core::record::{Recorder, RunInfo};
-use evo_core::sim::{ancestor, Event, Sim};
+use evo_core::sim::{ancestor, Event, Injection, Sim};
 use std::io::Write;
 use std::path::Path;
 
@@ -78,6 +107,10 @@ fn main() {
     let mut e: i8 = 16;
     let mut patch: Option<u32> = None;
     let mut sun: i64 = 1;
+    // (genome, copies) per --founder flag, in the order given.
+    let mut founders: Vec<(Vec<u8>, u32)> = Vec::new();
+    // --inject flags, in the order given.
+    let mut injections: Vec<Injection> = Vec::new();
     let mut i = 0;
     while i < args.len() {
         let next = || args.get(i + 1).expect("missing value").clone();
@@ -93,6 +126,28 @@ fn main() {
             "--classes-out" => { classes_out = next(); i += 1; }
             "--host" => { host = Some(next()); i += 1; }
             "--host-body" => { host_body = Some(next()); i += 1; }
+            "--founder" => {
+                let v = next();
+                // `split_once` returns Option<(&str, &str)>, Rust's way of
+                // saying "maybe a pair"; `expect` panics with the message on None.
+                let (hex, count) = v.split_once(':').expect("--founder wants HEX:COUNT");
+                let count: u32 = count.parse().expect("--founder COUNT must be a whole number");
+                assert!(count > 0 && !hex.is_empty(), "--founder wants a non-empty HEX and COUNT >= 1");
+                founders.push((parse_hex(hex), count));
+                i += 1;
+            }
+            "--inject" => {
+                let v = next();
+                // `splitn(3, ':')` yields at most three pieces; collecting
+                // into a Vec lets us check there were exactly three.
+                let p: Vec<&str> = v.splitn(3, ':').collect();
+                assert!(p.len() == 3, "--inject wants TICK:HEX:COUNT");
+                let tick: u64 = p[0].parse().expect("--inject TICK must be a whole number");
+                let count: u32 = p[2].parse().expect("--inject COUNT must be a whole number");
+                assert!(tick >= 1 && count > 0 && !p[1].is_empty(), "--inject wants TICK >= 1, a non-empty HEX and COUNT >= 1");
+                injections.push(Injection { tick, genome: parse_hex(p[1]), count });
+                i += 1;
+            }
             // Disassemble hex bytes and exit: for reading world.bin from Python.
             "--disasm" => { println!("{}", evo_core::record::disasm(&parse_hex(&next()))); return; }
             "--host-pad" => host_pad = true,
@@ -110,6 +165,11 @@ fn main() {
             "--absorb-fixed" => cfg.absorb_proportional = false,
             "--self-owner" => cfg.self_owner = true,
             "--charge-owner" => cfg.charge_owner = true,
+            "--charge-owner-pct" => {
+                cfg.charge_owner_pct = next().parse().unwrap();
+                assert!((0..=100).contains(&cfg.charge_owner_pct), "--charge-owner-pct must be 0-100");
+                i += 1;
+            }
             "--world-e001" => {}
             "--no-protect" => cfg.write_protection = false,
             other => { eprintln!("unknown arg {other}"); std::process::exit(2); }
@@ -153,11 +213,23 @@ fn main() {
     assert!(census > 0 && report > 0, "--census and --report must be positive");
 
     let mut sim = Sim::new(cfg.clone());
-    let g = ancestor(k, e);
-    sim.seed(cfg.world_size / 2, &g, 100 * MILLI, 0);
+    // No --founder: the ancestor once, which `seed_founders` puts at
+    // world_size / 2, where the single founder has always been.
+    if founders.is_empty() {
+        founders.push((ancestor(k, e), 1));
+    }
+    let founder_starts = sim.seed_founders(&founders, 100 * MILLI);
     let mut logf = log.map(|p| std::io::BufWriter::new(std::fs::File::create(p).unwrap()));
     let mut rec = out.map(|d| {
-        let info = RunInfo { ticks_requested: ticks, census_every: census, ancestor_k: k, ancestor_e: e };
+        let info = RunInfo {
+            ticks_requested: ticks,
+            census_every: census,
+            ancestor_k: k,
+            ancestor_e: e,
+            founders: founders.iter().map(|(g, n)| (to_hex(g), *n)).collect(),
+            founder_starts: founder_starts.clone(),
+            injections: injections.iter().map(|j| (j.tick, to_hex(&j.genome), j.count)).collect(),
+        };
         let mut r = Recorder::create(Path::new(&d), &sim, info).expect("create run directory");
         r.snapshot(&sim).unwrap();
         r
@@ -171,6 +243,13 @@ fn main() {
     // column counts those still alive at the report.
     let mut dividers: std::collections::HashSet<u32> = Default::default();
     for _ in 0..ticks {
+        // Injections due this tick, before any organism steps (no-op
+        // without --inject).
+        for done in sim.inject_due(&injections, 100 * MILLI) {
+            if let Some(r) = rec.as_mut() {
+                r.injected(&sim, &done);
+            }
+        }
         sim.run_tick();
         // Take this tick's events out of the sim so memory stays flat.
         let events: Vec<Event> = sim.events.drain(..).collect();
@@ -241,6 +320,11 @@ fn parse_hex(hex: &str) -> Vec<u8> {
         .step_by(2)
         .map(|j| u8::from_str_radix(&hex[j..j + 2], 16).expect("bad bytes_hex"))
         .collect()
+}
+
+/// The `bytes_hex` form of a genome (inverse of `parse_hex`).
+fn to_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// `--classify DIR`: label every genome in DIR/genomes.csv with the

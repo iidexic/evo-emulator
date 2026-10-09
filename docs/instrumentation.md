@@ -62,10 +62,14 @@ Genotype counts in the census use raw hashes (as Tierra did); grouping by
 | `starved_ticks` | ticks in which it paid upkeep but could not afford one instruction |
 | `last_divide_tick` | tick of the last successful `divide`, -1 if none |
 | `max_energy_m` | highest energy held |
-| `paid_for_others_m` | energy charged for instructions other organisms executed in its body (`charge_owner`, E008); included in `spent_m`, 0 with the flag off |
+| `paid_for_others_m` | energy charged for instructions other organisms executed in its body (`charge_owner`, E008: the whole cost; `--charge-owner-pct N`, E009: the owner's share, `floor(cost × N / 100)` or its whole store if less); included in `spent_m`, 0 with both flags off |
+| `paid_by_others_m` | energy other organisms (the owners of the bytes it ran) paid for its instructions, the counterpart of `paid_for_others_m` (2026-10-08, E009); not included in `spent_m`, which holds only what it paid itself; 0 with both flags off. Summed over all organisms it equals the sum of `paid_for_others_m` |
 
 Ledger identity (tested): for a living organism,
-`energy = born_with + absorb_gain - spent - upkeep - endowed`.
+`energy = born_with + absorb_gain - spent - upkeep - endowed`. It holds
+under `--charge-owner` and `--charge-owner-pct N` because each unit an
+owner pays for an intruder is in the owner's `spent_m`, not the
+intruder's (tested at N = 50).
 
 `Patch` gains two cumulative counters: `absorbed` (energy taken by
 absorbs) and `overflow` (income lost to the cap).
@@ -91,7 +95,29 @@ All CSV with a header row. Written by `record.rs` (`Recorder`).
 
 - `meta.json`: every `Config` field, ticks requested, ticks run, census
   interval, ancestor K and E, crate version, git commit and dirty flag
-  (captured at build time by `build.rs`).
+  (captured at build time by `build.rs`). Since 2026-10-08 (E009a) also
+  `founders`, the seeded genomes as `[{"hex": ..., "count": N}, ...]` in
+  seeding order, and `founder_starts`, the start address of every founder
+  copy in the same order. Without `--founder HEX:COUNT` the list is the
+  ancestor (K, E) once at `world_size / 2`, as in every earlier run. With
+  it (repeatable), all copies of all flags, first flag first, sit at
+  `world_size / 2 + world_size * j / total` modulo the world size, 100
+  units each (`sim::founder_starts`); no two share a patch when the total
+  is at most the patch count. Runs before 2026-10-08 have neither key.
+  Since E009b (2026-10-08) also `injections`, one entry per
+  `--inject TICK:HEX:COUNT` flag in the order given, as
+  `[{"tick": T, "hex": ..., "count": N, "starts": [...]}, ...]`
+  (`[]` without the flag). `starts` has one entry per copy: the start
+  address it was placed at, or -1 if skipped; it is empty if the run
+  ended before tick T. Copy j targets `world_size / 2 + world_size * j /
+  N` modulo the world size and takes the first run of `len(HEX)` bytes,
+  scanning forward, with no byte owned by a living organism (free or
+  debris, overwritten), which must begin before the next copy's target
+  (the last copy's limit is the first target plus the world size).
+  Copies are placed at the start of tick T before any organism steps,
+  100 units each, `parent` 0, `birth_tick` T, with no PRNG draw; like
+  founders they have no `births.csv` row and their genome appears in
+  `genomes.csv` with origin `seed` (unless already present).
 - `births.csv`: `tick,child,executor,source,start,len,copy_errors,slips,endowment_m,raw_hash,parent_hash,parent_now_hash,source_hash`
 - `deaths.csv`: `tick,id,cause,age,offspring,len,start,pending_len,ip_off,op_at_ip,energy_m,pool_m,birth_hash,now_hash,` then every `OrgStats` field.
 - `census.csv` (every census tick): `tick,now_hash,count`. Hash of current body bytes.
@@ -120,7 +146,9 @@ from `ancestor_pays_for_itself`) for `--harness-ticks` ticks (default
 3,000), and writes `DIR/classes.csv`. The energy and `alloc` physics are
 whatever the command line gives (`--world-e001`, `--patch`, `--sun`,
 `--alloc-far`/`--alloc-near`, `--absorb-prop`/`--absorb-fixed`; the code
-default if none); noise flags are ignored. With `--classes-out NAME` the
+default if none; `--self-owner`, `--charge-owner` and `--charge-owner-pct
+N` are carried too, though a lone genome executes no foreign code); noise
+flags are ignored. With `--classes-out NAME` the
 file is `DIR/NAME` instead, so one run can carry classes under two
 physics (E005, 2026-10-06). The code default changed on 2026-10-07 from
 the Phase 1 world to the E004 world: a `classes.csv` written before that
@@ -170,6 +198,19 @@ shows each survivor's activity over the last census interval.
   debris or free; world map per snapshot; an address inspector across
   snapshots; and off-body IPs (organisms whose IP is outside their own
   body at a census) with the kind of address they are at.
+- `traits.py` (2026-10-07, E007 follow-ups; extended 2026-10-08, E009):
+  trait bytes over replicator-class exact births per window. `track()`
+  reads the absorb count (byte 6) and the endowment (byte 17, where byte
+  16 is still `lit`) of 21-byte bodies by fixed offset, as E007 and E008
+  reported them. `track_genome()` reads the canonical instruction list
+  (a Python copy of `isa::canonical`) and gives: the endowment found by
+  pattern (the first `lit R v` whose next instruction is `divide R`),
+  with a share for bodies that have no such pattern; body length
+  percentiles; the share of births whose genome contains `self 1`; the
+  share whose first instruction is not `self 0`; and a histogram (0–5) of
+  the longest match at byte 0 of the self-scan prefix
+  `self 1 ; swap C ; self 0 ; sub C ; jmpr A`, compared on the op and the
+  modifier bits the op reads, so silent bit-7 flips do not break a match.
 
 ## Acceptance
 
