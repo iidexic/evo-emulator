@@ -4,7 +4,7 @@
 //!          [--no-protect] [--p P] [--world N] [--patch N]
 //!          [--alloc-far | --alloc-near] [--absorb-prop | --absorb-fixed]
 //!          [--locality N] [--out DIR] [--census N] [--sun N] [--rot P]
-//!          [--self-owner] [--charge-owner] [--charge-owner-pct N]
+//!          [--self-owner] [--charge-owner] [--charge-owner-pct N] [--transfer-pct N]
 //!          [--world-e001] [--founder HEX:COUNT]... [--inject TICK:HEX:COUNT]...
 //! evo-core --classify DIR [--harness-ticks N] [--classes-out NAME] [physics flags]
 //! evo-core --host HEX [--host-body HEX] [--host-pad] [--harness-ticks N] [physics flags]
@@ -32,6 +32,13 @@
 //! floor(cost * N / 100), or its whole store if less, and the executor the
 //! rest; only the executor's part has to be affordable, so an owner at zero
 //! never stops the intruder. If both are given, --charge-owner wins.
+//! --transfer-pct N (N >= 0, default 0) is the transfer rule (E010): the
+//! executor pays for every instruction itself, as with no flag, and then,
+//! if the byte at IP belongs to another living organism, that owner loses
+//! floor(cost * N / 100), or its whole store if less, and the executor
+//! gains it up to its own store cap (the rest is dissipated). It cannot be
+//! combined with --charge-owner or a non-zero --charge-owner-pct; the run
+//! is refused with an error.
 //!
 //! --founder HEX:COUNT (repeatable, E009a) seeds COUNT copies of the genome
 //! HEX, 100 units each, instead of the one ancestor. All copies from all
@@ -170,11 +177,23 @@ fn main() {
                 assert!((0..=100).contains(&cfg.charge_owner_pct), "--charge-owner-pct must be 0-100");
                 i += 1;
             }
+            "--transfer-pct" => {
+                cfg.transfer_pct = next().parse().expect("--transfer-pct N must be a whole number");
+                assert!(cfg.transfer_pct >= 0, "--transfer-pct must be 0 or more");
+                i += 1;
+            }
             "--world-e001" => {}
             "--no-protect" => cfg.write_protection = false,
             other => { eprintln!("unknown arg {other}"); std::process::exit(2); }
         }
         i += 1;
+    }
+
+    // The transfer (E010) and the owner-pays rules (E008, E009) are
+    // different answers to who pays for foreign execution; one at a time.
+    if cfg.transfer_pct > 0 && (cfg.charge_owner || cfg.charge_owner_pct > 0) {
+        eprintln!("error: --transfer-pct cannot be combined with --charge-owner or --charge-owner-pct");
+        std::process::exit(2);
     }
 
     if let Some(ps) = patch {

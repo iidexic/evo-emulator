@@ -52,6 +52,9 @@ byte 0, a `lit` taking its operand byte; register ops keep `mod & 3`,
   is k instructions, compared on canonical instructions, so a bit-7 flip
   of a register op still matches; a flip that changes `self 1` to
   `self 5` does not, because that is `self 2`. `prefix_ge3` is k >= 3.
+  Other prefixes are passed as `prefix=`: INERT (E009a), and for E010
+  EJECT (`self 1 ; swap C ; self 0 ; sub C ; skipz A ; jmpa D`) and
+  INERT6 (six `zero D`), six pairs each, so k = 0..6.
 
     from traits import track
     t = track("../runs/e007/std/s1", bin_size=25_000)
@@ -190,6 +193,14 @@ PREFIX = ((SELF, 1), (SWAP, 2), (SELF, 0), (SUB, 2), (JMPR, 0))
 # the ancestor's `lit D -4` resets D.
 ZERO = 16
 INERT = ((ZERO, 3),) * 5
+# E010's `eject`: `self 1 ; swap C ; self 0 ; sub C ; skipz A ; jmpa D`
+# (bytes 33 52 13 4f 08 6d). The host (A = 0) skips the `jmpa`; an
+# intruder jumps to the absolute address in its D. SKIPZ = 8 and JMPA = 13
+# read their register (`isa::uses_reg`). INERT6 is its length control, six
+# `zero D` (byte 0x70).
+SKIPZ, JMPA = 8, 13
+EJECT = ((SELF, 1), (SWAP, 2), (SELF, 0), (SUB, 2), (SKIPZ, 0), (JMPA, 3))
+INERT6 = ((ZERO, 3),) * 6
 ENDOW_MIN_LEN = 21
 
 

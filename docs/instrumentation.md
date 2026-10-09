@@ -62,14 +62,29 @@ Genotype counts in the census use raw hashes (as Tierra did); grouping by
 | `starved_ticks` | ticks in which it paid upkeep but could not afford one instruction |
 | `last_divide_tick` | tick of the last successful `divide`, -1 if none |
 | `max_energy_m` | highest energy held |
-| `paid_for_others_m` | energy charged for instructions other organisms executed in its body (`charge_owner`, E008: the whole cost; `--charge-owner-pct N`, E009: the owner's share, `floor(cost × N / 100)` or its whole store if less); included in `spent_m`, 0 with both flags off |
-| `paid_by_others_m` | energy other organisms (the owners of the bytes it ran) paid for its instructions, the counterpart of `paid_for_others_m` (2026-10-08, E009); not included in `spent_m`, which holds only what it paid itself; 0 with both flags off. Summed over all organisms it equals the sum of `paid_for_others_m` |
+| `paid_for_others_m` | energy charged for instructions other organisms executed in its body (`charge_owner`, E008: the whole cost; `--charge-owner-pct N`, E009: the owner's share, `floor(cost × N / 100)` or its whole store if less; `--transfer-pct N`, E010: what it lost to the executor, `floor(cost × N / 100)` or its whole store if less, whether or not the executor could keep it); included in `spent_m`, 0 with all three flags off |
+| `paid_by_others_m` | energy other organisms (the owners of the bytes it ran) paid for its instructions, the counterpart of `paid_for_others_m` (2026-10-08, E009); not included in `spent_m`, which holds only what it paid itself; 0 with both owner-pays flags off, and always 0 under `--transfer-pct` (the executor pays its own cost there). Summed over all organisms it equals the sum of `paid_for_others_m` under the owner-pays rules |
+| `gained_from_others_m` | energy received from the owners of the bytes it ran under `--transfer-pct N` (2026-10-08, E010; the last column): the owner's loss, capped by the room left below its store cap after it paid its own cost; what does not fit is dissipated (`energy_out`). 0 without the flag. Summed over all organisms it is at most the sum of `paid_for_others_m` |
 
-Ledger identity (tested): for a living organism,
-`energy = born_with + absorb_gain - spent - upkeep - endowed`. It holds
-under `--charge-owner` and `--charge-owner-pct N` because each unit an
-owner pays for an intruder is in the owner's `spent_m`, not the
-intruder's (tested at N = 50).
+Ledger identity (tested): for a living organism, and for a dead one with
+the `energy` of its death row,
+`energy = born_with + absorb_gain + gained_from_others - spent - upkeep - endowed`.
+It holds under `--charge-owner` and `--charge-owner-pct N` because each
+unit an owner pays for an intruder is in the owner's `spent_m`, not the
+intruder's (tested at N = 50), and under `--transfer-pct N` because the
+owner's loss is in its `spent_m` and the executor's receipt in its
+`gained_from_others_m` (tested at N = 150). Runs before E010 have no
+`gained_from_others_m` column; it was 0 in all of them.
+
+`--transfer-pct N` (`Config.transfer_pct`, E010, default 0): the
+executor pays its own full cost for every instruction, as with no flag
+(same affordability check and tick budget); then, if the byte at IP is
+owned by a living organism other than the executor, that owner loses
+`floor(cost × N / 100)` (or its whole store if less) and the executor
+gains it up to its store cap. Debris, free bytes and dead owners transfer
+nothing. N = 0 is bit-identical to the run without the flag. It cannot
+be combined with `--charge-owner` or a non-zero `--charge-owner-pct`
+(the CLI exits with an error; `Sim::new` panics).
 
 `Patch` gains two cumulative counters: `absorbed` (energy taken by
 absorbs) and `overflow` (income lost to the cap).
@@ -146,8 +161,9 @@ from `ancestor_pays_for_itself`) for `--harness-ticks` ticks (default
 3,000), and writes `DIR/classes.csv`. The energy and `alloc` physics are
 whatever the command line gives (`--world-e001`, `--patch`, `--sun`,
 `--alloc-far`/`--alloc-near`, `--absorb-prop`/`--absorb-fixed`; the code
-default if none; `--self-owner`, `--charge-owner` and `--charge-owner-pct
-N` are carried too, though a lone genome executes no foreign code); noise
+default if none; `--self-owner`, `--charge-owner`, `--charge-owner-pct
+N` and `--transfer-pct N` are carried too, though a lone genome executes
+no foreign code); noise
 flags are ignored. With `--classes-out NAME` the
 file is `DIR/NAME` instead, so one run can carry classes under two
 physics (E005, 2026-10-06). The code default changed on 2026-10-07 from
@@ -211,6 +227,9 @@ shows each survivor's activity over the last census interval.
   the longest match at byte 0 of the self-scan prefix
   `self 1 ; swap C ; self 0 ; sub C ; jmpr A`, compared on the op and the
   modifier bits the op reads, so silent bit-7 flips do not break a match.
+  Any other prefix can be passed: `INERT` (five `zero D`, E009a), and
+  since E010 `EJECT` (`self 1 ; swap C ; self 0 ; sub C ; skipz A ;
+  jmpa D`) and `INERT6` (six `zero D`), giving a 0–6 histogram.
 
 ## Acceptance
 

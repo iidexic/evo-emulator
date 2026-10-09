@@ -97,7 +97,9 @@ fn ledger_balances_for_every_living_organism() {
                 let s = &o.stats;
                 assert_eq!(
                     o.energy,
-                    s.born_with_m + s.absorb_gain_m - s.spent_m - s.upkeep_m - s.endowed_m,
+                    // `gained_from_others_m` is 0 here (no --transfer-pct);
+                    // it is part of the identity since E010.
+                    s.born_with_m + s.absorb_gain_m + s.gained_from_others_m - s.spent_m - s.upkeep_m - s.endowed_m,
                     "org {} at tick {}", o.id, sim.tick
                 );
                 assert!(s.max_energy_m >= o.energy);

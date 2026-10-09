@@ -54,6 +54,16 @@ pub struct Config {
     /// affordable, so an owner at zero slows nothing. 0 (default) is the
     /// executor-pays rule; `charge_owner` takes precedence when both are set.
     pub charge_owner_pct: i64,
+    /// Transfer (E010), percent >= 0: after an organism executes an
+    /// instruction whose byte at IP is owned by a living organism other
+    /// than itself, and has paid that instruction's full cost as usual,
+    /// the owner loses `floor(cost * pct / 100)` (or its whole store if
+    /// less) and the executor gains it, up to its store cap; whatever does
+    /// not fit is dissipated. The executor's affordability check and tick
+    /// budget are those of the executor-pays rule. 0 (default) is off.
+    /// Cannot be combined with `charge_owner` or `charge_owner_pct`
+    /// (`Sim::new` and the CLI refuse it).
+    pub transfer_pct: i64,
 
     // Costs (milli-units)
     pub cost_simple: i64,
@@ -87,7 +97,7 @@ impl Config {
             patch_income, patch_cap, absorb_rate, upkeep_per_byte,
             store_cap_per_byte, cap_c0, cap_c1, write_protection, alloc_far,
             absorb_proportional, self_owner, charge_owner, charge_owner_pct,
-            cost_simple, cost_load, cost_store, cost_copy, cost_search_base,
+            transfer_pct, cost_simple, cost_load, cost_store, cost_copy, cost_search_base,
             cost_search_per16, cost_alloc_base, cost_alloc_per_byte, cost_divide,
             cost_absorb, p_write_flip, q_slip, p_bit_rot, p_debris_decay,
         } = self;
@@ -110,6 +120,7 @@ impl Config {
             ("self_owner", self_owner.to_string()),
             ("charge_owner", charge_owner.to_string()),
             ("charge_owner_pct", charge_owner_pct.to_string()),
+            ("transfer_pct", transfer_pct.to_string()),
             ("cost_simple", cost_simple.to_string()),
             ("cost_load", cost_load.to_string()),
             ("cost_store", cost_store.to_string()),
@@ -172,6 +183,7 @@ impl Default for Config {
             self_owner: false,
             charge_owner: false,
             charge_owner_pct: 0,
+            transfer_pct: 0,
             cost_simple: MILLI,
             cost_load: 2 * MILLI,
             cost_store: 2 * MILLI,

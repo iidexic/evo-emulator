@@ -731,6 +731,25 @@ and an entry costs at most one pass; the saving is an order of
 magnitude below the five-byte cost. Split-charge line closed; next cost
 rule is a transfer (the intruder gains what the host loses), checked
 first by injection.
+E010 (2026-10-08, `docs/research/experiments/2026-10-08-e010-transfer.md`,
+designed): `--transfer-pct N`, every instruction run on another living
+organism's bytes moves `floor(cost * N / 100)` from the owner to the
+executor, on top of the executor's own cost; informative for N > 100,
+where intrusion profits. H15. Gated as E009 was: world calibration
+picks N (entries common, hosts persist), then the E009b injection test
+with an ejecting six-byte defence (`skipz A ; jmpa D` after the
+self-scan; the E009 trap is a drain under transfer and becomes the
+negative control). Calibration (15 runs, 50,000 ticks): entered
+fraction 12–14% at every N, births 104–122% of N = 0's; no N qualifies,
+stop rule applied, gate and search not run. Intruders are not
+energy-limited (profit does not multiply them) and an entry still
+kills the host within one pass (the store is one pass deep), so
+entries stay rare and fatal under any per-instruction rule. H15
+falsified on its premise. The eject defence works in the harness and
+is kept. Cost-rule line (E008–E010) closed; the cause is physics (the
+one-pass store, placement-limited intruders), see §9 energy location.
+Next: the recent-literature review, then choose between the
+energy-location change and the Phase 4 BFF harness.
 
 **Phase 3 — Richer physics.** 2D torus, per-patch parameters,
 seasons, slow drift, drain/defense ops (bit rot and debris exist since
@@ -761,7 +780,11 @@ resource types). Multi-day runs. Compare ISA variants for evolvability.
   the cheapest form of "the host pays" (`--charge-owner`, the owner of
   the byte at IP pays for its execution): the full charge kills an
   entered host within one intruder cycle and rewards the killer. E009
-  tries a split.
+  tried a split and E010 a transfer (2026-10-08); all three fail the
+  same way because the host's store is smaller than one pass of its
+  loop, so an owner-side cost is either invisible or fatal. Making an
+  entered host survive many passes needs a store several passes deep,
+  which is this question.
 - Locality from IP (Phase 1 decision) vs from body start. IP-relative lets
   an IP wander far from its body at a per-byte energy cost; whether that
   gets abused (organisms executing free space to reach distant debris) is a

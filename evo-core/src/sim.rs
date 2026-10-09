@@ -77,6 +77,11 @@ pub struct OrgStats {
     /// owners of the bytes it ran: the whole charge under `charge_owner`,
     /// the owner's share under `charge_owner_pct`). Not in `spent_m`.
     pub paid_by_others_m: i64,
+    /// Energy received from the owners of the bytes this organism ran,
+    /// under `transfer_pct` (E010): what the owner lost, capped by this
+    /// organism's room below its store cap. The owner's loss is in its
+    /// `spent_m` and `paid_for_others_m`. 0 without the flag.
+    pub gained_from_others_m: i64,
 }
 
 impl OrgStats {
@@ -106,22 +111,23 @@ impl OrgStats {
             max_energy_m: born_with_m,
             paid_for_others_m: 0,
             paid_by_others_m: 0,
+            gained_from_others_m: 0,
         }
     }
 
     /// CSV column names, in the order `csv_row` writes them.
-    pub const CSV_HEADER: &'static str = "born_with_m,executed,absorbs,absorb_gain_m,absorb_short,absorb_capped,copies,reads_foreign,exec_foreign,exec_unowned,writes_blocked,range_faults,allocs_ok,allocs_fail,divides_ok,divides_fail,endowed_m,spent_m,upkeep_m,starved_ticks,last_divide_tick,max_energy_m,paid_for_others_m,paid_by_others_m";
+    pub const CSV_HEADER: &'static str = "born_with_m,executed,absorbs,absorb_gain_m,absorb_short,absorb_capped,copies,reads_foreign,exec_foreign,exec_unowned,writes_blocked,range_faults,allocs_ok,allocs_fail,divides_ok,divides_fail,endowed_m,spent_m,upkeep_m,starved_ticks,last_divide_tick,max_energy_m,paid_for_others_m,paid_by_others_m,gained_from_others_m";
 
     pub fn csv_row(&self) -> String {
         format!(
-            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
             self.born_with_m, self.executed, self.absorbs, self.absorb_gain_m,
             self.absorb_short, self.absorb_capped, self.copies, self.reads_foreign,
             self.exec_foreign, self.exec_unowned, self.writes_blocked, self.range_faults,
             self.allocs_ok, self.allocs_fail, self.divides_ok, self.divides_fail,
             self.endowed_m, self.spent_m, self.upkeep_m, self.starved_ticks,
             self.last_divide_tick, self.max_energy_m, self.paid_for_others_m,
-            self.paid_by_others_m,
+            self.paid_by_others_m, self.gained_from_others_m,
         )
     }
 }
@@ -252,6 +258,12 @@ pub fn fnv1a(bytes: &[u8]) -> u64 {
 
 impl Sim {
     pub fn new(cfg: Config) -> Sim {
+        // E010's transfer and the owner-pays rules (E008, E009) each decide
+        // who pays for foreign execution; `step` assumes at most one is on.
+        assert!(
+            cfg.transfer_pct >= 0 && !(cfg.transfer_pct > 0 && (cfg.charge_owner || cfg.charge_owner_pct > 0)),
+            "transfer_pct cannot be combined with charge_owner or charge_owner_pct"
+        );
         let n = cfg.world_size as usize;
         let np = (n + cfg.patch_size as usize - 1) / cfg.patch_size as usize;
         Sim {
@@ -524,6 +536,10 @@ impl Sim {
     /// not afford the base cost, or under `charge_owner_pct` the executor
     /// could not afford its part of it (nothing runs).
     /// `cap_left` is the per-tick budget still available.
+    /// Under `transfer_pct` (E010) the executor pays as with no flag, then
+    /// the owner of the byte at IP passes energy to it (see the end of the
+    /// function); the returned charge, and so the tick budget, does not
+    /// include that transfer.
     fn step(&mut self, i: usize, cap_left: i64) -> Option<i64> {
         let cfg_cost_simple = self.cfg.cost_simple;
         let ip = self.orgs[i].ip;
@@ -899,6 +915,42 @@ impl Sim {
         // the payer's. The executor's per-tick budget is debited by both.
         let total = shared + charge;
         self.energy_out += total;
+
+        // Transfer (E010): the executor has paid its own full cost above
+        // (with `transfer_pct` on, the other two flags are off, so `payer`
+        // is `i` and there is no `sharer`). Now, if the byte at IP belongs
+        // to another living organism j, j loses `take` and the executor
+        // gains as much of it as fits under its store cap, measured after
+        // it paid; the rest is dissipated. Debris, free bytes and a dead
+        // owner give nothing. `own` was read before the op ran; no op can
+        // change the owner of a byte a living organism holds.
+        let tpct = self.cfg.transfer_pct;
+        if tpct > 0 && own >= FIRST_ID && own != self.orgs[i].id {
+            // `if let Some(j) = ...` runs the block only when the lookup
+            // found an index; a retired owner gives `None` and is skipped.
+            if let Some(j) = self.org_index(own) {
+                if self.orgs[j].alive {
+                    let take = (cost * tpct / 100).min(self.orgs[j].energy);
+                    // `q` is a checked pointer into the list, valid until
+                    // its last use three lines down; only then may the code
+                    // touch `self.orgs[i]` (one `&mut` at a time).
+                    let q = &mut self.orgs[j];
+                    q.energy -= take;
+                    q.stats.spent_m += take;
+                    q.stats.paid_for_others_m += take;
+                    let cap = self.cfg.store_cap_per_byte * self.orgs[i].len as i64;
+                    let room = (cap - self.orgs[i].energy).max(0);
+                    let gain = take.min(room);
+                    let o = &mut self.orgs[i];
+                    o.energy += gain;
+                    o.stats.gained_from_others_m += gain;
+                    o.stats.max_energy_m = o.stats.max_energy_m.max(o.energy);
+                    self.energy_out += take - gain;
+                }
+            }
+        }
+        // The tick budget is debited by the executor's own charge only;
+        // the transfer is not work.
         Some(total)
     }
 
@@ -1410,6 +1462,207 @@ mod tests {
         let zero = run(cfg);
         assert_eq!(zero, run(Config::default()));
         assert_eq!(zero, (895, 28627, 27733, 688492519, 36317283733));
+    }
+
+    #[test]
+    fn transfer_pct_zero_is_the_default_world() {
+        // E010: N = 0 must leave the E007 world untouched; the same short
+        // check as for `charge_owner_pct`, with the same reference numbers
+        // (the CLI hash at tick 20,000 of seed 1 is the full check).
+        let run = |cfg: Config| {
+            let mut sim = Sim::new(cfg);
+            sim.seed(sim.cfg.world_size / 2, &ancestor(64, 16), 100 * MILLI, 0);
+            let (mut births, mut deaths) = (0u64, 0u64);
+            let mut gained = 0;
+            for _ in 0..2000 {
+                sim.run_tick();
+                for ev in sim.events.drain(..) {
+                    match ev {
+                        Event::Birth { .. } => births += 1,
+                        Event::Death { stats, .. } => {
+                            deaths += 1;
+                            gained += stats.gained_from_others_m;
+                        }
+                    }
+                }
+            }
+            gained += sim.orgs.iter().map(|o| o.stats.gained_from_others_m).sum::<i64>();
+            assert_eq!(gained, 0);
+            (sim.alive_count(), births, deaths, sim.energy_in_organisms(), sim.energy_out)
+        };
+        let mut cfg = Config::default();
+        cfg.transfer_pct = 0;
+        let zero = run(cfg);
+        assert_eq!(zero, run(Config::default()));
+        assert_eq!(zero, (895, 28627, 27733, 688492519, 36317283733));
+    }
+
+    #[test]
+    fn transfer_conserves_energy_and_balances_ledgers() {
+        // E010 at N = 150: a `pad` in front of the ancestor, noise on, so
+        // the world fills with descendants and intruders of every kind.
+        // Every store balances against its own ledger, now with
+        // `gained_from_others_m` on the income side (the owner's loss is in
+        // its `spent_m`), at every tick for the living and at death for the
+        // dead. Nobody is paid for (`paid_by_others_m` stays 0), and the
+        // world gained no more than owners lost (the rest went to
+        // `energy_out` when the receiver's store was full).
+        let mut cfg = Config::default();
+        cfg.transfer_pct = 150;
+        let mut sim = Sim::new(cfg);
+        let seed_energy = 100 * MILLI;
+        let host = sim.seed(1000, &ancestor(64, 16), seed_energy, 0);
+        let pad = sim.seed(999, &[0x00], seed_energy, 0);
+        let (mut host_paid, mut pad_gained) = (0, 0);
+        // Lifetime totals of the organisms that died, then of the living.
+        let (mut paid_for, mut gained) = (0, 0);
+        let ledger = |energy: i64, s: &OrgStats| {
+            assert_eq!(energy, s.born_with_m + s.absorb_gain_m + s.gained_from_others_m - s.spent_m - s.upkeep_m - s.endowed_m);
+            assert_eq!(s.paid_by_others_m, 0);
+            assert!(s.paid_for_others_m <= s.spent_m);
+        };
+        for _ in 0..2000 {
+            sim.run_tick();
+            for ev in sim.events.drain(..) {
+                if let Event::Death { id, energy, stats, .. } = ev {
+                    // `energy` is the store just before the failed upkeep
+                    // (or the cull), so the ledger holds for it too.
+                    ledger(energy, &stats);
+                    paid_for += stats.paid_for_others_m;
+                    gained += stats.gained_from_others_m;
+                    if id == host {
+                        host_paid = stats.paid_for_others_m;
+                    }
+                    if id == pad {
+                        pad_gained = stats.gained_from_others_m;
+                    }
+                }
+            }
+            for o in sim.orgs.iter().filter(|o| o.alive) {
+                ledger(o.energy, &o.stats);
+            }
+        }
+        for o in sim.orgs.iter().filter(|o| o.alive) {
+            paid_for += o.stats.paid_for_others_m;
+            gained += o.stats.gained_from_others_m;
+            if o.id == host {
+                host_paid = o.stats.paid_for_others_m;
+            }
+            if o.id == pad {
+                pad_gained = o.stats.gained_from_others_m;
+            }
+        }
+        assert!(host_paid > 0, "the host never paid the pad");
+        assert!(pad_gained > 0, "the pad never gained");
+        assert!(gained > 0 && gained <= paid_for, "gained {gained}, paid for others {paid_for}");
+        let initial_pools = sim.patches.len() as i64 * sim.cfg.patch_cap;
+        let lhs = 2 * seed_energy + initial_pools + sim.energy_in;
+        let rhs = sim.energy_in_organisms() + sim.energy_in_patches() + sim.energy_out + sim.energy_overflow;
+        assert_eq!(lhs, rhs);
+        eprintln!("transfer N=150, 2000 ticks: owners lost {paid_for}, executors gained {gained} (milli-units)");
+    }
+
+    /// E010 unit setups: an 8-byte host of `zero D` at 2000 and a one-byte
+    /// `pad` at 1999 whose IP is put on the host's byte 0, both quiet.
+    /// Returns the sim and the two ids (host, pad); `pad` is `orgs[1]`.
+    fn transfer_pair(pct: i64, host_energy: i64, pad_energy: i64) -> (Sim, u32, u32) {
+        let mut cfg = Config::default();
+        quiet(&mut cfg);
+        cfg.transfer_pct = pct;
+        let mut sim = Sim::new(cfg);
+        let body = crate::isa::assemble(&"zero D\n".repeat(8)).unwrap();
+        let host = sim.seed(2000, &body, host_energy, 0);
+        let pad = sim.seed(1999, &[0x00], pad_energy, 0);
+        sim.orgs[1].ip = 2000;
+        (sim, host, pad)
+    }
+
+    #[test]
+    fn transfer_takes_nothing_from_debris_free_bytes_or_a_dead_owner() {
+        // E010: only a living owner pays. The baseline step shows the setup
+        // does transfer (N = 300: the host loses 3 units, the pad gains them);
+        // then the same `zero D` run on debris, on a byte whose owner id is
+        // a dead organism not yet retired, on one whose owner was retired,
+        // and on free memory costs the pad exactly its own 1 unit.
+        let cs = Config::default().cost_simple;
+        let (mut sim, host, pad) = transfer_pair(300, 100 * MILLI, 50 * MILLI);
+        let cap = sim.cfg.cap_c0;
+        assert_eq!(sim.step(1, cap), Some(cs));
+        assert_eq!(sim.orgs[0].energy, 100 * MILLI - 3 * cs);
+        assert_eq!(sim.orgs[1].energy, 50 * MILLI - cs + 3 * cs);
+        assert_eq!(sim.orgs[1].stats.gained_from_others_m, 3 * cs);
+        // `check` steps the pad at `at` and asserts that nothing moved but
+        // its own cost. A closure that mutates `sim` is passed it explicitly,
+        // because it cannot also hold a borrow of it. The pad's index is
+        // looked up each time: `retire` moves it from 1 to 0.
+        let check = |sim: &mut Sim, at: u32, what: &str| {
+            let k = sim.org_index(pad).unwrap();
+            let (e, g, out) = (sim.orgs[k].energy, sim.orgs[k].stats.gained_from_others_m, sim.energy_out);
+            sim.orgs[k].ip = at;
+            assert_eq!(sim.step(k, cap), Some(cs), "{what}");
+            assert_eq!(sim.orgs[k].energy, e - cs, "{what}");
+            assert_eq!(sim.orgs[k].stats.gained_from_others_m, g, "{what}");
+            assert_eq!(sim.energy_out, out + cs, "{what}");
+        };
+        // Kill the host: its bytes become debris but keep their code.
+        sim.cull_all_but(pad);
+        assert!(!sim.orgs[0].alive);
+        assert_eq!(sim.owner[2001], DEBRIS);
+        check(&mut sim, 2001, "debris");
+        // A dead owner's id on a byte (kill rewrites them, so set by hand).
+        sim.owner[2002] = host;
+        check(&mut sim, 2002, "dead owner, not retired");
+        sim.retire();
+        assert!(sim.genome_of(host).is_none());
+        sim.owner[2003] = host;
+        check(&mut sim, 2003, "retired owner");
+        sim.owner[2004] = FREE;
+        check(&mut sim, 2004, "free byte");
+        assert_eq!(sim.genome_of(pad).unwrap().stats.paid_by_others_m, 0);
+    }
+
+    #[test]
+    fn transfer_receipt_is_capped_at_the_store() {
+        // E010: the executor's room is measured after it paid its own cost,
+        // and what does not fit is dissipated; the owner's loss is capped
+        // by its store. N = 300, `zero D` (1 unit): take 3 units.
+        let cs = Config::default().cost_simple;
+        let cap_pad = Config::default().store_cap_per_byte; // 1-byte body
+        // The pad starts full: after paying 1 it has room for 1 of the 3.
+        let (mut sim, _, _) = transfer_pair(300, 100 * MILLI, cap_pad);
+        let cap = sim.cfg.cap_c0;
+        let out = sim.energy_out;
+        assert_eq!(sim.step(1, cap), Some(cs), "the tick budget sees the executor's cost only");
+        assert_eq!(sim.orgs[0].energy, 100 * MILLI - 3 * cs);
+        assert_eq!(sim.orgs[0].stats.paid_for_others_m, 3 * cs);
+        assert_eq!(sim.orgs[0].stats.spent_m, 3 * cs);
+        assert_eq!(sim.orgs[1].energy, cap_pad);
+        assert_eq!(sim.orgs[1].stats.gained_from_others_m, cs);
+        assert_eq!(sim.orgs[1].stats.spent_m, cs);
+        assert_eq!(sim.orgs[1].stats.max_energy_m, cap_pad);
+        assert_eq!(sim.energy_out, out + cs + 2 * cs, "own cost plus the 2 units that did not fit");
+        // An owner with 2 units gives 2, not 3, and then nothing.
+        sim.orgs[0].energy = 2 * cs;
+        let out = sim.energy_out;
+        assert_eq!(sim.step(1, cap), Some(cs));
+        assert_eq!(sim.orgs[0].energy, 0);
+        assert_eq!(sim.orgs[1].energy, cap_pad);
+        assert_eq!(sim.energy_out, out + cs + cs);
+        let out = sim.energy_out;
+        assert_eq!(sim.step(1, cap), Some(cs));
+        assert_eq!(sim.orgs[0].stats.paid_for_others_m, 5 * cs);
+        assert_eq!(sim.orgs[1].energy, cap_pad - cs);
+        assert_eq!(sim.energy_out, out + cs);
+        assert_eq!(sim.orgs[1].stats.gained_from_others_m, 2 * cs);
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot be combined")]
+    fn transfer_refuses_an_owner_pays_rule() {
+        let mut cfg = Config::default();
+        cfg.transfer_pct = 150;
+        cfg.charge_owner_pct = 25;
+        Sim::new(cfg);
     }
 
     #[test]

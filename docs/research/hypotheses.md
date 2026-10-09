@@ -529,3 +529,38 @@ without the search (the defence does not pay under any owner-pays rule
 tried); the endowment half is untested, and the 250,000-tick E009 is
 not run. Next cost rule: a transfer (the intruder gains what the host
 loses).
+
+## H15. Intrusion that profits makes a short ejecting defence pay (2026-10-08)
+
+Under a transfer rule (`--transfer-pct N`, N > 100: each instruction
+executed on another living organism's bytes moves `floor(cost * N / 100)`
+from the owner's store into the executor's, on top of the executor's
+own cost), intruders profit from entry and proliferate, most hosts are
+entered many times per lifetime, and a six-byte ejecting defence
+(`self 1 ; swap C ; self 0 ; sub C ; skipz A ; jmpa D`) injected at tick
+25,000 is maintained by selection where a length-matched inert prefix
+is lost. Falsified if, at an N where at least 50% of replicator-class
+deaths were entered and the host population persists, the eject is lost
+at the inert control's rate; or if no N makes intrusion common without
+collapsing the hosts. Protocol and predictions:
+`experiments/2026-10-08-e010-transfer.md`. Designed, not run.
+
+## H15 note (2026-10-08)
+
+The transfer rule was built (`--transfer-pct N`, with the
+`gained_from_others_m` ledger column) and calibrated in the world at
+N = 100, 150, 200, 300 (`experiments/2026-10-08-e010-transfer.md`).
+The entered fraction of replicator-class deaths is 12–14% at every N,
+as it was under the owner-pays rules (7–14%), and replicator births are
+104–122% of N = 0's. The premise fails: profit does not raise intruder
+numbers because intruders are not energy-limited (a one-byte `pad`
+holds at most 64 units and makes 189 harness children at every N), and
+each entry still kills the host within one pass (the host's store is
+smaller than a pass of its loop), so entries stay rare and fatal. The
+six-byte eject (`self 1 ; swap C ; self 0 ; sub C ; skipz A ; jmpa D`)
+works in the harness (host neutral, intruders sent to address 0 or
+world_size − 4, 9 units per entry at N = 150) but was not injected: the
+calibration's stop rule applied. Status: H15 falsified on its premise.
+Cost-rule line (E008, E009, E010) closed; the structural cause is the
+one-pass store and placement-limited intruders, a physics question
+(PLAN §9, energy location), not a cost rule.
