@@ -914,7 +914,10 @@ test them.
   one file per cluster, URL on every fact, UNVERIFIED tags kept; plus
   `recent-1` to `recent-4` from the 2026-10-09 review of work since
   2020 (`literature-recent-plan.md`, executed; summary in
-  `literature.md` §6).
+  `literature.md` §6). Round 2 (planned 2026-10-09, not executed):
+  the ALIFE 2023–2026 proceedings, listed and triaged in
+  `notes/isal-proceedings-2023-2026.md`, 34 papers to read in three
+  clusters (`literature-recent-plan.md`, "Round 2").
 - `docs/research-historic/`: the earlier Codex pass. Superseded by
   `literature.md`; kept for the reference list.
 - `docs/research/experiments/`: one file per experiment (E001 onward): seed, config hash,
