@@ -1,5 +1,15 @@
 # Recent-work review: plan (2026-10-08)
 
+Executed 2026-10-09 by four agents, one per cluster, in about an hour
+of fetching rather than the two or three days planned. Output:
+`notes/recent-1-host-parasite.md`, `recent-2-soup-emergence.md`,
+`recent-3-oee-measures.md`, `recent-4-energy-accounting.md`;
+`literature.md` §6 (answers to the five questions in §6.4);
+`hypotheses.md` note on H13–H15; PLAN §8 Phase 4, §9, §10. Not
+reached: MIT Press (HTTP 403 on every ISAL and *Artificial Life*
+page), so Bohm, Zhang & Dolson 2024 and Willkens & Pollack 2023 are
+abstract-only; Google Scholar cited-by was not attempted.
+
 Purpose: before committing to a question that could carry a paper, find
 what has been done since the sources in `literature.md` (which stops at
 the 2024 *Computational Life* paper and the two 2026 follow-ups already

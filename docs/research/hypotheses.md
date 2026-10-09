@@ -564,3 +564,30 @@ calibration's stop rule applied. Status: H15 falsified on its premise.
 Cost-rule line (E008, E009, E010) closed; the structural cause is the
 one-pass store and placement-limited intruders, a physics question
 (PLAN §9, energy location), not a cost rule.
+
+---
+
+## H13, H14, H15 note (2026-10-09, from the literature review)
+
+The recent-work review (`literature.md` §6) bears on the three cost-rule
+hypotheses together. (1) The owner-pays rule of H13/E008 was published
+six days before E008 ran: Jha et al. 2026 (arXiv 2609.10817)
+"Tape-as-Agent" charges the owner of the executed byte and not the
+executor, in a Z80 soup without ownership or write protection; they
+report no resistance to partner execution and no emergence rate. E008
+stands as the rule under ownership with a one-pass store, and its
+result is the negative one. (2) Avida parasites have charged the host
+since 2011 (each parasite instruction costs a host cycle at virulence
+0.8), and resistance evolved there, but the host pays from a rate, not
+a store, so there is no cliff; Symbulation and Seoane and Sole got
+defence from graded cost with scalar defences. Every system where a
+charged host evolved a defence paid from a budget 4 to 20 passes deep;
+Cosmos and evo, at about one pass, got nothing. That is the physics
+diagnosis of H15's note from the other side. (3) H14's reachability
+argument has no precedent: nobody has traced the path to an evolved
+defence with intermediate fitness (Stringmol 2021 gives six qualitative
+stages through region rearrangements; Ray 1992 gives a 19-instruction
+difference and no intermediates), and Standish 2004 found neutral steps
+in Tierra under-followed relative to their availability, which makes a
+four-neutral-insertion path rarer still. Status unchanged for all
+three; the next hypothesis should be about store depth, not cost rules.

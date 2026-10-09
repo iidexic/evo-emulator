@@ -762,7 +762,18 @@ Agüera y Arcas et al. (2024) exactly (2^17 tapes of 64 bytes, random
 pairing, 8,192 steps per interaction, byte-replacement mutation at 2^-12)
 to confirm their 40% emergence rate, then swap in evo's ISA on the same
 protocol, then add evo's physics one rule at a time (energy, ownership,
-locality). This isolates which rule, if any, kills emergence. Then soup
+locality). This isolates which rule, if any, kills emergence. Literature
+(2026-10-09, `literature.md` §6.3.3, §6.4): nobody has done this;
+energy was added to a soup once (Jha et al. 2026, c = 1 per op,
+ε = 24 per epoch) without an off control, and ownership, write
+protection and death by energy never. Sweep order: start-execution
+head position first (the one rule with quantified prior art), energy
+with an off control second, ownership third. Report QNN over
+`func_hash` groups and MRCA depth from the next experiment on
+(§6.4 question 4); and run the Lenski 2003 line-of-descent analysis
+(fitness of every step on the winning lineage) on E007's ancestry
+table for the K sweep, which no digital system has done for a
+defence or a physiological trait. Then soup
 runs with no seed in the full world, with a start-execution rule (§9). Chemistry (multiple
 resource types). Multi-day runs. Compare ISA variants for evolvability.
 
@@ -784,7 +795,13 @@ resource types). Multi-day runs. Compare ISA variants for evolvability.
   same way because the host's store is smaller than one pass of its
   loop, so an owner-side cost is either invisible or fatal. Making an
   entered host survive many passes needs a store several passes deep,
-  which is this question.
+  which is this question. Literature (2026-10-09, `literature.md`
+  §6.3.2): every system where a charged host evolved a defence paid
+  from a rate or a divisible budget 4–20 passes deep (Avida's energy
+  model fixes depth at 2,000 instructions whatever the store);
+  Cosmos, at 0.9–1.7 passes, froze like evo. Next design: store depth
+  as a parameter (cap or income tied to pass length, not bytes), swept
+  with the E009b injection test as the gate.
 - Locality from IP (Phase 1 decision) vs from body start. IP-relative lets
   an IP wander far from its body at a per-byte energy cost; whether that
   gets abused (organisms executing free space to reach distant debris) is a
@@ -863,7 +880,10 @@ test them.
   cost alone does not produce a defence (supported by E008). H14
   (2026-10-08): a split charge, E009.
 - `docs/research/notes/`: raw per-source notes from the 2026-09-30 review,
-  one file per cluster, URL on every fact, UNVERIFIED tags kept.
+  one file per cluster, URL on every fact, UNVERIFIED tags kept; plus
+  `recent-1` to `recent-4` from the 2026-10-09 review of work since
+  2020 (`literature-recent-plan.md`, executed; summary in
+  `literature.md` §6).
 - `docs/research-historic/`: the earlier Codex pass. Superseded by
   `literature.md`; kept for the reference list.
 - `docs/research/experiments/`: one file per experiment (E001 onward): seed, config hash,
