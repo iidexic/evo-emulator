@@ -82,6 +82,15 @@ pub struct OrgStats {
     /// organism's room below its store cap. The owner's loss is in its
     /// `spent_m` and `paid_for_others_m`. 0 without the flag.
     pub gained_from_others_m: i64,
+    /// Writes (`store`, `copy`) by this organism that landed on a byte
+    /// owned by another living organism (body or pending region). Only
+    /// possible with write protection off (`--no-protect`, E012); 0 with it
+    /// on, where the same writes are counted in `writes_blocked`.
+    pub writes_foreign: u64,
+    /// Writes by other organisms that landed on this organism's body or
+    /// pending region, the victim-side counterpart of `writes_foreign`
+    /// (E012). Summed over all organisms the two counters agree.
+    pub overwritten: u64,
 }
 
 impl OrgStats {
@@ -112,22 +121,25 @@ impl OrgStats {
             paid_for_others_m: 0,
             paid_by_others_m: 0,
             gained_from_others_m: 0,
+            writes_foreign: 0,
+            overwritten: 0,
         }
     }
 
     /// CSV column names, in the order `csv_row` writes them.
-    pub const CSV_HEADER: &'static str = "born_with_m,executed,absorbs,absorb_gain_m,absorb_short,absorb_capped,copies,reads_foreign,exec_foreign,exec_unowned,writes_blocked,range_faults,allocs_ok,allocs_fail,divides_ok,divides_fail,endowed_m,spent_m,upkeep_m,starved_ticks,last_divide_tick,max_energy_m,paid_for_others_m,paid_by_others_m,gained_from_others_m";
+    pub const CSV_HEADER: &'static str = "born_with_m,executed,absorbs,absorb_gain_m,absorb_short,absorb_capped,copies,reads_foreign,exec_foreign,exec_unowned,writes_blocked,range_faults,allocs_ok,allocs_fail,divides_ok,divides_fail,endowed_m,spent_m,upkeep_m,starved_ticks,last_divide_tick,max_energy_m,paid_for_others_m,paid_by_others_m,gained_from_others_m,writes_foreign,overwritten";
 
     pub fn csv_row(&self) -> String {
         format!(
-            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
             self.born_with_m, self.executed, self.absorbs, self.absorb_gain_m,
             self.absorb_short, self.absorb_capped, self.copies, self.reads_foreign,
             self.exec_foreign, self.exec_unowned, self.writes_blocked, self.range_faults,
             self.allocs_ok, self.allocs_fail, self.divides_ok, self.divides_fail,
             self.endowed_m, self.spent_m, self.upkeep_m, self.starved_ticks,
             self.last_divide_tick, self.max_energy_m, self.paid_for_others_m,
-            self.paid_by_others_m, self.gained_from_others_m,
+            self.paid_by_others_m, self.gained_from_others_m, self.writes_foreign,
+            self.overwritten,
         )
     }
 }
@@ -500,6 +512,15 @@ impl Sim {
             self.orgs[i].flag = true;
             self.orgs[i].stats.writes_blocked += 1;
             return false;
+        }
+        // Protection off (E012): the write lands on another organism's
+        // bytes. `kill` turns a dead organism's bytes to debris, so `own`
+        // here is always a living organism.
+        if own >= FIRST_ID && own != me {
+            self.orgs[i].stats.writes_foreign += 1;
+            if let Some(j) = self.org_index(own) {
+                self.orgs[j].stats.overwritten += 1;
+            }
         }
         let mut v = val;
         if self.rng.chance(self.cfg.p_write_flip) {
@@ -1804,6 +1825,66 @@ self 2
         // `self 2` moved the flag into A and cleared it.
         assert_eq!(sim.orgs[1].regs[0], 1);
         assert!(!sim.orgs[1].flag);
+    }
+
+    #[test]
+    fn no_protect_lands_foreign_store_and_counts_both_sides() {
+        // E012: the same attacker as above with protection off. The store
+        // lands, sets no flag, and is counted once for the writer
+        // (`writes_foreign`) and once for the victim (`overwritten`).
+        let mut cfg = Config::default();
+        quiet(&mut cfg);
+        cfg.write_protection = false;
+        let mut sim = Sim::new(cfg);
+        let victim = vec![crate::isa::encode(Op::Nop0, 0); 8];
+        sim.seed(2000, &victim, 10 * MILLI, 0);
+        let src = "self\nlit B 100\nadd B\nstore C\nself 2\n";
+        let att = crate::isa::assemble(src).unwrap();
+        sim.seed(1900, &att, 100 * MILLI, 0);
+        sim.run_tick();
+        assert_eq!(sim.bytes[2000], 0, "C was 0 and the store landed");
+        assert_eq!(sim.orgs[1].regs[0], 0, "no flag");
+        assert_eq!(sim.orgs[1].stats.writes_foreign, 1);
+        assert_eq!(sim.orgs[1].stats.writes_blocked, 0);
+        assert_eq!(sim.orgs[0].stats.overwritten, 1);
+        assert_eq!(sim.orgs[0].stats.writes_foreign, 0);
+    }
+
+    #[test]
+    fn foreign_write_counters_agree_over_a_world() {
+        // E012: in the standard world with protection off and noise on,
+        // the writer-side and victim-side counters sum to the same total
+        // over every organism, living or dead; with protection on both are
+        // zero.
+        const TICKS: usize = 6000;
+        for protect in [false, true] {
+            let mut cfg = Config::default();
+            cfg.write_protection = protect;
+            let mut sim = Sim::new(cfg);
+            let at = sim.cfg.world_size / 2;
+            sim.seed(at, &ancestor(64, 16), 100 * MILLI, 0);
+            let (mut w, mut v) = (0u64, 0u64);
+            for _ in 0..TICKS {
+                sim.run_tick();
+                for ev in sim.events.drain(..) {
+                    if let Event::Death { stats, .. } = ev {
+                        w += stats.writes_foreign;
+                        v += stats.overwritten;
+                    }
+                }
+            }
+            for o in sim.orgs.iter().filter(|o| o.alive) {
+                w += o.stats.writes_foreign;
+                v += o.stats.overwritten;
+            }
+            assert_eq!(w, v, "protect={protect}");
+            if protect {
+                assert_eq!(w, 0);
+            } else {
+                assert!(w > 0, "no foreign write landed with protection off");
+            }
+            eprintln!("protect={protect}: {w} foreign writes landed in {TICKS} ticks");
+        }
     }
 
     #[test]

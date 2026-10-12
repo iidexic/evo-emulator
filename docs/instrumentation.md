@@ -64,7 +64,9 @@ Genotype counts in the census use raw hashes (as Tierra did); grouping by
 | `max_energy_m` | highest energy held |
 | `paid_for_others_m` | energy charged for instructions other organisms executed in its body (`charge_owner`, E008: the whole cost; `--charge-owner-pct N`, E009: the owner's share, `floor(cost × N / 100)` or its whole store if less; `--transfer-pct N`, E010: what it lost to the executor, `floor(cost × N / 100)` or its whole store if less, whether or not the executor could keep it); included in `spent_m`, 0 with all three flags off |
 | `paid_by_others_m` | energy other organisms (the owners of the bytes it ran) paid for its instructions, the counterpart of `paid_for_others_m` (2026-10-08, E009); not included in `spent_m`, which holds only what it paid itself; 0 with both owner-pays flags off, and always 0 under `--transfer-pct` (the executor pays its own cost there). Summed over all organisms it equals the sum of `paid_for_others_m` under the owner-pays rules |
-| `gained_from_others_m` | energy received from the owners of the bytes it ran under `--transfer-pct N` (2026-10-08, E010; the last column): the owner's loss, capped by the room left below its store cap after it paid its own cost; what does not fit is dissipated (`energy_out`). 0 without the flag. Summed over all organisms it is at most the sum of `paid_for_others_m` |
+| `gained_from_others_m` | energy received from the owners of the bytes it ran under `--transfer-pct N` (2026-10-08, E010): the owner's loss, capped by the room left below its store cap after it paid its own cost; what does not fit is dissipated (`energy_out`). 0 without the flag. Summed over all organisms it is at most the sum of `paid_for_others_m` |
+| `writes_foreign` | writes (`store`, `copy`) that landed on a byte owned by another living organism, its body or pending region (2026-10-12, E012). Possible only with `--no-protect`; with protection on the same writes are refused and counted in `writes_blocked`, and this is 0 |
+| `overwritten` | writes by other organisms that landed on this organism's body or pending region, the victim-side counterpart of `writes_foreign` (2026-10-12, E012; the last column). Summed over all organisms the two agree (tested); 0 with protection on |
 
 Ledger identity (tested): for a living organism, and for a dead one with
 the `energy` of its death row,
@@ -74,7 +76,9 @@ unit an owner pays for an intruder is in the owner's `spent_m`, not the
 intruder's (tested at N = 50), and under `--transfer-pct N` because the
 owner's loss is in its `spent_m` and the executor's receipt in its
 `gained_from_others_m` (tested at N = 150). Runs before E010 have no
-`gained_from_others_m` column; it was 0 in all of them.
+`gained_from_others_m` column; it was 0 in all of them. Runs before
+2026-10-12 have no `writes_foreign` or `overwritten` column; every run
+before E012 had protection on, so both were 0.
 
 `--transfer-pct N` (`Config.transfer_pct`, E010, default 0): the
 executor pays its own full cost for every instruction, as with no flag
