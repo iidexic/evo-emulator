@@ -66,25 +66,40 @@ Contents:
 Landing page: [direct.mit.edu/isal/proceedings/isal2024/36/10/123479](https://direct.mit.edu/isal/proceedings/isal2024/36/10/123479)
 (DOI 10.1162/isal_a_00721). PDF and HTML both returned 403; the facts
 below are from the abstract as shown in search snippets. **UNVERIFIED**
-throughout.
+throughout. *Update 2026-10-12: the PDF was downloaded by hand
+(`docs/downloaded-papers/isal_a_00721_Bohm-Zhang-Dolson.pdf`) and read in
+full; each item below is marked verified or corrected, and the details
+(parasite parameters, sweep grid, which metric moved) are in
+[recent-7-measures-phylogeny.md](recent-7-measures-phylogeny.md) §1.*
 
 - Authors Clifford Bohm, Ivy Zhang, Emily Dolson
   ([search result](https://direct.mit.edu/isal/proceedings/isal2024/36/10/123479)).
+  (verified from full text 2026-10-12)
 - Motivation: MODES "had only been applied to a few systems so far"; they
   built "a custom digital evolution platform (Evo-Sandbox) designed
-  specifically for this purpose". **UNVERIFIED**
+  specifically for this purpose". (verified from full text 2026-10-12)
 - Treatments: "two diversity promoting mechanisms, fit-when-rare and
-  parasites", "across a range of conditions". **UNVERIFIED**
+  parasites", "across a range of conditions". (verified from full text
+  2026-10-12)
 - Conclusion in the abstract: "the regions of parameter space in which
   different hallmarks of open-endedness are maximized are non-intuitive",
   and MODES "is a valuable tool for understanding the resulting
-  behavior". **UNVERIFIED**
+  behavior". (verified from full text 2026-10-12, with a wording
+  correction: the abstract reads "MODES is, in fact, a valuable tool for
+  understanding the resulting behaviors")
 - Numbers (population, generations, replicates, filter length): not
-  reachable.
+  reachable. *Corrected 2026-10-12 from the full text:* 15-bit genomes,
+  population 500, 200,000 generations, 10 replicates, persistence filter
+  depths 100, 250, 500, 1,000 and 2,500 generations (N/5 to 5N).
 - For evo: this is the closest methodological precedent (a purpose-built
   small platform with parasites, measured with MODES). Worth obtaining
   the PDF by another route before Phase 4. Inputs are the MODES inputs:
   ancestry with generation depth, genomes, and a knockout harness.
+  *Corrected 2026-10-12 from the full text:* Bohm 2024 used no knockouts
+  (complexity was |number of ones − 7.5|, system-specific), and MODES was
+  applied to the host population only, not to the parasites. It is a
+  precedent in method (a parasite-cost sweep read with MODES at several
+  filter depths), not in substrate (bit strings, no execution).
 
 ### 1.2 Willkens & Pollack 2023, "MODES analysis of prediction games", ALIFE 2023
 
@@ -92,15 +107,31 @@ DOI 10.1162/isal_a_00647; the MIT Press page and doi.org redirect both
 returned 403. From the abstract as shown in search snippets
 ([ALIFE 2023 programme](https://2023.alife.org/programme/),
 [ResearchGate profile listing](https://www.researchgate.net/profile/Jordan-Pollack)).
-**UNVERIFIED** throughout.
+**UNVERIFIED** throughout. *Update 2026-10-12: the PDF was downloaded by
+hand (`docs/downloaded-papers/isal_a_00647_Willkens-Pollack.pdf`) and read
+in full; items below are marked verified or corrected; details in
+[recent-7-measures-phylogeny.md](recent-7-measures-phylogeny.md) §2.*
 
 - Applies MODES to the "Linguistic Prediction Game" domain: finite state
   machines playing formal-language prediction games, a complexity metric
   defined over the machines; the MODES analysis "lend[s] support to prior
-  hypotheses regarding evolutionary stable states". **UNVERIFIED**
+  hypotheses regarding evolutionary stable states". (verified from full
+  text 2026-10-12, with a correction: the machines are deterministic
+  finite state machines that emit one bit per step and are rewarded for
+  matching or mismatching the partner's bit, not "formal-language"
+  games; the complexity metric is the state count after Hopcroft
+  minimisation, plus the authors' fitness-preserving pruning)
 - The earlier system paper is Willkens & Pollack 2019, *Artificial Life*
   25(1):74-91, "Evolving complexity in prediction games"
   ([page](https://direct.mit.edu/artl/article/25/1/74/2913/Evolving-Complexity-in-Prediction-Games)).
+  *Corrected 2026-10-12:* the authors are Moran & Pollack, not Willkens &
+  Pollack: Nick Moran and Jordan Pollack, *Artificial Life* 25(1):74–91,
+  DOI [10.1162/artl_a_00281](https://doi.org/10.1162/artl_a_00281)
+  (Crossref), cited as "Moran and Pollack (2019)" in the paper itself.
+- Scale (new, from the full text 2026-10-12): population N = 50,
+  persistence window t = N = 50, 40 trials, runs to 50,000 generations.
+  Main finding: the complexity growth of the 3-Mixed ecosystem "appears
+  largely nonadaptive" once unused states are pruned.
 - For evo: not a replicator system; the only transferable point is that
   MODES has been run on a non-Avida population with a system-specific
   complexity measure.
@@ -473,8 +504,12 @@ the two that need new machinery; both are analysis-side.
 ## UNVERIFIED list
 
 - Bohm, Zhang & Dolson 2024: everything (abstract snippet only; MIT Press
-  403).
-- Willkens & Pollack 2023: everything (snippets only).
+  403). *Cleared 2026-10-12: read in full from a hand-downloaded PDF; see
+  §1.1 and `recent-7-measures-phylogeny.md` §1.*
+- Willkens & Pollack 2023: everything (snippets only). *Cleared
+  2026-10-12: read in full from a hand-downloaded PDF; one correction
+  (the 2019 system paper is Moran & Pollack); see §1.2 and
+  `recent-7-measures-phylogeny.md` §2.*
 - Lorantos & Spector 2025: whether MODES was computed.
 - Stepney & Hickinbotham 2024: that QNN is the "typical measure", and the
   run scale.

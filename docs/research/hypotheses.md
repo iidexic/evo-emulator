@@ -20,7 +20,7 @@ says nothing the notes do not.
 |---|---|---|---|---|
 | H1 | register ISA gives longer, more robust genomes than stack | open | none | Phase 4, not scheduled |
 | H2 | a producer/consumer split appears and is diagnostic | mixed by the registered rule, leaning refuted: no consumer mode | 2026-10-12 | E011 (on E007) |
-| H3 | no interior size optimum from c1 alone | open; c1 = 0 shows no change, shortest replicator unknown | 2026-10-09 | E007; c1 sweep not scheduled |
+| H3 | no interior size optimum from c1 alone | open; c1 = 0 shows no change, shortest replicator unknown | 2026-10-12 | E007; c1 sweep not scheduled |
 | H4 | write protection is necessary for coexistence | refuted in the standard world: `alloc` does its job | 2026-10-12 | E012 |
 | H5 | upkeep plus decay give enough turnover | mixed: at rot 1e-4 about 9% of the living are old loafers, stationary, not accumulating | 2026-10-12 | E002–E004, E007 |
 | H6 | the absorb loop takes over | supported in kind (longer absorb phase, then stasis) | 2026-10-09 | E002–E004, E007 |
@@ -31,7 +31,7 @@ says nothing the notes do not.
 | H11 | room alone sustains replication | refuted (H10's version holds) | 2026-10-05 | E004 |
 | H12 | no resistance to parasites that cost nothing | supported | 2026-10-07 | E007 |
 | H13 | a cost alone gives no defence on the E007 timescale | supported | 2026-10-09 | E008 |
-| H14 | a graded cost selects the one-byte defence, not the five-byte | self-scan half settled against; endowment half untested | 2026-10-09 | E009, E009a, E009b |
+| H14 | a graded cost selects the one-byte defence, not the five-byte | self-scan half settled against; endowment half untested | 2026-10-12 | E009, E009a, E009b |
 | H15 | profitable intrusion makes a short eject pay | refuted on its premise | 2026-10-09 | E010 |
 
 ---
@@ -735,3 +735,45 @@ when bit rot breaks them, and they do not accumulate. Absorb yield is
 above upkeep for a looping body, so H5's design condition (absorb
 yield below upkeep, so a loafer starves) is not met; turnover comes
 from rot alone.
+
+---
+
+## H14 note (2026-10-12, from round 2 of the literature review)
+
+Round 2 (`literature.md` §7.2, §7.4) read the adaptive-momentum line,
+which is the published mechanism for crossing a valley whose
+intermediates do not pay: during and just after a sweep, selection
+against mildly harmful steps is relaxed (Bohm et al. 2024, Ferguson,
+Ofria & Bohm 2024), and on chain and cycle graphs every population
+crossed every valley of four harmful steps and then a payoff (Gordon
+et al. 2025). It does not undo the self-scan half of H14. For a
+neutral path there is no selection to relax; the limit is supply, and
+each self-scan step is one byte value at one executed position, of
+order 10^-5 per birth at the reference p ≈ 8e-3 per byte written,
+against per-step supplies of about 10^-2 in those models (inference).
+It does name the conditions under which the argument would fail: the
+intermediates slightly harmful rather than neutral (E009 notes that
+each insertion lengthens the body), arising during a sweep, on a ring.
+E007's absorb-phase sweep in the first 10,000 ticks is such a window.
+No ISAL 2023–2026 paper traces a path to a defence; every defence in
+the Symbulation and Avida line pays at each step by construction.
+Status unchanged.
+
+---
+
+## H3 note (2026-10-12, from round 2 of the literature review)
+
+Design for the shortest-replicator search that H3 needs (`literature.md`
+§7.1, §7.5): Dušek et al. 2026's uniform-sampling regime, a fixed
+behavioural test (the `--classify` replicator class), a declared number
+of candidates and a density estimate with its bound. A search that
+finds nothing bounds the density of shorter replicators; it does not
+show there are none. Exhaustive enumeration is feasible only for bodies
+of a few canonical ops, so the practical search is shortening the
+21-byte ancestor by deletions and substitutions plus enumeration of
+short bodies. Reference points: BFF's evolved replicators share a
+nine-instruction core (Dušek; round 1's "about 5 bytes" was a web
+page's figure, and the five-instruction object is a precursor), and
+Perrico & Banzhaf 2026's three-instruction copier does not allocate or
+divide, so evo's `alloc`, `divide` and restart are where length could
+be saved. Status: open.

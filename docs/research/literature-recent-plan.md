@@ -145,6 +145,23 @@ Whether anyone has made parasitism cost the host, as E008 and E009 do.
 
 # Round 2: ALIFE conference proceedings 2023–2026 (planned 2026-10-09)
 
+Executed 2026-10-12 by three agents, one per cluster, in about 20
+minutes of fetching. Output: `notes/recent-5-soup-emergence-isal.md`,
+`recent-6-hosts-symbionts.md`, `recent-7-measures-phylogeny.md`;
+`literature.md` §7 (answers to the five questions in §7.4); tags on the
+two downloaded papers cleared in `notes/recent-3-oee-measures.md` §1;
+`hypotheses.md` notes on H3 and H14; PLAN §8 Phase 4, §9, §10, §11.
+Most full texts did not need a hand download after all: the whole
+ALIFE 2026 volume is on GitHub
+(`emerging-researchers-alife/conference_proceedings`), the Ferguson-lab
+papers are on fergusonaj.github.io, and several are on EcoEvoRxiv. One
+paper was added: Croft, Johnson, Vostinar & Dolson 2024
+(`isal_a_00790`), missed by the title triage because its Crossref title
+is "System.Xml.XmlElement". Not reached in full, to download by hand:
+Johnson et al. 2025 (`isal.a.885`), Croft et al. 2024 (`isal_a_00790`),
+Sayama 2024 (`isal_a_00762`, no abstract either); optional, Johnson et
+al. 2023 (`isal_a_00661`).
+
 Round 1 reached the ISAL proceedings only through arXiv preprints and
 Semantic Scholar citation lists, because MIT Press returned HTTP 403 to
 every fetch. On 2026-10-09 the four volumes (ALIFE 2023, 2024, 2025 and

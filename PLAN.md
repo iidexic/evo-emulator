@@ -815,7 +815,16 @@ with an off control second, ownership third. Report QNN over
 (§6.4 question 4); and run the Lenski 2003 line-of-descent analysis
 (fitness of every step on the winning lineage) on E007's ancestry
 table for the K sweep, which no digital system has done for a
-defence or a physiological trait. Then soup
+defence or a physiological trait. Round 2 (2026-10-12, `literature.md`
+§7.1, §7.4): the 40% is a takeover statistic; Dušek et al. 2026 find a
+replicator in 99 of 100 standard soups at mutation 0 (median 2,453
+epochs) but takeover in 45. So the sweep's primary outcome is
+first-discovery time per seed, counted in executed tapes as well as
+epochs, with takeover second; Dušek's uniform-sampling (U) and
+fresh-partner (N) regimes run beside the soup as controls; operator
+frequencies are logged. Build from their cubff fork
+(`koutefra/bff-replicator-discovery`), where the regimes are flags.
+Then soup
 runs with no seed in the full world, with a start-execution rule (§9). Chemistry (multiple
 resource types). Multi-day runs. Compare ISA variants for evolvability.
 
@@ -843,7 +852,22 @@ resource types). Multi-day runs. Compare ISA variants for evolvability.
   model fixes depth at 2,000 instructions whatever the store);
   Cosmos, at 0.9–1.7 passes, froze like evo. Next design: store depth
   as a parameter (cap or income tied to pass length, not bytes), swept
-  with the E009b injection test as the gate.
+  with the E009b injection test as the gate. Round 2 (2026-10-12,
+  `literature.md` §7.2, §7.5): in Symbulation and Avida execution is
+  free and a parasite only slows reproduction or kills with a
+  probability per event, so the working condition is that an entered
+  host keeps reproducing, more slowly; depth is one way to get it.
+  Inputs for the store-depth experiment: besides the depth sweep, an
+  arm where the owner-side charge can only reduce what the host banks
+  toward its next child, an arm with a death probability per entry, a
+  control that kills random unentered hosts at the entered hosts' death
+  rate, depth crossed with defence length (one-byte endowment starver
+  against the five-byte self-scan or six-byte eject), 30 seeds per arm,
+  and per-lineage gain and loss of the defence logged at birth. The
+  same day's `drain` proposal (`docs/research/drain-proposal-2026-10-12.md`)
+  pairs `drain` with store depth; the round-2 precedent for its "amount"
+  choice is a take from income or proportional to the victim's store,
+  capped so it cannot kill outright.
 - Locality from IP (Phase 1 decision) vs from body start. IP-relative lets
   an IP wander far from its body at a per-byte energy cost; whether that
   gets abused (organisms executing free space to reach distant debris) is a
@@ -915,7 +939,12 @@ intermediate (nobody has one); a cost-versus-defence comparison in an
 instruction substrate under ownership (E008–E010 are the first, and
 negative); and a rule-by-rule emergence study with energy and
 ownership (nobody has one). The owner-pays rule itself is published
-(Jha et al. 2026) and is not a claim.
+(Jha et al. 2026) and is not a claim. Round 2 (2026-10-12,
+`literature.md` §7.4) checked the ALIFE 2023–2026 proceedings: still
+no traced path to a defence, and every defence in the Symbulation and
+Avida line is graded at each step by construction. The bar moved on
+replicates: that group runs 30–50 per condition with a
+mortality-matched control, so 10 seeds per arm is short of it.
 
 Not realistic: multicellularity, nervous systems, anything requiring the
 roughly 20+ orders of magnitude of scale separating a desktop from Earth.
@@ -954,15 +983,20 @@ test them.
   `docs/research/review-2026-10-09.md`. 2026-10-12: a status index at
   the top of `hypotheses.md` (maintained as an index; entries are still
   never edited); H2 mixed, leaning refuted (E011); H4 refuted in the
-  standard world (E012).
+  standard world (E012). Notes added the same day to H14 (adaptive
+  momentum does not reach a neutral path) and H3 (design for the
+  shortest-replicator search), from round 2 of the literature review.
 - `docs/research/notes/`: raw per-source notes from the 2026-09-30 review,
   one file per cluster, URL on every fact, UNVERIFIED tags kept; plus
   `recent-1` to `recent-4` from the 2026-10-09 review of work since
   2020 (`literature-recent-plan.md`, executed; summary in
-  `literature.md` §6). Round 2 (planned 2026-10-09, not executed):
-  the ALIFE 2023–2026 proceedings, listed and triaged in
-  `notes/isal-proceedings-2023-2026.md`, 34 papers to read in three
-  clusters (`literature-recent-plan.md`, "Round 2").
+  `literature.md` §6). Round 2 (planned 2026-10-09, executed
+  2026-10-12): the ALIFE 2023–2026 proceedings, listed and triaged in
+  `notes/isal-proceedings-2023-2026.md`, 35 papers in three clusters,
+  notes in `recent-5` to `recent-7`, summary and answers in
+  `literature.md` §7. Still to read by hand: Johnson et al. 2025
+  (`isal.a.885`), Croft et al. 2024 (`isal_a_00790`), Sayama 2024
+  (`isal_a_00762`).
 - `docs/research-historic/`: the earlier Codex pass. Superseded by
   `literature.md`; kept for the reference list.
 - `docs/research/experiments/`: one file per experiment (E001 onward): seed, config hash,

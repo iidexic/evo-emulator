@@ -28,7 +28,7 @@ judgement and can be overturned.
 | [isal_a_00569](https://doi.org/10.1162/isal_a_00569) | Free Lunch in Evolutionary Embodied Computation in Modular Robotics | Hamann, Schmickl |  |  |
 | [isal_a_00570](https://doi.org/10.1162/isal_a_00570) | How Individual Heterogeneity impacts Spreading Dynamics in Urban Proximity Networks: A case-study of virus spreading in the city of Brussels | Khaluf, Vandenberghe |  |  |
 | [isal_a_00571](https://doi.org/10.1162/isal_a_00571) | To Comply or Not: A Social Dynamics Analysis of Institutional Reward and Punishment for Commitment Compliance | Han |  |  |
-| [isal_a_00572](https://doi.org/10.1162/isal_a_00572) | System.Xml.XmlElement | Rajewicz, Schmickl, Thenius |  |  |
+| [isal_a_00572](https://doi.org/10.1162/isal_a_00572) | Daphnia as a living sensor for underwater biohybrid systems (title resolved 2026-10-12 via OpenAlex; Crossref gives "System.Xml.XmlElement") | Rajewicz, Schmickl, Thenius |  |  |
 | [isal_a_00573](https://doi.org/10.1162/isal_a_00573) | Social Emotional Valence for Regulating Empathy in Active Inference | Matsumura, Esaki, Minusa et al. |  |  |
 | [isal_a_00574](https://doi.org/10.1162/isal_a_00574) | Multi – vs. Single – Perceptron Approach for Modelling the Pattern Recognition and Classification in a Multi-Compartment Adaptive Immune System Model | Scheidegger, Füchslin, Gaipl |  |  |
 | [isal_a_00575](https://doi.org/10.1162/isal_a_00575) | Dispelling Ghosts: Observations on Life and Mind | Harvey |  |  |
@@ -67,7 +67,7 @@ judgement and can be overturned.
 | [isal_a_00608](https://doi.org/10.1162/isal_a_00608) | The Degeneracy of Control Architectures in Cell Lineages: Implications for Tissue Homeostasis | Severino, Laborde, Barwich |  |  |
 | [isal_a_00609](https://doi.org/10.1162/isal_a_00609) | Between you and me: A systematic analysis of mutual social interaction in perceptual crossing agents | Severino, Merritt, Izquierdo |  |  |
 | [isal_a_00610](https://doi.org/10.1162/isal_a_00610) | Synthetic minimal cell with artificial metabolic pathways | Kurisu, Walde, Imai |  |  |
-| [isal_a_00611](https://doi.org/10.1162/isal_a_00611) | System.Xml.XmlElement | Laborde, Izquierdo |  |  |
+| [isal_a_00611](https://doi.org/10.1162/isal_a_00611) | (title garbled in Crossref and OpenAlex; abstract 2026-10-12: computational model of microscale brain network formation) | Laborde, Izquierdo |  |  |
 | [isal_a_00612](https://doi.org/10.1162/isal_a_00612) | Network simulation of depression as a complex system with treatment components | Omizu, Kunisato |  |  |
 | [isal_a_00613](https://doi.org/10.1162/isal_a_00613) | Lenia in a petri dish: Interactions between organisms and their environment in a Lenia with growth based on resource consumption | Suzuki, Asakura, Arita |  |  |
 | [isal_a_00614](https://doi.org/10.1162/isal_a_00614) | Ghosts in a Shell: An Immersive Art Experience for ALIFE23 | Adams, Rico, Guttenberg et al. |  |  |
@@ -85,7 +85,7 @@ judgement and can be overturned.
 | [isal_a_00626](https://doi.org/10.1162/isal_a_00626) | A tale of two Regulatory Markets: the role of institutional incentives in supporting sustainable Regulatory Markets for future AI systems | Bova, Di Stefano, Han |  |  |
 | [isal_a_00627](https://doi.org/10.1162/isal_a_00627) | Reformalizing the notion of autonomy as closure through category theory as an arrow-first mathematics | Hirota, Saigo, Taguchi |  |  |
 | [isal_a_00628](https://doi.org/10.1162/isal_a_00628) | Agent Heterogeneity Mediates Extremism in an Adaptive Social Network Model | Bullock, Sayama |  |  |
-| [isal_a_00629](https://doi.org/10.1162/isal_a_00629) | System.Xml.XmlElement | Adachi, Kojima, Ikegami |  |  |
+| [isal_a_00629](https://doi.org/10.1162/isal_a_00629) | Life-like Behavior of an Oil Droplet in an Aqueous Surfactant Solution: Comparative Analysis with Tetrahymena Movement and Numerical Investigation (resolved 2026-10-12) | Adachi, Kojima, Ikegami |  |  |
 | [isal_a_00630](https://doi.org/10.1162/isal_a_00630) | Embodied Time Perception: Effects of Time Delay on Hand Motion and Time Estimation in Virtual Environments | Masumori, Ikegami |  |  |
 | [isal_a_00631](https://doi.org/10.1162/isal_a_00631) | Exploring the Adaptive Behaviors of Particle Lenia: A Perturbation-Response Analysis for Computational Agency | Horibe, Suzuki, Horii et al. |  |  |
 | [isal_a_00632](https://doi.org/10.1162/isal_a_00632) | Computational evolution of gene circuit topologies to meet design requirements | Grozinger, Goñi-Moreno |  |  |
@@ -118,7 +118,7 @@ judgement and can be overturned.
 | [isal_a_00659](https://doi.org/10.1162/isal_a_00659) | Optical Herding of Swarms: Toward Universal Control Algorithms for Microscopic Collectives | Fielding, Taylor, Jones et al. |  |  |
 | [isal_a_00660](https://doi.org/10.1162/isal_a_00660) | The Role of Disequilibrium in Evolutionary Discovery | Ragusa, Bohm | R | Ragusa & Bohm: free-for-all effect, tolerance of deleterious mutations during sweeps |
 | [isal_a_00661](https://doi.org/10.1162/isal_a_00661) | Evolution of symbiotic task-based digital genomes: ectosymbiosis hastens the evolution of endosymbiosis | Johnson, Dirkswager, Vostinar | R | Johnson, Dirkswager & Vostinar: ectosymbiosis hastens endosymbiosis (Symbulation line) |
-| [isal_a_00662](https://doi.org/10.1162/isal_a_00662) | System.Xml.XmlElement | Mottes, Deshpande, Brenner et al. |  |  |
+| [isal_a_00662](https://doi.org/10.1162/isal_a_00662) | (title garbled in Crossref and OpenAlex; abstract 2026-10-12: gradient-based discovery of local rules for cell pattern formation) | Mottes, Deshpande, Brenner et al. |  |  |
 | [isal_a_00663](https://doi.org/10.1162/isal_a_00663) | Locally adaptive cellular automata for goal-oriented self-organization | Khajehabdollahi, Giannakakis, Buendía et al. |  |  |
 | [isal_a_00664](https://doi.org/10.1162/isal_a_00664) | Finding Sparse Initialisations using Neuroevolutionary Ticket Search (NeTS) | Jackson, Schoots, Ahantab et al. |  |  |
 | [isal_a_00665](https://doi.org/10.1162/isal_a_00665) | A Markovian framework to study the evolution of complexity and resilience in chemical organizations | Veloz, Hegele, Maldonado |  |  |
@@ -128,7 +128,7 @@ judgement and can be overturned.
 | [isal_a_00669](https://doi.org/10.1162/isal_a_00669) | Go by Its Name: Evolution and Analysis of Conceptual Referential Communication | Yao, Nunley, Izquierdo |  |  |
 | [isal_a_00670](https://doi.org/10.1162/isal_a_00670) | The Cognitive Archaeology of Sociocultural Lifeforms | Guenin-Carlut, White, Sganzerla |  |  |
 | [isal_a_00671](https://doi.org/10.1162/isal_a_00671) | Social Neural Network Soups with Surprise Minimization | Zorn, Illium, Phan et al. |  |  |
-| [isal_a_00672](https://doi.org/10.1162/isal_a_00672) | System.Xml.XmlElement | Scott, Pitt |  |  |
+| [isal_a_00672](https://doi.org/10.1162/isal_a_00672) | The Nexican Stand-Off: Social Contracts and Popular Legitimacy in n-Player High Stakes Resource Competition Games (resolved 2026-10-12) | Scott, Pitt |  |  |
 | [isal_a_00673](https://doi.org/10.1162/isal_a_00673) | Toward cultures of rhythm in legged robots | Szorkovszky, Veenstra, Glette |  |  |
 | [isal_a_00674](https://doi.org/10.1162/isal_a_00674) | Arbitrary Order Meta-Learning with Simple Population-Based Evolution | Lu, Towers, Foerster |  |  |
 | [isal_a_00675](https://doi.org/10.1162/isal_a_00675) | Multi-agent City Expansion With Land Use and Transport | dos Santos, Aranha, de Carvalho |  |  |
@@ -221,7 +221,7 @@ judgement and can be overturned.
 | [isal_a_00760](https://doi.org/10.1162/isal_a_00760) | Fundamental Vision-Based Navigation Algorithms: Local Sequential, Global Diffusive, and Direct Pathing | Govoni, Romanczuk |  |  |
 | [isal_a_00761](https://doi.org/10.1162/isal_a_00761) | Gene-Regulated Neural Cellular Automata | Hintze, Al-Hammadi, Libby |  |  |
 | [isal_a_00762](https://doi.org/10.1162/isal_a_00762) | Hash Chemistry on a Cellular Grid: An Open-Ended Artificial Chemistry System with Computational Efficiency and Nontrivial Spatio-Temporal Dynamics | Sayama | R | Sayama: hash chemistry on a cellular grid (spatial OEE testbed) |
-| [isal_a_00763](https://doi.org/10.1162/isal_a_00763) | System.Xml.XmlElement | Vellinger, Antonic, Tuci |  |  |
+| [isal_a_00763](https://doi.org/10.1162/isal_a_00763) | Hybrid Modelling of Stimuli-Based and Density-Induced Aggregation in C. elegans (resolved 2026-10-12) | Vellinger, Antonic, Tuci |  |  |
 | [isal_a_00764](https://doi.org/10.1162/isal_a_00764) | I Like to Move It: Using Information Theory to Measure Sensorimotor Coupling in Cells | Dohnány, Smith, Bourne et al. |  |  |
 | [isal_a_00765](https://doi.org/10.1162/isal_a_00765) | Incorporating Social Expectations into the Expectation Event Calculus | Lloyd, Lewis |  |  |
 | [isal_a_00766](https://doi.org/10.1162/isal_a_00766) | Indirect reciprocity with stochastic and dual reputation updates | Murase, Hilbe |  |  |
@@ -248,7 +248,7 @@ judgement and can be overturned.
 | [isal_a_00787](https://doi.org/10.1162/isal_a_00787) | Non-Spatial Hash Chemistry | Sayama | C | Sayama non-spatial hash chemistry; covered in recent-3 |
 | [isal_a_00788](https://doi.org/10.1162/isal_a_00788) | On All Fours: A 3D Framework to Study Closed-loop Control of Quadrupedal Mouse Locomotion | Ramalingasetty, Markin, Lockhart et al. |  |  |
 | [isal_a_00789](https://doi.org/10.1162/isal_a_00789) | On Creativity and Open-Endedness | Soros, Adams, Kalonaris et al. |  |  |
-| [isal_a_00790](https://doi.org/10.1162/isal_a_00790) | System.Xml.XmlElement | Croft, Johnson, Vostinar et al. |  |  |
+| [isal_a_00790](https://doi.org/10.1162/isal_a_00790) | (title garbled in Crossref and OpenAlex; abstract 2026-10-12: mutation size and rate in the origin of mutualism, Symbulation) | Croft, Johnson, Vostinar et al. | R | Added 2026-10-12, missed by the title-only triage; Croft, Johnson, Vostinar & Dolson, see recent-6 §4 |
 | [isal_a_00791](https://doi.org/10.1162/isal_a_00791) | On the Emergence of Enzymes in an Artificial Chemistry | Folena, Kruszewski | R | Folena & Kruszewski: enzymes in a function soup (one line expected) |
 | [isal_a_00792](https://doi.org/10.1162/isal_a_00792) | Only ad-hoc solutions can solve the shutdown problem | Platt |  |  |
 | [isal_a_00793](https://doi.org/10.1162/isal_a_00793) | Ouroborotic Swarm Control: Collective Dynamics as a Reservoir | Uehara, Inoue, Kuniyoshi et al. |  |  |
