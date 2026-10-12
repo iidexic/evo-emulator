@@ -23,7 +23,9 @@ ticks. Hosts evolve no defence against parasites, and three rules that
 make parasitism cost the host (E008–E010) did not change that; the
 diagnosis is that a host's energy store is one pass of its loop deep,
 so any cost to it is either invisible or fatal. The next design
-question is store depth (PLAN §9). Turning write protection off
+question is store depth (PLAN §9), together with a `drain` op that
+moves energy between organisms
+([proposal](docs/research/drain-proposal-2026-10-12.md)). Turning write protection off
 changes nothing structural (E012), there is no producer/consumer split
 because nothing moves energy between organisms (E011), and sixteen
 founders remove founder loss (E013). Every experiment, with its

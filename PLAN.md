@@ -302,7 +302,9 @@ Energy:
 
 Held back for Phase 3 (§5.5): `drain`, `guard`, `sense`. Tierra-style
 parasites do not need them; reading a neighbour's copy loop needs only
-`searchf` and `jmpr`.
+`searchf` and `jmpr`. 2026-10-12: a proposal to bring `drain` forward,
+paired with store depth, is in
+`docs/research/drain-proposal-2026-10-12.md` (not yet scheduled).
 
 Sanity check, a hand-written ancestor in this op set (the op set is only
 complete if this loop can be written and can pay for itself):
