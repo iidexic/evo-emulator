@@ -8,6 +8,32 @@ are listed under it as they happen (see `experiments/`).
 
 Status values: open, supported, refuted, mixed, superseded.
 
+## Status index (maintained; added 2026-10-12)
+
+Entries and notes below are never edited, so an entry's own
+**Status** line is the status when it was written; the current status
+is in the latest dated note. This table is an index of those notes,
+not a record: it is updated whenever a note changes a status, and it
+says nothing the notes do not.
+
+| H | claim, short | status | latest note | experiments |
+|---|---|---|---|---|
+| H1 | register ISA gives longer, more robust genomes than stack | open | none | Phase 4, not scheduled |
+| H2 | a producer/consumer split appears and is diagnostic | mixed by the registered rule, leaning refuted: no consumer mode | 2026-10-12 | E011 (on E007) |
+| H3 | no interior size optimum from c1 alone | open; c1 = 0 shows no change, shortest replicator unknown | 2026-10-09 | E007; c1 sweep not scheduled |
+| H4 | write protection is necessary for coexistence | refuted in the standard world: `alloc` does its job | 2026-10-12 | E012 |
+| H5 | upkeep plus decay give enough turnover | mixed: at rot 1e-4 about 9% of the living are old loafers, stationary, not accumulating | 2026-10-12 | E002–E004, E007 |
+| H6 | the absorb loop takes over | supported in kind (longer absorb phase, then stasis) | 2026-10-09 | E002–E004, E007 |
+| H7 | seedless emergence needs a start-execution rule | open | none | Phase 4 |
+| H8 | `self` semantics change the ecology | supported in kind | 2026-10-07 | E005, E006 |
+| H9 | environmental drift delays equilibrium | open | none | Phase 3, not scheduled |
+| H10 | dispersal across patches sustains replication | supported, when every patch can feed a founder | 2026-10-05 | E002–E004 |
+| H11 | room alone sustains replication | refuted (H10's version holds) | 2026-10-05 | E004 |
+| H12 | no resistance to parasites that cost nothing | supported | 2026-10-07 | E007 |
+| H13 | a cost alone gives no defence on the E007 timescale | supported | 2026-10-09 | E008 |
+| H14 | a graded cost selects the one-byte defence, not the five-byte | self-scan half settled against; endowment half untested | 2026-10-09 | E009, E009a, E009b |
+| H15 | profitable intrusion makes a short eject pay | refuted on its premise | 2026-10-09 | E010 |
+
 ---
 
 ## H1. Register vs stack ISA (2026-09-27)
@@ -640,3 +666,72 @@ difference and no intermediates), and Standish 2004 found neutral steps
 in Tierra under-followed relative to their availability, which makes a
 four-neutral-insertion path rarer still. Status unchanged for all
 three; the next hypothesis should be about store depth, not cost rules.
+
+---
+
+## H2 note (2026-10-12, E011)
+
+E011 (`experiments/2026-10-12-e011-absorb-split.md`) read the absorb
+fraction per genome from E007's records, as the 2026-10-09 note asked.
+Persistent genomes take 97–99% of their lifetime income from `absorb`
+(exact-birth-weighted medians: replicator-class 0.992, parasite 0.989,
+dependent 0.973), and the parasites spend a larger share of their
+instructions on `absorb` than their hosts (0.245 against 0.229, 9 of 9
+seeds), because a fall-through parasite runs the host's absorb loop
+with its own energy and copies one byte. Genomes with most of their
+income from elsewhere hold 2.1–2.5% of exact births per window, which
+failed the registered "under 1%" and scores H2 **mixed** by the
+registered rule. Post hoc, that 2% is single-parent bursts: a parent
+damaged by a bit flip after its birth keeps replicating on register
+values set before the hit and copies a body its children cannot run;
+the children live a few ticks on their endowment. They depend on their
+parent, not on a producer, and do not persist; with them out of scope
+the share is 0.1%. Status: mixed by the rule, leaning refuted. There is
+no consumer mode because the physics moves no energy between
+organisms; H2's "parasitism pays nothing" holds in the energy sense, as
+E008–E010 found from the cost side.
+
+---
+
+## H4 note (2026-10-12, E012)
+
+E012 (`experiments/2026-10-12-e012-no-protect.md`) ran the standard
+world with `--no-protect`, seeds 1–10, 100,000 ticks, against E007's
+first four windows. All six registered predictions held: 9 of 10 seeds
+replicating (seed 10 lost its founder as in E007), population 941,
+2,281–2,434 canonical genotypes with ≥ 2 exact births per window
+(E007: 2,193–2,293), the leading genotype at most 15.3% of a window's
+exact births, parasites 0.81–0.88%, the absorb sweep on E007's course.
+Foreign writes landed at 0.69–1.06 times the rate E007 refused them,
+mostly from a few damaged bodies, and no genome with a high write rate
+spread. Status: refuted in this world. Protection is not needed for
+coexistence here because `alloc` gives every replicator a private copy
+target, so nothing gains from writing over a neighbour. Coreworld's
+seeded replicators had no such target (Core War has no allocation) and
+broke under noise and overwriting; Amoeba-IV did have an allocation op
+(`MALL`), so why it never held two species is not explained by this,
+and its random-code insertion is one difference to look at.
+
+---
+
+## H5 note (2026-10-12, from E007)
+
+Recorded late: E007 said bit rot does not grind the world down, but no
+H5 note scored it. H5's confirm clause (childless bodies older than N
+generations stay a small fraction of the living) needs an N and a
+"small"; fixed before the query as N = 5 generations (6,250 ticks, at
+E007's ~1,250 ticks per generation) and under 5% of living bodies at
+every census from tick 25,000 on. Result, E007 seeds 1–9, 451 censuses
+each: 8.6–9.6% (median per seed), maximum 11.5–12.7%, at or above 5%
+at essentially every census; 2.4–2.6% are older than 10 generations and
+0.2% older than 20; the oldest childless body in each run is
+41,000–58,000 ticks old. They are 21-byte bodies running only their
+absorb loop (`absorbs` / `executed` = 0.25), the broken-exit loafer of
+E002/E003. The refute clause (memory fills, births stop) does not
+happen either: the world is stationary for 225,000 ticks with births
+flat. Status: mixed, unchanged from 2026-10-05, now with a number: at
+rot 1e-4 a standing tenth of the living are old loafers, removed only
+when bit rot breaks them, and they do not accumulate. Absorb yield is
+above upkeep for a looping body, so H5's design condition (absorb
+yield below upkeep, so a loafer starves) is not met; turnover comes
+from rot alone.

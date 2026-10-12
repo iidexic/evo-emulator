@@ -717,7 +717,8 @@ running the hosts it killed: the full charge rewards killing. There is
 no long-lived infected host for selection to grade. Next: E009, a split
 charge, so an infected host survives and a partial defence can pay.
 E009 (2026-10-08, `docs/research/experiments/2026-10-08-e009-split-charge.md`,
-designed and built, not run): `--charge-owner-pct N`, the owner pays a
+designed and built; the 250,000-tick search itself not run, its gates
+E009a and E009b were): `--charge-owner-pct N`, the owner pays a
 share. Calibration found no graded cost at any N (a cliff in the
 harness; matched-age entered hosts reproduce as well as unentered ones
 in the world), so the search was gated by invasion tests of the
@@ -750,6 +751,38 @@ is kept. Cost-rule line (E008–E010) closed; the cause is physics (the
 one-pass store, placement-limited intruders), see §9 energy location.
 Next: the recent-literature review, then choose between the
 energy-location change and the Phase 4 BFF harness.
+E011 (2026-10-12, `docs/research/experiments/2026-10-12-e011-absorb-split.md`,
+no new runs): H2's producer/consumer split read from E007's death
+records. Persistent genomes take 97–99% of their income from `absorb`,
+and parasites spend more of their instructions on it than their hosts
+(0.245 against 0.229): a fall-through parasite runs the host's absorb
+loop. The registered "under 1% low-absorb" failed at 2.1–2.5%, all of
+it single-parent bursts (a parent damaged after birth copies a body its
+children cannot run), so H2 is mixed by the rule and leaning refuted:
+the physics moves no energy between organisms. Measure lesson: 16.5% of
+E007's exact births copy a parent's body as changed after birth, and
+E005's ≥ 2-exact-births test admits these bursts (about a quarter of
+the dependent genomes); a lineage test should require two executors.
+E012 (2026-10-12, `docs/research/experiments/2026-10-12-e012-no-protect.md`):
+`--no-protect` in the standard world, 10 seeds × 100,000 ticks, with
+new counters `writes_foreign` and `overwritten`. Nothing structural
+changed: population 941, about 2,300 canonical genotypes per window,
+leader at most 15%, parasites 0.8–0.9%, the absorb sweep on E007's
+course; foreign writes land at 0.7–1.1 times E007's refused rate,
+mostly from a few damaged bodies. H4 refuted in this world: `alloc`
+gives every replicator a private copy target, so nothing gains from
+overwriting. Protection stays the default.
+E013 (2026-10-12, `docs/research/experiments/2026-10-12-e013-founders.md`):
+sixteen founders instead of one, 10 seeds × 50,000 ticks. All 10
+persist (seed 10 included), the world fills twice as fast, and window 2
+matches E007 (population −0.6%, canonical genotypes −2.5%,
+replicator-class bodies −10%, on the registered bound). Not as
+predicted: the absorb sweep is slower in its second half (median 105.5
+against 112 at tick 10,000; level from 32,500), plausibly because 9–16
+founder lineages share the world through it. Sixteen founders are fine
+for measures after tick 35,000 or against a matched control.
+Next: unchanged, the energy-location change (store depth) or the Phase
+4 BFF harness.
 
 Ordering note 2026-10-09: E005–E010 were run as Phase 2 follow-ups
 while Phase 3 (richer physics) has not started, and the next step is a
@@ -837,7 +870,14 @@ resource types). Multi-day runs. Compare ISA variants for evolvability.
   rot 1e-4 a lone 21-byte founder takes a flip about every 480 ticks, and
   E004 seed 10 lost its founder lineage by tick 1,179. Seeding several
   founders in separate patches is the cheap fix; whether it changes
-  anything after the founder phase is untested.
+  anything after the founder phase is untested. E013 (2026-10-12):
+  sixteen copies of the ancestor, one per eighth patch, persist in 10
+  of 10 seeds, fill every patch by tick 1,000, and match the
+  single-founder world by window 2; the absorb sweep reaches 112 and
+  120 about 2,500 and 7,500 ticks later (9–16 lineages share the world
+  through it) and is level from tick 32,500. Use sixteen founders when
+  measures start after about tick 35,000 or the control is seeded the
+  same way.
 - `self` = executing organism makes a body that falls into a
   neighbouring replicator into a parasite of it (E005). `self` = owner of
   the byte at IP makes the same layout copy the host instead (E006:
@@ -909,7 +949,10 @@ test them.
   intruders are not energy-limited). Notes added 2026-10-09 to H2, H3
   and H6 from E007 evidence that had not been scored (H6 supported in
   kind: the first adaptation was a longer absorb phase). Gap review:
-  `docs/research/review-2026-10-09.md`.
+  `docs/research/review-2026-10-09.md`. 2026-10-12: a status index at
+  the top of `hypotheses.md` (maintained as an index; entries are still
+  never edited); H2 mixed, leaning refuted (E011); H4 refuted in the
+  standard world (E012).
 - `docs/research/notes/`: raw per-source notes from the 2026-09-30 review,
   one file per cluster, URL on every fact, UNVERIFIED tags kept; plus
   `recent-1` to `recent-4` from the 2026-10-09 review of work since
