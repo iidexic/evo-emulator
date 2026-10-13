@@ -11,7 +11,7 @@ before the runs, as always.
 | task | what | depends on | status |
 |---|---|---|---|
 | [T01](T01-reserve-check.md) | E007 reserve check: does any host bank energy? | nothing | done 2026-10-13 (Opus, laptop; `654783b`): **fails** in every seed; branch below taken |
-| [T02](T02-cycle-theft.md) | `--cycle-theft-pct`, `--cycle-tax-pct`, counters, harness gate, E014 runner | nothing | built 2026-10-13 (`0ce3338`); gate 1 passed at N = 50 (0.465, host alive; dies from N = 51 in the harness) |
+| [T02](T02-cycle-theft.md) | `--cycle-theft-pct`, `--cycle-tax-pct`, counters, harness gate, E014 runner | nothing | built 2026-10-13 (`0ce3338`); gate 1 passed at N = 50 (0.465, host alive; dies from N = 51 in the harness); E014 pilot run, skip branch taken, no main stage |
 | [T03](T03-template-ancestor.md) | `--ancestor tierra`, `--neighbours HEX`, E015 runner | T02's `exec_by_others` | not built |
 | [T04](T04-snapshots-replay.md) | full-state snapshots, `--replay-from` | T02/T03 fields (or extend later) | not built |
 | [T05](T05-measures.md) | `measures.py`: QNN, phylometrics, MODES, sites; baselines on E007/E012/E013 | T03's `--neighbours-pad-only` for sites only | not built |
@@ -26,9 +26,10 @@ Opus). T03 after T02. T04 before
 E016's main stage, not before. T07 whenever a machine is idle; it
 decides line B's route and nothing in line A waits on it.
 
-Experiments: E014 pilot as soon as T02 passes its tests; E014 main
-after T05's baselines exist (so the measures are applied to E014 on
-their second use, not their first). E015 after T03. E016 after both.
+Experiments: E014 pilot as soon as T02 passes its tests (done
+2026-10-13; it took the skip branch, so there is no E014 main). E015
+after T03. E016 after E015 and T05's baselines (so the measures are
+applied to E016 on their second use, not their first).
 
 ## Expected path, and what changes at each gate
 
@@ -98,6 +99,23 @@ left for then.
   the right move is to skip to T03 and run gate 2 with the template
   ancestor, whose parasite is resident by construction: that is E016
   without the separate E014 main stage.
+- **Outcome 2026-10-13: this third bullet** (record
+  `docs/research/experiments/2026-10-13-e014-cycle-theft.md`).
+  Population 930–985 at every N; `entered_rate_norm` as built 1.02
+  at N = 50; resident intruders 7.8–10.4%. E014 main is not run; gate
+  2 moves into E016 with the template ancestor. Two things the pilot
+  adds. First, on reproducing hosts (`offspring` > 0, `age` > 50) the
+  cost is real and graded: 0.97 / 0.90 / 0.85 at N = 25 / 50 / 75,
+  1.0 under the tax, seeds within ±0.02; hosts run at 28 of 32 units
+  per tick, so the mechanism is right and only the dose is small
+  (median entered reproducer debited 2% of its cap at N = 50). E016's
+  `theft` arm stands at N = 50 with that as the expected effect on the
+  std ancestor. Second, the eject and the inert are lost within 2,000
+  ticks of injection at every N including `n0`, as in E009b, with no
+  separation between them: an injection test of a defence must put it
+  on the evolved background or at tick 0. The runner's
+  `entered_rate_norm` is confounded (0.54 raw at no cost) and must be
+  recomputed on reproducers before any reuse (T02 §4.3).
 
 **E014 main, gate 2** (30 seeds).
 - Eject maintained at N = 50, lost under the tax (expected, the

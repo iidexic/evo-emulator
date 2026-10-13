@@ -6,8 +6,12 @@ Status: specified 2026-10-13; built the same day (Opus, commit
 51 up in the harness, where it is entered every tick). Amendments
 after the build, below in §4.3 and §4.4: the pilot branch is governed
 by `entered_rate_norm`, not `entered_children_ratio`; the runner gzips
-each run's CSVs. Argument: synthesis §3.1, PLAN §5.4 and §8.3,
-hypothesis H16.
+each run's CSVs. Pilot run 2026-10-13 (record
+`docs/research/experiments/2026-10-13-e014-cycle-theft.md`): the
+skip branch was taken (rate norm 1.02 as built, 0.90 on reproducing
+hosts; resident intruders under 10%), so the main stage is not run
+and gate 2 moves into E016 with the template ancestor. Argument:
+synthesis §3.1, PLAN §5.4 and §8.3, hypothesis H16.
 
 ## 1. Rule
 
@@ -222,7 +226,15 @@ to be entered and has more children; in the no-cost smoke run it was
 `entered_rate_norm` = that ratio divided by the same ratio in the `n0`
 arm at the same injection and seed. `entered_rate_norm` governs
 prediction 2 and the pilot branch in `README.md`; the other two are
-diagnostics. The runner also gzips `births.csv`, `deaths.csv`,
+diagnostics. Second amendment, from the pilot (2026-10-13): as built,
+the ratio runs over every replicator-class death and is itself
+confounded (0.54 at no cost, 1.02 normalised at N = 50), while the
+same ratio over reproducing deaths (`offspring` > 0, `age` > 50) is
+0.83–0.85 at no cost and 0.90 normalised at N = 50 with a clean dose
+(`analysis/e014_pilot_reproducers.py`). Before any reuse of the
+runner, `entered_rate_ratio` and `entered_rate_norm` are to be
+computed on that set; not changed in the runner now, since the pilot
+took the branch that skips the main stage. The runner also gzips `births.csv`, `deaths.csv`,
 `orgs.csv` and `census.csv` after each run (the main stage would
 otherwise need about 220 GB), and `evo_run.py`'s loader reads
 `.csv.gz`.

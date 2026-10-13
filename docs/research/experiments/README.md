@@ -23,6 +23,7 @@ regenerates any figure.
 | E011 | 2026-10-12 | `2026-10-12-e011-absorb-split.md` | is there a producer/consumer split in E007? (H2) | no consumer mode; 97–99% of income from `absorb` for every persistent genome |
 | E012 | 2026-10-12 | `2026-10-12-e012-no-protect.md` | is write protection needed for coexistence? (H4) | no, in this world; `alloc` gives every replicator a private target |
 | E013 | 2026-10-12 | `2026-10-12-e013-founders.md` | do sixteen founders change anything after the founder phase? | all seeds persist; window 2 matches E007; absorb sweep slower in its second half |
+| E014 | 2026-10-13 | `2026-10-13-e014-cycle-theft.md` | pilot: is an entered host graded, not killed, under `--cycle-theft-pct`? (H16) | yes, 0.90 at N = 50 on reproducing hosts, dose clean, tax control clean; but intruders not resident (< 10%), so the main stage is skipped and gate 2 moves to E016 with the template ancestor |
 
 Next: E014 (cost in time), E015 (template-addressed ancestor), E016
 (cost x ancestor, the defence search), per PLAN.md §8.3 and
