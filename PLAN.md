@@ -861,6 +861,13 @@ every costed arm has a matched control. Specs for each work item go in
 `docs/` as task files for the builder (Fable writes them; Opus or
 Codex builds; a second model reviews), per the working split in §12.
 
+Specs written 2026-10-13: `docs/tasks/` (T01 reserve check, T02 cycle
+theft and E014, T03 template ancestor and E015, T04 snapshots and
+replay, T05 measures, T06 line of descent, T07 density). Its README
+carries the build order and the decision tree: the next step after
+each gate's pass or fail, so an outcome re-sequences the plan rather
+than reopening it.
+
 ## 9. Open questions
 
 - Register machine vs stack machine for the VM. Tierra and Avida are register
@@ -1069,6 +1076,9 @@ test them.
 - `docs/research/experiments/README.md`: index of the records with a
   one-line outcome each, plus the per-experiment status log that
   PLAN.md §8 carried until 2026-10-13, verbatim.
+- `docs/tasks/`: one spec per engine or analysis work item (§8.6),
+  with interfaces, tests, the E014 and E015 protocols, and in its
+  README the build order and the decision tree after each gate.
 - `docs/research/experiments/`: one file per experiment (E001 onward): seed, config hash,
   commit, what was varied, what was observed, which hypothesis it bears on.
   Runs are reproducible from seed and config (§3), so a record plus the repo
