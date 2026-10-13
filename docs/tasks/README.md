@@ -12,7 +12,7 @@ before the runs, as always.
 |---|---|---|---|
 | [T01](T01-reserve-check.md) | E007 reserve check: does any host bank energy? | nothing | done 2026-10-13 (Opus, laptop; `654783b`): **fails** in every seed; branch below taken |
 | [T02](T02-cycle-theft.md) | `--cycle-theft-pct`, `--cycle-tax-pct`, counters, harness gate, E014 runner | nothing | built 2026-10-13 (`0ce3338`); gate 1 passed at N = 50 (0.465, host alive; dies from N = 51 in the harness); E014 pilot run, skip branch taken, no main stage |
-| [T03](T03-template-ancestor.md) | `--ancestor tierra`, `--neighbours HEX`, E015 runner | T02's `exec_by_others` | built 2026-10-13 (Opus, `368ce56`…`ae15991`); body 41 bytes, K = 127; 1,095 `parasite_jump` rows for tierra against 25 for std; E015 gate **fails** 0 of 10, sun and noise-off arms running |
+| [T03](T03-template-ancestor.md) | `--ancestor tierra`, `--neighbours HEX`, E015 runner | T02's `exec_by_others` | built 2026-10-13 (Opus, `368ce56`…`ae15991`); body 41 bytes, K = 127; 1,095 `parasite_jump` rows for tierra against 25 for std; E015 gate **fails** 0 of 10 at default sun, **passes** 10 of 10 at `--sun 2` |
 | [T04](T04-snapshots-replay.md) | full-state snapshots, `--replay-from` | T02/T03 fields (or extend later) | not built |
 | [T05](T05-measures.md) | `measures.py`: QNN, phylometrics, MODES, sites; baselines on E007/E012/E013 | T03's `--neighbours-pad-only` for sites only | built 2026-10-13 (Codex, `0d0c36b`; Opus review: numbers match independent recomputation; Opus follow-up `d198fa3`…`6cad7ca`: fixes, `--group absorb_class`, `root_lines`, 15 tests); shakedown closed: criterion 1 "5 of 10, explained", criterion 2 a report, QNN a weak sweep detector here (spec §4); knockout loop not wired, E007 reruns need `--classify` |
 | [T06](T06-lenski-lod.md) | line of descent with fitness per step, on E007's absorb sweep | nothing | built 2026-10-13 (`2f27841`); E007 record follow-up; sweep step deleterious in the harness in 8 of 9 seeds, D-before-B in seed 3 |
@@ -176,13 +176,31 @@ left for then.
   cycle (median age 26 ticks, 97% of absorbs short of a full ration).
   Two candidate causes, not separated by these runs: the thin margin
   (break-even ration 95.6% of full against 92.3% for the 21-byte
-  body) and the parasite load. Running now, per this branch: a
-  noise-off gate (no mutants, so no parasites) to separate them, and
-  `--sun` as the declared arm. If neither gives persistence, the body
-  gets shortened or its absorb loop made cheaper before E016; E016
-  then runs with whichever ancestor persists, and if only std does,
-  with the std ancestor and the cost alone (the T03 third bullet's
-  fallback).
+  body) and the parasite load.
+- **Arms added 2026-10-13, per this branch** (`8d95f4a`, `2fcba52`,
+  `ec74a92`; E015 record). Noise off (`--p 0 --rot 0`): 0 of 10 keep
+  a replicator-class body, but every world persists (134–545 bodies)
+  and parasites arise with no mutation at all: the founder's second
+  child at tick 51 differs in bytes 0–2 only, because `alloc` checks
+  range at its own IP and `copy` runs 3 bytes later, so a child at the
+  backward locality edge keeps stale bytes where L0 should be (2,384
+  of 26,657 births in seed 1's first 5,000 ticks). The std ancestor
+  has the same: 12.8% of births in a noise-off run lose byte 0
+  (`self` to `pad`), from the founder's second child at tick 27. This
+  is physics every recorded run shares (PLAN §9, design question).
+  `--sun 2` (chosen as the smallest whole sun at which a patch carries
+  as many tierra bodies at break-even as std at sun 1, N = 1.068;
+  `--sun` does not move the break-even ration itself): **10 of 10
+  pass**, 210–274 replicator-class bodies of 1,179–1,506 living;
+  parasite-lineage share of exact births 8.0–27.0% in the last bin
+  (above 5% in 10 of 10), entered share of replicator-class deaths
+  23.5–26.4% after 25,000 (above 25% in 6 of 10), intruders resident
+  in 23–30% of intruder deaths. No same-sun std control yet, so this
+  is H17's tierra side only. Decision pending before stage 3 and
+  E016: whether to fix the `alloc`/`copy` edge first (it makes
+  parasites for free in every arm and would change every run's bytes,
+  so it would be a flag with the old behaviour kept reproducible, and
+  a new std baseline).
 - Persists, parasites stay near 1%: placement, not addressing, limits
   entries (H17's second refutation). E016 still runs; its entered
   fraction is then the std ancestor's, and the design's expectation is
