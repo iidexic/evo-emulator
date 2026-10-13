@@ -1,7 +1,7 @@
 """Standing evolutionary measures for recorded evo runs (T05,
 docs/tasks/T05-measures.md).
 
-    uv run measures.py RUN_DIR [--every K] [--depths 187,1870] [--knockout] [--out DIR]
+    uv run measures.py RUN_DIR [--every K] [--depths 187,1870] [--group COL] [--knockout] [--out DIR]
 
 from analysis/, or `compute(run)` from experiment runners. Writes
 `RUN_DIR/measures/series.csv` (one row per census), `summary.json`, and
@@ -10,8 +10,16 @@ with `--knockout` also `sites_<window>.csv`.
 Definitions, as computed (spec §2, with the §4 amendment and §4.1):
 
 - QNN (`qnn`, `qnn_cum`, `n_func`, `top_func_share`): census bodies by
-  `now_hash`, joined to genomes.csv's `func_hash`; q_i = max(0, p_i(t) -
-  p_i(t_prev))^2 summed over components; the first census is 0.
+  `now_hash`, joined to genomes.csv for their component; q_i = max(0,
+  p_i(t) - p_i(t_prev))^2 summed over components; the first census is 0.
+  Components are `--group COL`: `func_hash` by default (the headline for
+  genotype turnover; blind to a trait that sweeps across many genotypes,
+  spec §4 amendment), any other genomes.csv column, or `absorb_class`:
+  traits.py's absorb-count read of the body bytes (`traits.ABSORB`, byte 6
+  guarded by a `lit` at byte 5, on 21-byte bodies) as `lt96` / `ge96`, and
+  `unmatched` for a body the read does not match; with it the series also
+  has `absorb_ge96_share` (among matched bodies) and
+  `absorb_unmatched_share`. `n_func` and `top_func_share` count groups.
 - Tree: an organism's parent is the `executor` of its births row;
   founders and injected copies hang from a virtual root at generation -1.
   Tips are the living ids at the census. The induced tree is the union of
@@ -19,6 +27,9 @@ Definitions, as computed (spec §2, with the §4 amendment and §4.1):
   the difference in generation.
 - `mrca_gen`, `mrca_tick`: the MRCA of all tips (the virtual root, -1 and
   0, when they descend from different roots).
+- `root_lines`: children of that MRCA with living descendants (a child
+  alive itself counts); founders with living descendants when the MRCA is
+  the virtual root; 0 for a single tip.
 - `mrca_changed`, summary `mrca_changes`: the sweep counter. It follows the
   MRCA of the tips that descend from founders: tips from `--inject` copies
   (ids after the founders with no births row, read when meta.json lists
@@ -156,14 +167,14 @@ def _tree_metrics(tips: np.ndarray, depth: np.ndarray, born: np.ndarray,
     tips = np.unique(tips.astype(np.int32, copy=False))
     n = len(tips)
     if not n:
-        return dict(mrca_id=0, mrca_gen=-1, mrca_tick=0,
+        return dict(mrca_id=0, mrca_gen=-1, mrca_tick=0, root_lines=0,
                     ancestor_count=0, mpd=None, spd=None, mean_ed=None)
     mrca = int(tips[0])
     for tip in tips[1:]:
         mrca = _lca(mrca, int(tip), depth, up)
     if n == 1:
         return dict(mrca_id=mrca, mrca_gen=int(depth[mrca]) if mrca else -1,
-                    mrca_tick=int(born[mrca]) if mrca else 0,
+                    mrca_tick=int(born[mrca]) if mrca else 0, root_lines=0,
                     ancestor_count=0, mpd=0.0, spd=0, mean_ed=0.0)
 
     ordered = tips[np.argsort(tin[tips])]
@@ -221,8 +232,10 @@ def _tree_metrics(tips: np.ndarray, depth: np.ndarray, born: np.ndarray,
     for i, tip in enumerate(ordered):
         eds[tip_pos[int(tip)]] = ordered_eds[i]
     pairs = n * (n - 1) // 2
+    # Children of the MRCA with living descendants: on the virtual tree each
+    # child of the MRCA stands for one original child's line.
     return dict(mrca_id=mrca, mrca_gen=int(depth[mrca]) if mrca else -1,
-                mrca_tick=int(born[mrca]) if mrca else 0,
+                mrca_tick=int(born[mrca]) if mrca else 0, root_lines=int(children[mrca]),
                 ancestor_count=int(ancestors), spd=int(spd), mpd=float(spd / pairs),
                 mean_ed=float(eds.mean()))
 
@@ -338,20 +351,88 @@ def _parasite_genomes(run: Run) -> set[str] | None:
     return set(par["raw_hash"].to_list())
 
 
-def _series(run: Run, every: int, depths: tuple[int, ...]) -> tuple[pl.DataFrame, int]:
+ABSORB_LEN = 21  # body length traits.track reads the absorb count on (its default)
+
+
+def absorb_class(genomes: pl.DataFrame) -> pl.DataFrame:
+    """`raw_hash`, `absorb_class` for every genome: traits.py's absorb-count
+    read (ABSORB: the signed byte at offset 6, guarded by a `lit` op at
+    offset 5, on bodies of 21 bytes) gives `lt96` or `ge96` (threshold
+    ABSORB.threshold); a body the read does not match (another length, or no
+    `lit` at the guard) is `unmatched`. As in traits.py the byte is read as
+    encoded, so a loop counting the other way (E007 seed 3's `lit A -114 ;
+    inc A`) reads as below 96."""
+    from traits import ABSORB, LIT, _byte
+
+    hexes = pl.col("bytes_hex")
+    guard = hexes.str.slice(2 * ABSORB.guard, 2).str.to_integer(base=16, strict=False)
+    match = (hexes.str.len_chars() == 2 * ABSORB_LEN) & ((guard & 0x1F) == LIT).fill_null(False)
+    value = _byte(ABSORB.offset, ABSORB.signed)
+    t = ABSORB.threshold
+    return genomes.select(
+        "raw_hash",
+        absorb_class=pl.when(~match).then(pl.lit("unmatched"))
+        .when(value >= t).then(pl.lit(f"ge{t}")).otherwise(pl.lit(f"lt{t}")),
+    )
+
+
+def _groups(run: Run, group: str) -> pl.DataFrame:
+    """`raw_hash` and the grouping column `group` for every genome."""
+    if group == "absorb_class":
+        if run.meta.get("ancestor", "std") != "std":
+            raise ValueError("absorb_class reads the 21-byte std ancestor's absorb count; "
+                             f"this run's ancestor is {run.meta['ancestor']!r}")
+        return absorb_class(run.genomes)
+    if group not in run.genomes.columns:
+        raise ValueError(f"--group {group!r}: not a genomes.csv column or absorb_class")
+    return run.genomes.select("raw_hash", pl.col(group).cast(pl.Utf8))
+
+
+def qnn_series(run: Run, group: str = "func_hash") -> pl.DataFrame:
+    """QNN per census tick over components given by `group` (spec §2.1,
+    `--group`): `qnn`, `qnn_cum`, `n_func` (components with n > 0) and
+    `top_func_share` (largest component's share), the last two counting
+    groups of `group`. Census bodies by `now_hash`; bodies whose hash has no
+    group value are left out of N. The first census has qnn 0. With
+    `absorb_class` also `absorb_ge96_share` (the >= 96 share among bodies the
+    read matches) and `absorb_unmatched_share` (unmatched among all)."""
+    groups = _groups(run, group).rename({group: "g"})
+    cens = run.census.join(groups, left_on="now_hash", right_on="raw_hash", how="left")
+    comp = cens.group_by("tick", "g").agg(n=pl.col("count").sum()).drop_nulls("g")
+    ticks = comp.select(pl.col("tick").unique().sort())
+    ticks = ticks.with_columns(prev=pl.col("tick").shift(1))
+    comp = comp.join(comp.group_by("tick").agg(total=pl.col("n").sum()), on="tick").with_columns(
+        p=pl.col("n") / pl.col("total")).join(ticks, on="tick")
+    prev = comp.select(prev="tick", g="g", p_prev="p")
+    comp = comp.join(prev, on=["prev", "g"], how="left")
+    out = comp.group_by("tick").agg(
+        qnn=pl.when(pl.col("prev").is_null()).then(0.0).otherwise(
+            (pl.col("p") - pl.col("p_prev").fill_null(0.0)).clip(lower_bound=0.0) ** 2).sum(),
+        n_func=pl.len(),
+        top_func_share=pl.col("p").max(),
+    ).sort("tick").with_columns(qnn_cum=pl.col("qnn").cum_sum())
+    out = out.select("tick", "qnn", "qnn_cum", "n_func", "top_func_share")
+    if group == "absorb_class":
+        from traits import ABSORB
+        ge, lt = f"ge{ABSORB.threshold}", f"lt{ABSORB.threshold}"
+        shares = comp.group_by("tick").agg(
+            **{f"{ABSORB.ge}_share": pl.col("n").filter(pl.col("g") == ge).sum()
+               / pl.col("n").filter(pl.col("g").is_in([ge, lt])).sum(),
+               "absorb_unmatched_share": pl.col("n").filter(pl.col("g") == "unmatched").sum()
+               / pl.col("n").sum()})
+        out = out.join(shares, on="tick", how="left").with_columns(
+            pl.col(f"{ABSORB.ge}_share").fill_nan(None))
+    return out
+
+
+def _series(run: Run, every: int, depths: tuple[int, ...],
+            group: str = "func_hash") -> tuple[pl.DataFrame, int]:
     """Per-census rows, and the deepest generation reached in the run."""
     parent, gen, born, up = _tree(run)
     tin, tout = _euler(parent, gen)
     max_desc = _persistence(run, gen)
-    genome = run.genomes.select("raw_hash", "func_hash")
-    cens = run.census.join(genome, left_on="now_hash", right_on="raw_hash", how="left")
-    func = cens.group_by("tick", "func_hash").agg(n=pl.col("count").sum()).drop_nulls("func_hash")
-    totals = func.group_by("tick").agg(total=pl.col("n").sum())
-    func = func.join(totals, on="tick").with_columns(p=pl.col("n") / pl.col("total"))
-    proportions: dict[int, dict[str, float]] = {}
-    for tick, h, p in func.select("tick", "func_hash", "p").iter_rows():
-        proportions.setdefault(int(tick), {})[str(h)] = float(p)
-    ticks = sorted(proportions)
+    qnn = {r["tick"]: r for r in qnn_series(run, group).iter_rows(named=True)}
+    ticks = sorted(qnn)
     max_depth = int(gen.max()) if gen.size else 0
     injected = _injected(run, parent, gen, up)
     any_injected = bool(injected.any())
@@ -375,16 +456,7 @@ def _series(run: Run, every: int, depths: tuple[int, ...]) -> tuple[pl.DataFrame
     deepest = max(depths, default=0)
     censored_all = deepest > 0 and not applies[deepest]
     previous_mrca = None
-    cumulative = 0.0
     for ix, tick in enumerate(ticks):
-        current = proportions[tick]
-        previous = proportions[ticks[ix - 1]] if ix else {}
-        # Tick 0 is the observed starting state, not a transition from an
-        # invented empty population. New components after it still compare
-        # against an absent previous share of zero.
-        qnn = (0.0 if ix == 0 else
-               sum(max(0.0, p - previous.get(h, 0.0)) ** 2 for h, p in current.items()))
-        cumulative += qnn
         alive = org_by_tick[tick]
         tips = alive["id"].to_numpy().astype(np.int32, copy=False)
         sampled = ix % every == 0
@@ -417,13 +489,13 @@ def _series(run: Run, every: int, depths: tuple[int, ...]) -> tuple[pl.DataFrame
             for d in depths:
                 if max_desc[int(ident)] >= gen[int(ident)] + d:
                     persistent_components[d].append(c)
-        row = dict(tick=tick, qnn=qnn, qnn_cum=cumulative, n_func=len(current),
-                   top_func_share=max(current.values(), default=0.0), pop=alive.height,
+        row = dict(qnn[tick], pop=alive.height,
                    rep_alive=(sum(classes.get(h) == "replicator" for h in hashes)
                               if run.classes is not None else None),
                    len_med=float(alive["len"].median()) if alive.height else None,
                    mrca_gen=tm["mrca_gen"] if tm else None, mrca_tick=tm["mrca_tick"] if tm else None,
                    mrca_changed=mrca_changed,
+                   root_lines=tm["root_lines"] if tm else None,
                    ancestor_count=tm["ancestor_count"] if tm else None,
                    mpd=tm["mpd"] if tm else None, spd=tm["spd"] if tm else None,
                    mean_ed=tm["mean_ed"] if tm else None,
@@ -459,17 +531,21 @@ def _series(run: Run, every: int, depths: tuple[int, ...]) -> tuple[pl.DataFrame
     return (pl.DataFrame(rows) if rows else pl.DataFrame()), max_depth
 
 
-def compute(run: Run | str | Path, every: int = 1, depths: tuple[int, ...] = (187, 1870)) -> tuple[pl.DataFrame, dict]:
-    """Compute per-census series and whole-run summary for an evo run."""
+def compute(run: Run | str | Path, every: int = 1, depths: tuple[int, ...] = (187, 1870),
+            group: str = "func_hash") -> tuple[pl.DataFrame, dict]:
+    """Compute per-census series and whole-run summary for an evo run; the
+    QNN columns are over components of `group` (`func_hash`, any other
+    genomes.csv column, or `absorb_class`)."""
     if every < 1:
         raise ValueError("every must be at least 1")
     if not isinstance(run, Run):
         run = load(run)
-    series, max_gen = _series(run, every, depths)
+    series, max_gen = _series(run, every, depths, group)
     summary: dict = {}
     if series.height:
         summary = {
             "run": str(run.dir),
+            "group": group,
             "qnn_cum": float(series["qnn_cum"][-1]),
             "mrca_changes": int(series["mrca_changed"].sum()),
             "final_tick": int(series["tick"][-1]),
@@ -491,6 +567,8 @@ def compute(run: Run | str | Path, every: int = 1, depths: tuple[int, ...] = (18
             for name in ("change", "novelty", "ecology"):
                 summary[f"mean_{name}_{d}"] = _mean(stationary_modes[f"{name}_{d}"])
         summary["mrca_tick"] = last_value(series["mrca_tick"])
+        summary["mrca_gen"] = last_value(series["mrca_gen"])
+        summary["root_lines"] = last_value(series["root_lines"])
     return series, summary
 
 
@@ -579,12 +657,15 @@ def main() -> None:
     ap.add_argument("run_dir")
     ap.add_argument("--every", type=int, default=1)
     ap.add_argument("--depths", default="187,1870")
+    ap.add_argument("--group", default="func_hash",
+                    help="QNN components: func_hash (default), another genomes.csv column, "
+                         "or absorb_class (lt96 / ge96 / unmatched by traits.py's absorb read)")
     ap.add_argument("--knockout", action="store_true")
     ap.add_argument("--out")
     a = ap.parse_args()
     depths = tuple(int(x) for x in a.depths.split(","))
     run = load(a.run_dir)
-    series, summary = compute(run, a.every, depths)
+    series, summary = compute(run, a.every, depths, a.group)
     out = Path(a.out) if a.out else Path(a.run_dir) / "measures"
     out.mkdir(parents=True, exist_ok=True)
     series.write_csv(out / "series.csv")

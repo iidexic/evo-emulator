@@ -15,7 +15,9 @@ ANALYSIS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ANALYSIS))
 
 from evo_run import Run, load
-from measures import _euler, _tree, compute, site_entropy, spd_edge, spd_pairwise
+from measures import (_euler, _tree, _tree_metrics, absorb_class, compute, qnn_series,
+                      site_entropy, spd_edge, spd_pairwise)
+import measures_baseline
 
 # The E007 ancestor (absorb count 64 at byte 6, `lit A` at byte 5), two
 # variants with the count at 96 and 112, and one whose guard byte is no
@@ -294,3 +296,133 @@ def test_parasite_share_applies_e005_world_class_and_entered_share_is_over_repli
     # which was entered; over all bodies it would be 2/3.
     assert rows["one_shot"]["entered_share"] == 1.0
     assert rows["one_shot"]["rep_alive"] == 1
+
+
+def test_root_lines_and_qnn_over_absorb_class_by_hand(tmp_path):
+    run = load(one_founder(tmp_path))
+    series, summary = compute(run, depths=(1,), group="absorb_class")
+    # Children of the MRCA with living descendants: t1 and t2 2 and 3 under
+    # 1; t3 4 and 5 (through 8) under 2.
+    assert series["root_lines"].to_list() == [2, 2, 2]
+    assert summary["root_lines"] == 2 and summary["group"] == "absorb_class"
+    # Bodies: t1 a a a; t2 a a h1 h2 a; t3 a h1 h1 u. By absorb class
+    # (lt96, ge96, unmatched): t1 1/0/0, t2 .6/.4/0, t3 .25/.5/.25.
+    assert np.allclose(series["qnn"].to_list(), [0.0, 0.4 ** 2, 0.1 ** 2 + 0.25 ** 2])
+    assert series["n_func"].to_list() == [1, 2, 3]
+    assert np.allclose(series["top_func_share"].to_list(), [1.0, 0.6, 0.5])
+    assert np.allclose(series["absorb_ge96_share"].to_list(), [0.0, 0.4, 2 / 3])
+    assert np.allclose(series["absorb_unmatched_share"].to_list(), [0.0, 0.0, 0.25])
+    # By func_hash h1 and h2 are apart: t2 .6/.2/.2, t3 a .25, h1 .5, u .25.
+    by_func = qnn_series(run)
+    assert np.allclose(by_func["qnn"].to_list(), [0.0, 2 * 0.2 ** 2, 0.3 ** 2 + 0.25 ** 2])
+    assert "absorb_ge96_share" not in by_func.columns
+
+
+def test_absorb_class_follows_traits_absorb_read():
+    bodies = {"anc": ANC, "h1": HI1, "h2": HI2, "guard": UNM,
+              "long": ANC + "00",                    # 22 bytes: not read
+              "neg": ANC[:12] + "8e" + ANC[14:],     # -114, read as encoded
+              "x95": ANC[:12] + "5f" + ANC[14:]}
+    g = pl.DataFrame({"raw_hash": list(bodies), "bytes_hex": list(bodies.values())})
+    got = dict(absorb_class(g).iter_rows())
+    assert got == {"anc": "lt96", "h1": "ge96", "h2": "ge96", "guard": "unmatched",
+                   "long": "unmatched", "neg": "lt96", "x95": "lt96"}
+
+
+def test_tree_metrics_match_a_pairwise_loop_on_a_random_500_tip_tree():
+    rng = np.random.default_rng(9217)
+    n = 1800
+    parent = np.zeros(n, dtype=np.int32)
+    depth = np.zeros(n, dtype=np.int32)
+    for node in range(2, n):
+        parent[node] = rng.integers(1, node)
+        depth[node] = depth[parent[node]] + 1
+    up = [parent]
+    for _ in range(1, int(depth.max()).bit_length() + 1):
+        up.append(up[-1][up[-1]])
+    tin, tout = _euler(parent, depth)
+    tips = sorted(map(int, rng.choice(np.arange(1, n), size=500, replace=False)))
+    tm = _tree_metrics(np.array(tips), depth, np.zeros(n, dtype=np.int32), tin, tout, up)
+
+    def path(x):
+        out = []
+        while x:
+            out.append(x)
+            x = int(parent[x])
+        return out
+    paths = {t: path(t) for t in tips}
+    sets = {t: set(p) for t, p in paths.items()}
+    m = len(tips)
+    dist = np.zeros((m, m))
+    for i in range(m):
+        for j in range(i + 1, m):
+            lca = max(int(depth[c]) for c in sets[tips[i]] & sets[tips[j]])
+            dist[i, j] = dist[j, i] = depth[tips[i]] + depth[tips[j]] - 2 * lca
+    upper = dist[np.triu_indices(m, 1)]
+    assert tm["spd"] == int(upper.sum())
+    assert np.isclose(tm["mpd"], upper.mean())
+    # MRCA, fair-proportion ED below it, branch points, root lines.
+    common = set.intersection(*sets.values())
+    mrca = max(common, key=lambda x: int(depth[x]))
+    assert tm["mrca_id"] == mrca
+    below: dict[int, int] = {}
+    for t in tips:
+        for x in paths[t]:
+            below[x] = below.get(x, 0) + 1
+    ed = [sum(1 / below[x] for x in paths[t] if x not in common) for t in tips]
+    assert np.isclose(tm["mean_ed"], np.mean(ed))
+    kids: dict[int, set] = {}
+    for t in tips:
+        for x in paths[t]:
+            kids.setdefault(int(parent[x]), set()).add(x)
+    assert tm["ancestor_count"] == sum(1 for c in kids.values() if len(c) >= 2)
+    assert tm["root_lines"] == len(kids[mrca])
+    assert any(t in kids for t in tips)  # living ancestors among the tips
+
+
+def test_gz_input_and_cli_summary_with_group(tmp_path):
+    plain, _ = compute(load(one_founder(tmp_path / "plain")), depths=(1,), group="absorb_class")
+    gz_dir = one_founder(tmp_path / "gz", gz=True)
+    assert not list(gz_dir.glob("*.csv")) and list(gz_dir.glob("*.csv.gz"))
+    gz, _ = compute(load(gz_dir), depths=(1,), group="absorb_class")
+    assert gz.equals(plain)
+    out = tmp_path / "out"
+    res = run_cli(gz_dir, "--group", "absorb_class", "--every", "2", "--depths", "1,5", "--out", out)
+    assert res.returncode == 0, res.stderr
+    summary = json.loads((out / "summary.json").read_text())
+    # Censuses t1 and t3 are sampled (every 2): MRCA 1, then 2.
+    assert summary["group"] == "absorb_class"
+    assert (summary["mrca_tick"], summary["mrca_gen"], summary["root_lines"]) == (1, 1, 2)
+    assert summary["mrca_changes"] == 1
+    assert summary["max_gen"] == 3 and summary["mean_change_5"] == "censored"
+    series = pl.read_csv(out / "series.csv")
+    assert series["root_lines"].to_list() == [2, None, 2]
+    assert np.allclose(series["absorb_ge96_share"].to_list(), [0.0, 0.4, 2 / 3])
+
+
+def test_sweep_check_window_and_ratio():
+    absorb = pl.DataFrame({
+        "tick": [0, 2500, 3000, 3500, 4000, 25000, 25500],
+        "qnn": [0.0, 0.5, 0.01, 0.09, 0.04, 0.001, 0.001],
+        "absorb_ge96_share": [0.0, 0.2, 0.3, 0.6, 0.8, 0.8, 0.8]})
+    got = measures_baseline.sweep_check(absorb)
+    # The founder-phase 0.5 at 2,500 is excluded; the window is (2500, 4000].
+    assert (got["sweep_peak_tick"], got["sweep_lo_tick"], got["sweep_hi_tick"]) == (3500, 2500, 4000)
+    assert np.isclose(got["sweep_ratio"], 0.001 / 0.09) and got["c1"]
+    late = absorb.with_columns(qnn=pl.Series([0.0, 0.5, 0.01, 0.02, 0.04, 0.1, 0.001]))
+    assert not measures_baseline.sweep_check(late)["c1"]
+
+
+def test_measures_baseline_on_a_tiny_synthetic_run(tmp_path):
+    runs, out = tmp_path / "runs", tmp_path / "out"
+    one_founder(runs / "lod" / "e007" / "s1")
+    lines = measures_baseline.run_baseline(runs, out, seeds=2)
+    text = (out / "summary.md").read_text(encoding="utf-8")
+    assert text.splitlines() == lines
+    assert "| e007 | std | 1 |" in text and "missing e007/std/s2" in text
+    assert "absent on this machine" in text
+    row = pl.read_csv(out / "runs.csv").row(0, named=True)
+    assert (row["root_lines"], row["mrca_changes"], row["mrca_tick_max"]) == (2, 1, 1)
+    assert row["c2_early"] and not row["c1"]  # no census after tick 2,500
+    assert pl.read_csv(out / "e007_series.csv").height == 3
+    assert pl.read_csv(out / "e007_absorb_class_series.csv")["absorb_ge96_share"].to_list()[1] == 0.4
