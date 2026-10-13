@@ -27,8 +27,13 @@ Stages (subcommands):
   s<seed>, with the same command line as stage 3's tierra arm, so they are
   its first ten seeds. Writes runs/e015/world/gate.csv and gate.md. If it
   fails, the protocol's first and only knob is K (no K above 127 fits a
-  `lit` byte, so that knob is spent), then `--sun` as a declared arm change;
-  this runner does neither.
+  `lit` byte, so that knob is spent), then `--sun` as a declared arm change.
+  Gate arms added after the gate failed (`gate --arm NAME`, directories
+  runs/e015/world/<arm>/s<seed>, outputs gate_<arm>.csv and .md):
+  `tierra_quiet` (noise off: `--p 0 --rot 0`; see GATE_ARMS). Each gate
+  summary also has stage 3's per-bin measures on its runs (gate[_<arm>]_bins.csv,
+  _runs.csv) and the profile of replicator-class deaths (median age, share
+  with no child, share of absorbs short, mean ration).
 - `world` (stage 3, the comparison): `tierra` against `std`, 30 seeds each,
   50,000 ticks, one founder (as E007), `--census 500`, classified. Not run
   until the gate passes (the runner refuses unless `--force-world`).
@@ -108,6 +113,27 @@ HEX = {
 }
 ARM_FLAGS = {"std": [], "tierra": ["--ancestor", "tierra"]}
 ARMS = ["std", "tierra"]
+# Gate arms. `tierra` is the registered gate; the others were added after it
+# failed (docs/tasks/README.md, "E015 persistence and world"). Physics flags
+# only (the world run adds `--ancestor tierra`); `--classify` gets the same
+# flags (the harness ignores the noise ones, `--sun` acts on it).
+# - tierra_quiet: no write flips, no copy slips, no bit rot (`--p 0` sets
+#   both write probabilities, `--rot 0` bit rot): E005's quiet world but for
+#   debris decay, which has no flag and changes no byte (it relabels debris
+#   as free, and every op treats the two alike; it only draws from the PRNG).
+GATE_ARMS = {
+    "tierra": [],
+    "tierra_quiet": ["--p", "0", "--rot", "0"],
+}
+for _arm, _flags in GATE_ARMS.items():
+    ARM_FLAGS[_arm] = ["--ancestor", "tierra", *_flags]
+
+
+def base(arm: str) -> str:
+    """The ancestor an arm seeds (`std` or `tierra`)."""
+    return arm.split("_")[0]
+
+
 TICKS = 50_000
 CENSUS = 500
 BIN = 2_500
@@ -262,7 +288,7 @@ def has(d: Path, name: str) -> bool:
 def commands(exe: Path, d: Path, arm: str, seed: int, ticks: int) -> tuple[list[str], list[str]]:
     run = [str(exe), "--ticks", str(ticks), "--seed", str(seed), "--report", str(CENSUS), "--census", str(CENSUS),
            "--out", str(d), *ARM_FLAGS[arm]]
-    cls = [str(exe), "--classify", str(d), "--harness-ticks", str(HARNESS_TICKS)]
+    cls = [str(exe), "--classify", str(d), "--harness-ticks", str(HARNESS_TICKS), *GATE_ARMS.get(arm, [])]
     return run, cls
 
 
@@ -300,17 +326,28 @@ def run_one(exe: Path, out: Path, arm: str, seed: int, ticks: int, force: bool, 
 
 
 def check_meta(run, arm: str) -> None:
-    m = run.meta
-    if m.get("ancestor") != arm or m["founders"][0]["hex"] != HEX[arm]:
+    """The run seeded the arm's ancestor under the arm's physics (sun and
+    noise as its flags say)."""
+    m, b = run.meta, base(arm)
+    if m.get("ancestor") != b or m["founders"][0]["hex"] != HEX[b]:
         raise SystemExit(f"{run.dir}: meta.json ancestor {m.get('ancestor')}, founder {m['founders'][0]['hex']}; "
-                         f"expected {arm} {HEX[arm]}")
+                         f"expected {b} {HEX[b]}")
+    flags = GATE_ARMS.get(arm, [])
+    sun = int(flags[flags.index("--sun") + 1]) if "--sun" in flags else 1
+    c = m["config"]
+    quiet = "--p" in flags
+    ok = (int(c["patch_income"]) == 256_000 * sun and int(c["patch_cap"]) == 4_096_000 * sun
+          and (float(c["p_write_flip"]) == 0.0) == quiet and (float(c["q_slip"]) == 0.0) == quiet
+          and (float(c["p_bit_rot"]) == 0.0) == quiet)
+    if not ok:
+        raise SystemExit(f"{run.dir}: meta.json config does not match arm {arm} (sun {sun}, quiet {quiet})")
 
 
 # ---- stage 2: the persistence gate -------------------------------------------------------
 
-def gate_row(out: Path, seed: int, ticks: int) -> dict:
-    run = load(run_dir(out, "tierra", seed))
-    check_meta(run, "tierra")
+def gate_row(out: Path, arm: str, seed: int, ticks: int) -> dict:
+    run = load(run_dir(out, arm, seed))
+    check_meta(run, arm)
     final = int(run.orgs["tick"].max()) if run.orgs.height else 0
     alive = run.class_of(run.orgs.filter(pl.col("tick") == final), "now_hash")
     cen = run.class_of(run.orgs, "now_hash").filter(pl.col("class") == "replicator")
@@ -332,14 +369,15 @@ def gate_row(out: Path, seed: int, ticks: int) -> dict:
     return row
 
 
-def summarize_gate(rows: list[dict], ticks: int, seeds: list[int]) -> str:
+def summarize_gate(rows: list[dict], ticks: int, seeds: list[int], arm: str = "tierra") -> str:
     df = pl.DataFrame(rows).sort("seed")
     n = df.height
     passed = int(df["passed"].sum())
     need = math.ceil(GATE_NEED * len(seeds) / GATE_SEEDS)
     verdict = "passes" if passed >= need else "fails"
     pop_cols = [c for c in df.columns if c.startswith("pop_") and c.endswith("k")]
-    lines = [f"# E015 stage 2: persistence gate, `--ancestor tierra` (K = 127, E = 16), {n} seeds, {ticks:,} ticks", "",
+    flags = " ".join(ARM_FLAGS[arm])
+    lines = [f"# E015 persistence gate, arm `{arm}` (`{flags}`; K = 127, E = 16), {n} seeds, {ticks:,} ticks", "",
              f"Pass: replicator-class bodies (harness class of the current body) alive at tick {ticks:,} in >= {need} "
              f"of {len(seeds)} seeds (E004's criterion; 8 of 10 scaled). **{passed} of {n}: the gate {verdict}.**", "",
              "Per seed: last census with a living body, replicator-class bodies alive at the run's end, last census with a "
@@ -353,6 +391,60 @@ def summarize_gate(rows: list[dict], ticks: int, seeds: list[int]) -> str:
                      f"{r['last_rep_census']:,} | {r['late_exact_rep']} | {r['births']:,} | {r['exact_births']:,} | "
                      f"{r['last_birth']:,} |" + "".join(f" {r[c]} |" for c in pop_cols))
     return "\n".join(lines)
+
+
+def gate_detail(out: Path, arm: str, seeds: list[int], ticks: int, bin_size: int, name: str) -> list[str]:
+    """For a gate arm: stage 3's per-bin measures on its runs (medians over
+    seeds; written to <name>_bins.csv and <name>_runs.csv), and the profile of
+    replicator-class deaths (class of the birth genome): count, median age,
+    share with no child, and the share of absorbs short of a full ration
+    (sum `absorb_short` / sum `absorbs`), over all ticks and over the first
+    5,000."""
+    res = [analyse_world(out, arm, s, ticks, bin_size, False) for s in seeds
+           if has(run_dir(out, arm, s), "classes.csv")]
+    wd = out / "world"
+    bdf = pl.DataFrame([b for bins, _ in res for b in bins], infer_schema_length=None)
+    pl.DataFrame([s for _, s in res], infer_schema_length=None).write_csv(wd / f"{name}_runs.csv")
+    bdf.write_csv(wd / f"{name}_bins.csv")
+    pct = lambda v: "–" if v is None else f"{100 * v:.1f}%"
+    f0 = lambda v: "–" if v is None else f"{v:,.0f}"
+    med = lambda x, c: x[c].drop_nulls().median() if x[c].drop_nulls().len() else None
+    lines = ["", f"Per {bin_size:,}-tick bin, over the {len(res)} seeds: seeds with exact births; medians of exact births, "
+             "parasite-lineage share of exact births (E007's `parasite_2` set per run; min-max over seeds with exact "
+             "births), entered share of replicator-class deaths (`exec_by_others` > 0; replicator-class deaths in the "
+             "bin), living bodies, IP off own body, nop share of living bytes, body length p10/p50.", "",
+             "| ticks | seeds with exact births | exact | parasite share (min-max) | entered (rep deaths) | living | IP off body | nop share | len p10/p50 |",
+             "|---|---|---|---|---|---|---|---|---|"]
+    for k in sorted(bdf["bin"].unique().to_list()):
+        x = bdf.filter(pl.col("bin") == k)
+        p = x["par_share"].drop_nulls()
+        rng = f" ({pct(p.min())}-{pct(p.max())})" if p.len() else ""
+        lines.append(f"| {(k - 1) * bin_size:,}-{k * bin_size:,} | {int((x['exact'] > 0).sum())} | {f0(med(x, 'exact'))} "
+                     f"| {pct(med(x, 'par_share'))}{rng} | {pct(med(x, 'entered_share'))} ({f0(med(x, 'rep_deaths'))}) "
+                     f"| {f0(med(x, 'pop'))} | {pct(med(x, 'ip_off_share'))} | {pct(med(x, 'nop_share'))} "
+                     f"| {f0(med(x, 'len_p10'))}/{f0(med(x, 'len_p50'))} |")
+    parts = []
+    for s in seeds:
+        d = run_dir(out, arm, s)
+        if has(d, "classes.csv"):
+            run = load(d)
+            parts.append(run.class_of(run.deaths, "birth_hash").filter(pl.col("class") == "replicator")
+                         .select("tick", "age", "offspring", "absorbs", "absorb_short", "absorb_gain_m"))
+    dd = pl.concat(parts) if parts else None
+    lines += ["", "Replicator-class deaths (class of the birth genome), seeds pooled: count, median age, share with no "
+              "child, share of their absorbs short of a full ration (any pool below its cap counts, under the "
+              "proportional rule), and their mean ration as a share of a full one (sum `absorb_gain_m` / sum "
+              "`absorbs` / 8,000; the body breaks even at about 95.6% in the harness).", "",
+              "| ticks | deaths | median age | no child | absorbs short | mean ration |", "|---|---|---|---|---|---|"]
+    for lab, x in (("0-2,500", dd.filter(pl.col("tick") <= 2_500) if dd is not None else None),
+                   ("0-5,000", dd.filter(pl.col("tick") <= 5_000) if dd is not None else None), ("all", dd)):
+        if x is None or not x.height:
+            lines.append(f"| {lab} | 0 | – | – | – | – |")
+            continue
+        n_abs = max(1, x["absorbs"].sum())
+        lines.append(f"| {lab} | {x.height:,} | {x['age'].median():,.0f} | {pct((x['offspring'] == 0).mean())} "
+                     f"| {pct(x['absorb_short'].sum() / n_abs)} | {pct(x['absorb_gain_m'].sum() / n_abs / 8_000)} |")
+    return lines
 
 
 # ---- stage 3: the world comparison --------------------------------------------------------
@@ -521,6 +613,8 @@ def main() -> None:
     ap.add_argument("--no-compress", action="store_true")
     ap.add_argument("--no-measures", action="store_true", help="world: skip T05's measures")
     ap.add_argument("--analyse-only", action="store_true")
+    ap.add_argument("--arm", choices=list(GATE_ARMS), default="tierra",
+                    help="gate: which arm (tierra is the registered gate; the others were added after it failed)")
     a = ap.parse_args()
     t_all = time.time()
     exe = evo_bin(a.evo_bin)
@@ -538,7 +632,7 @@ def main() -> None:
         return
 
     seeds = list(range(1, (a.seeds or (GATE_SEEDS if a.stage == "gate" else WORLD_SEEDS)) + 1))
-    arms = ["tierra"] if a.stage == "gate" else ARMS
+    arms = [a.arm] if a.stage == "gate" else ARMS
     if a.stage == "world" and not a.force_world:
         g = a.out / "world" / "gate.csv"
         ok = g.exists() and pl.read_csv(g)["passed"].sum() >= GATE_NEED
@@ -554,10 +648,12 @@ def main() -> None:
 
     wd = a.out / "world"
     if a.stage == "gate":
-        rows = [gate_row(a.out, s, a.ticks) for s in seeds if has(run_dir(a.out, "tierra", s), "classes.csv")]
-        pl.DataFrame(rows).write_csv(wd / "gate.csv")
-        text = summarize_gate(rows, a.ticks, seeds)
-        (wd / "gate.md").write_text(text + "\n", encoding="utf-8", newline="")
+        name = "gate" if a.arm == "tierra" else f"gate_{a.arm}"
+        rows = [gate_row(a.out, a.arm, s, a.ticks) for s in seeds if has(run_dir(a.out, a.arm, s), "classes.csv")]
+        pl.DataFrame(rows).write_csv(wd / f"{name}.csv")
+        text = summarize_gate(rows, a.ticks, seeds, a.arm)
+        text += "\n" + "\n".join(gate_detail(a.out, a.arm, seeds, a.ticks, a.bin, name))
+        (wd / f"{name}.md").write_text(text + "\n", encoding="utf-8", newline="")
     else:
         done = [j for j in jobs if has(run_dir(a.out, *j), "classes.csv")]
         with ThreadPoolExecutor(min(a.jobs, 4)) as ex:
