@@ -168,9 +168,18 @@ harness grades the sweep step as deleterious in 8 of 9 seeds because
 the longer absorb phase wins on a lower ration, which a lone body with
 a full pool never sees. So for E016 a defence step graded `neutral` or
 `deleterious` alone is not evidence against it; the world-fitness
-column (children per death in the step's window) is the one to read
-first, and the harness column second. T06's spec §4 said this as a
-caveat; it is now the rule. Also: the desktop's `runs/e007/std/` is
+column is the one to read first, and the harness column second. T06's
+spec §4 said this as a caveat; it is now the rule. The follow-up
+(`95d6e55`) sharpens it: the 25,000-tick world mean per genome did
+not resolve the sweep either (the 96-count genome's children per
+death rise in 2 seeds and fall in 4, all within 0.89–0.98), so for
+E016 the world column is read in bins of a few thousand ticks against
+contemporaries, not as a window mean. And most beneficial/deleterious
+pairs on the line are break-and-repair (178 of 196 breaks are
+repaired at the next step, 195 of 196 repairs carry no copy error:
+somatic damage passed on at `divide`, then the undamaged body again),
+so E016's step counts are read after pairing those off; between
+genomes that both have children the lines hold 65 B and 90 D. Also: the desktop's `runs/e007/std/` is
 the killed first launch (to tick ~145,000, no `genomes.csv`); complete
 reruns are at `runs/lod/e007/s<seed>/`, and `runs/e012`, `runs/e013`
 are not on the desktop at all, so T05's baselines on those two run on
