@@ -169,6 +169,23 @@ bodies in E007's `orgs.csv` and `deaths.csv` against the cap; if
 `max_energy_m` sits an order of magnitude below 1,344 in every seed,
 the argument holds.
 
+*Result of the check (2026-10-13, E007 record, "Follow-up: the reserve
+check"; `analysis/e007_reserve.py`): it fails in every seed.* The
+median `max_energy_m` of replicator-class bodies that divided is
+279–283 units (p90 825–939). The 7–8% that reach the cap make about
+half of all divides, and 34–35% of replicator-class absorbs are cut
+short by the cap. Active hosts (divided within 50 ticks) hold a median
+of about 600 units, and a fifth of them are at ≥ 0.9 of the cap. So the
+host is not at zero margin, and the cap binds: "whatever the cap" and
+"hosts hold 100–130 units" do not stand. What stands is the order of
+magnitude. The cap is 1.7 passes (787–798 units per pass), so no host
+can be more than about two passes deep at this cap. That still explains
+E008–E010, and those experiments, not this inference, carry the case
+for a cost in time. Whether a higher cap deepens the store is open (§3.1
+and PLAN §8.3 dropped the cap sweep on this paragraph). About 42% of
+living replicator-class bodies are stalled: broken by bit rot,
+non-reproducing, and sitting at the cap.
+
 **C. The ancestor's addressing makes a strategic parasite unreachable
 and a placement parasite inevitable.** Finding 5. The parasite
 neighbourhood is a property of the ancestor's design, and the ancestor

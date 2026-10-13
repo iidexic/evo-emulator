@@ -717,7 +717,10 @@ problem: (A) the only interaction channels are code and placement;
 (B) the host's reserve is one pass deep because proportional absorb on
 a shared pool equilibrates every host to zero margin, whatever the
 store cap, so an energy charge on a host is always invisible or fatal
-(inference, with a check named in the synthesis §2 B); (C) the
+(inference, with a check named in the synthesis §2 B; the check failed
+2026-10-13, see 8.5: hosts are not at zero margin and the cap binds,
+but at a cap of 1.7 passes no host is more than about two passes deep,
+so the reserve is still shallow at this cap); (C) the
 ancestor is addressed by relative jumps and `self ; jmpa`, never by
 template search, so a parasite that borrows a neighbour's procedure
 (Tierra's, one mutation from its ancestor) is not in its one-hop
@@ -780,7 +783,10 @@ against the Tierra-with-energy premise, also reportable.
 `drain` (`docs/research/drain-proposal-2026-10-12.md`) follows E016 if
 a consumer mode is still wanted, in the form with precedent: a take
 from income or proportional to the victim's store, capped so it cannot
-kill. Store depth as a cap sweep is dropped (8.2 B).
+kill. Store depth as a cap sweep is dropped (8.2 B). (2026-10-13:
+the reserve check in 8.5 removed that ground, since the cap binds for
+a fifth of active hosts. Whether to bring the sweep back is open; it
+needs a `--store-cap` flag, which the CLI does not have.)
 
 ### 8.4 Line B — seedless emergence, rule by rule
 
@@ -833,8 +839,13 @@ epochs, takeover in 45 of 100; the original 40% at 2^-12.
   for children per 3,000 ticks alone and before `pad`. The first
   path-with-fitness analysis in this substrate, and the shakedown of
   the method E016 needs.
-- The E007 reserve check named in the synthesis §2 B (`max_energy_m`
-  of replicator-class bodies against the 1,344-unit cap).
+- ~~The E007 reserve check named in the synthesis §2 B (`max_energy_m`
+  of replicator-class bodies against the 1,344-unit cap).~~ Done
+  2026-10-13 (`analysis/e007_reserve.py`, E007 record): fails in every
+  seed. Reproducers' median `max_energy_m` is about 280 units, active
+  hosts hold a median of about 600, and a fifth of them are at the cap.
+  The cap is 1.7 passes. B's order of magnitude stands; "whatever the
+  cap" does not (8.2).
 
 ### 8.6 Engine work items
 
@@ -920,7 +931,12 @@ than reopening it.
   depth sweep is dropped; the arms listed above that do not depend on
   a reserve (a per-entry death probability, the mortality-matched
   control, depth crossed with defence length, 30 seeds, per-lineage
-  gain and loss, the look-back) carry over to E014–E016.
+  gain and loss, the look-back) carry over to E014–E016. Correction
+  the same day (E007 reserve check, §8.5): the pool does not hold
+  hosts at zero margin. Active hosts hold a median of about 600 units,
+  and a fifth of them sit at the cap, so "not reachable by a cap" is
+  unsupported. The cap (1.7 passes) is what bounds them. Reopening the
+  depth sweep is open; the move to time stands on E008–E010.
 - Ancestor addressing (2026-10-13). The 21-byte ancestor never
   searches, so "use a neighbour's procedure" is not in its one-hop
   neighbourhood and the only parasite available is the fall-through
