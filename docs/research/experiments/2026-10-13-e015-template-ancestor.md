@@ -163,4 +163,117 @@ Stated so the reader knows what these predictions were written against.
 
 ## Results
 
-Not yet run into `runs/e015/`; filled in after the runs.
+Run 2026-10-13 with the T03 binary at `e0610d6` (clean tree; built
+into `evo-core/target/t03`), `EVO_BIN` pointing at it. Data in
+`runs/e015/` (not in git): `nbhd/` (both CSVs, the binary's stdout,
+`summary.md`), `world/tierra/s1`–`s10` (compressed, 3–7.5 MB each),
+`world/gate.csv`, `gate.md`, and `gate_bins.csv` / `gate_runs.csv`
+(the stage-3 per-bin measures computed on the ten gate runs, as a
+description of the collapse; not stage 3).
+
+### Stage 1: neighbourhoods (12 s; 1.0 s and 1.9 s in the binary on 12 threads)
+
+Identical, byte for byte, to the build-time files.
+
+| label | std (21 bytes) | tierra (41 bytes) |
+|---|---|---|
+| replicator | 462 | 1,608 |
+| parasite_fallthrough | 236 | 218 |
+| parasite_jump | 25 | 1,095 |
+| one_shot | 434 | 1,942 |
+| inexact | 860 | 998 |
+| loafer | 1,200 | 1,145 |
+| dies | 2,159 | 3,490 |
+| mutants | 5,376 | 10,496 |
+
+`parasite_jump` rows, by position (entry offset into the host; exact
+copies before the host; every host alive):
+
+- **tierra**: L1, bytes 18–21: 249 at each (all 248 op-changing
+  substitutions and the deletion), entry 22, 63 copies each: 996 rows,
+  the designed one-hop searcher. `searchb` turned into `searchf` (byte
+  35, 8 rows) and the three `searchb` template bytes 36–38 turned into
+  `searchf` (8 each): the return search runs forward and finds the
+  host's L0, entry 4 (3 at byte 38): 32 more search-addressed rows. The
+  rest are fixed-offset: `lit C v` at byte 5 (11 rows, the absorb
+  loop's `jmpr C` lands in the adjacent host; entries 1–4 and 29–35),
+  `lit D v` at byte 27 (8 rows), `jmpr A`/`jmpr C` in place of bytes
+  24, 25, 28–31 and 39 (2 each), and the last byte (40; 34 rows: 16
+  end-byte `lit`/skip mutants entering at 1, and 18 that search
+  forward from there, entering at 4).
+- **std**: 25 rows, none searching: `lit D 13` at byte 4 (entry 3),
+  `jmpr C` in place of bytes 7, 8, 9, 13 (2 each; C = own length, so
+  entry at the same offset plus one), and 16 end-byte mutants at byte 20
+  (entry 1).
+
+`parasite_fallthrough`: std at bytes 4, 16, 18, 19, 20 (236, of which
+211 at byte 20); tierra at 5, 27, 32, 34–40 (218, of which 184 at
+byte 40).
+
+H17's neighbourhood prediction: **first clause holds** (996 label-flip
+rows at L1, plus 32 return-search rows); **second clause fails under
+the registered label rule** (25 std rows). Read by mechanism, the
+template body has 1,028 search-addressed one-hop parasites and the
+21-byte body none; both have a few dozen fixed-offset or end-byte rows
+that work only at the harness's adjacency. The label rule
+(`entry_off` != 0) does not separate these; the CSV has what is needed
+to (`pos`, `byte`, `entry_off`).
+
+### Stage 2: persistence gate (9 s: runs 0–2 s each, classify 1–3 s, 6 at a time)
+
+**0 of 10 seeds have a replicator-class body at tick 50,000: the gate
+fails.**
+
+| seed | last census with a living body | living then | last census with a replicator-class body | births | exact | last birth | pop at 5k / 10k / 15k / 20k / 25k |
+|---|---|---|---|---|---|---|---|
+| 1 | 50,000 | 4 | 3,500 | 8,145 | 3,498 | 24,121 | 89 / 36 / 19 / 12 / 4 |
+| 2 | 40,000 | 3 | 8,000 | 21,017 | 8,878 | 30,499 | 329 / 147 / 72 / 29 / 14 |
+| 3 | 41,500 | 3 | 6,000 | 20,961 | 9,221 | 41,605 | 447 / 180 / 74 / 38 / 14 |
+| 4 | 28,500 | 1 | 1,500 | 4,620 | 2,358 | 27,451 | 60 / 26 / 7 / 7 / 7 |
+| 5 | 29,000 | 1 | 4,000 | 11,100 | 5,290 | 16,374 | 152 / 40 / 17 / 8 / 4 |
+| 6 | 29,500 | 3 | 6,500 | 25,337 | 10,956 | 20,750 | 442 / 166 / 68 / 26 / 9 |
+| 7 | 27,000 | 5 | 2,000 | 5,471 | 2,616 | 20,396 | 44 / 17 / 10 / 6 / 5 |
+| 8 | 25,000 | 1 | 3,500 | 14,415 | 6,791 | 23,508 | 202 / 79 / 33 / 6 / 1 |
+| 9 | 27,500 | 1 | 4,000 | 9,430 | 4,084 | 24,241 | 155 / 65 / 21 / 11 / 2 |
+| 10 | 50,000 | 1 | 6,500 | 17,822 | 7,769 | 25,671 | 263 / 96 / 36 / 14 / 8 |
+
+("Living then" is the population at the census in the second column.
+Seeds 1 and 10 reach tick 50,000 with 4 and 1 non-replicating bodies;
+the other eight go extinct at ticks 40,150, 41,640, 28,538, 29,451,
+29,666, 27,378, 25,016 and 27,849, seeds 2–9 in order.) No seed has an exact birth by a replicator-class
+parent in its last 5,000 ticks (E004's `replicating`).
+
+What the population did, medians over the ten seeds per 2,500-tick bin
+(`gate_bins.csv`; parasite lineages are E007's `parasite_2` set per
+run):
+
+| ticks | seeds with exact births | exact births | parasite share of exact births (min–max) | replicator-class deaths entered | living | IP off own body | nop share of living bytes | length p10 / p50 |
+|---|---|---|---|---|---|---|---|---|
+| 0–2,500 | 10 | 3,190 | 15.7% (2.7–32.2%) | 27.9% | 260 | 56.6% | 33.1% | 3 / 41 |
+| 2,500–5,000 | 10 | 1,998 | 12.8% (0–29.2%) | 28.6% | 178 | 58.3% | 28.9% | 4 / 41 |
+| 5,000–7,500 | 7 | 30 | 9.6% (0–20.4%) | 83% (of 6.5) | 114 | 59.1% | 26.2% | 4 / 41 |
+| 7,500–10,000 | 4 | 0 | 5.0% (0–96.4%), 4 seeds | 75% (of 2.5) | 72 | 60.2% | 24.2% | 4 / 41 |
+
+### Reading
+
+The template body does what it was designed to do in the harness, and
+in the world the parasitism H17 predicts shows up from the first bin:
+16% of exact births by parasite lineages and 28% of replicator-class
+deaths entered in the first 2,500 ticks, against E007's 0.8–1.0% and
+7–14% for the 21-byte body. Then the hosts are gone within 1,500–8,000
+ticks and nothing replicates after. As in the probes, they die in their
+first cycle at a short ration, overrun by tiny fall-through bodies that
+run their absorb loops and procedures. Under the template body's
+`searchb` return, every intruder that reaches a host stays in it,
+whether it came by search or fell in. That is the design, meant for
+E016's cost rule, but here the residents only draw on the host's patch.
+
+The probes do not separate the two causes. One is the body's margin:
+it breaks even at a ration of about 95.6% of a full one, where the
+21-byte body at K = 64 breaks even at 92.3%. The other is the parasite
+load. The gate has its answer either way. The registered next steps
+(T03 §4, README "E015 persistence and world"): K is the first knob and
+is spent, since 127 is the largest K a `lit` byte holds; then `--sun`
+as a declared arm change; if neither persists, the ancestor needs
+shortening or another fix before E016. This record takes none of them;
+stage 3 is not run.

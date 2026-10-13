@@ -342,10 +342,10 @@ def summarize_gate(rows: list[dict], ticks: int, seeds: list[int]) -> str:
     lines = [f"# E015 stage 2: persistence gate, `--ancestor tierra` (K = 127, E = 16), {n} seeds, {ticks:,} ticks", "",
              f"Pass: replicator-class bodies (harness class of the current body) alive at tick {ticks:,} in >= {need} "
              f"of {len(seeds)} seeds (E004's criterion; 8 of 10 scaled). **{passed} of {n}: the gate {verdict}.**", "",
-             "Per seed: final census tick, living bodies and replicator-class bodies at the end, last census with a "
+             "Per seed: last census with a living body, replicator-class bodies alive at the run's end, last census with a "
              f"replicator-class body, exact births by replicator-class parents in the last {LATE_WINDOW:,} ticks "
              "(E004's `replicating`), births, exact births, last birth tick, and the population every 5,000 ticks.", "",
-             "| seed | final tick | pop end | rep alive end | last rep census | late exact (rep) | births | exact | last birth |"
+             "| seed | last census with life | pop at tick end | rep alive at tick end | last rep census | late exact (rep) | births | exact | last birth |"
              + "".join(f" {c[4:]} |" for c in pop_cols),
              "|---|---|---|---|---|---|---|---|---|" + "---|" * len(pop_cols)]
     for r in df.iter_rows(named=True):
