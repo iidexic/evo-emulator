@@ -24,6 +24,7 @@ regenerates any figure.
 | E012 | 2026-10-12 | `2026-10-12-e012-no-protect.md` | is write protection needed for coexistence? (H4) | no, in this world; `alloc` gives every replicator a private target |
 | E013 | 2026-10-12 | `2026-10-12-e013-founders.md` | do sixteen founders change anything after the founder phase? | all seeds persist; window 2 matches E007; absorb sweep slower in its second half |
 | E014 | 2026-10-13 | `2026-10-13-e014-cycle-theft.md` | pilot: is an entered host graded, not killed, under `--cycle-theft-pct`? (H16) | yes, 0.90 at N = 50 on reproducing hosts, dose clean, tax control clean; but intruders not resident (< 10%), so the main stage is skipped and gate 2 moves to E016 with the template ancestor |
+| E015 | 2026-10-13 | `2026-10-13-e015-template-ancestor.md` | does a template-addressed ancestor have a one-hop parasite, and does it persist? (H17) | one-hop parasite by construction (1,095 `parasite_jump` rows, 996 label flips; std 25, none by search); persistence gate fails 0 of 10 at K = 127; sun and noise-off arms added per the registered branch |
 
 Next: E014 (cost in time), E015 (template-addressed ancestor), E016
 (cost x ancestor, the defence search), per PLAN.md §8.3 and

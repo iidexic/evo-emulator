@@ -12,7 +12,7 @@ before the runs, as always.
 |---|---|---|---|
 | [T01](T01-reserve-check.md) | E007 reserve check: does any host bank energy? | nothing | done 2026-10-13 (Opus, laptop; `654783b`): **fails** in every seed; branch below taken |
 | [T02](T02-cycle-theft.md) | `--cycle-theft-pct`, `--cycle-tax-pct`, counters, harness gate, E014 runner | nothing | built 2026-10-13 (`0ce3338`); gate 1 passed at N = 50 (0.465, host alive; dies from N = 51 in the harness); E014 pilot run, skip branch taken, no main stage |
-| [T03](T03-template-ancestor.md) | `--ancestor tierra`, `--neighbours HEX`, E015 runner | T02's `exec_by_others` | not built |
+| [T03](T03-template-ancestor.md) | `--ancestor tierra`, `--neighbours HEX`, E015 runner | T02's `exec_by_others` | built 2026-10-13 (Opus, `368ce56`…`ae15991`); body 41 bytes, K = 127; 1,095 `parasite_jump` rows for tierra against 25 for std; E015 gate **fails** 0 of 10, sun and noise-off arms running |
 | [T04](T04-snapshots-replay.md) | full-state snapshots, `--replay-from` | T02/T03 fields (or extend later) | not built |
 | [T05](T05-measures.md) | `measures.py`: QNN, phylometrics, MODES, sites; baselines on E007/E012/E013 | T03's `--neighbours-pad-only` for sites only | built 2026-10-13 (Codex, `0d0c36b`; Opus review: numbers match independent recomputation); shakedown criteria 1 and 2 rewritten (spec §4 amendment), fixes in §4.1 pending |
 | [T06](T06-lenski-lod.md) | line of descent with fitness per step, on E007's absorb sweep | nothing | built 2026-10-13 (`2f27841`); E007 record follow-up; sweep step deleterious in the harness in 8 of 9 seeds, D-before-B in seed 3 |
@@ -140,6 +140,18 @@ left for then.
   semantics check missed; fix the body (candidates in order: a
   shorter label of four nops; `searchf` for the return as well; drop
   the `lit C -4` and reuse D). Harness-only work, a day.
+- **Outcome 2026-10-13: the first bullet, after fix 1.** The spec's
+  45-byte body replicates but never pays for itself at any K (K = 127
+  nets −12.76 units per 26-tick cycle); four-nop labels (the branch's
+  first fix) give a 41-byte body that passes at K = 127 only (119
+  harness children, +37.9 per 25-tick child against the 21-byte
+  body's +35.9 per 13 ticks: half the margin per tick). Its
+  neighbourhood has 1,095 `parasite_jump` rows, 996 of them the
+  designed label flips at bytes 18–21 entering at 22; std has 25 such
+  rows, all fixed-offset `jmpr`/`lit` accidents, none by search, so
+  H17's "none for std" clause fails on the label and holds on the
+  mechanism. Record
+  `docs/research/experiments/2026-10-13-e015-template-ancestor.md`.
 - Replicates but no `parasite_jump` row: the neighbour's procedure is
   not copying the intruder. Check `self 0` under the executor rule in
   the harness placement (the mutant must be *before* the host for
@@ -155,6 +167,22 @@ left for then.
 - Does not persist: K up, then `--sun` as a declared arm; if neither,
   the body is too expensive for this world and the ancestor needs
   shortening (labels of four nops save 8 bytes) before E016.
+- **Outcome 2026-10-13: does not persist, 0 of 10** at K = 127 (the
+  largest `lit` value, so K is spent; the four-nop labels are already
+  in the body). Replicator-class bodies last to tick 1,500–8,000;
+  eight seeds go extinct by 25,016–41,640. In ticks 0–2,500 a median
+  15.7% of exact births are from parasite lineages and 27.9% of
+  replicator-class deaths are entered; then hosts die in their first
+  cycle (median age 26 ticks, 97% of absorbs short of a full ration).
+  Two candidate causes, not separated by these runs: the thin margin
+  (break-even ration 95.6% of full against 92.3% for the 21-byte
+  body) and the parasite load. Running now, per this branch: a
+  noise-off gate (no mutants, so no parasites) to separate them, and
+  `--sun` as the declared arm. If neither gives persistence, the body
+  gets shortened or its absorb loop made cheaper before E016; E016
+  then runs with whichever ancestor persists, and if only std does,
+  with the std ancestor and the cost alone (the T03 third bullet's
+  fallback).
 - Persists, parasites stay near 1%: placement, not addressing, limits
   entries (H17's second refutation). E016 still runs; its entered
   fraction is then the std ancestor's, and the design's expectation is

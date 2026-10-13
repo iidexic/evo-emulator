@@ -1,6 +1,18 @@
 # T03. A template-addressed ancestor, the neighbourhood mode, and E015
 
-Status: specified 2026-10-13. Not built. Argument: synthesis §2 C and
+Status: specified 2026-10-13; built the same day (Opus, commits
+`368ce56`, `8fa2a45`, `e0610d6`, `ae15991`; reviewed by Fable from the
+report, accepted). Deviations from this spec, all recorded in the E015
+record: the 45-byte body below never pays for itself at any K (K =
+127 nets −12.76 units per 26-tick cycle), so the README's T03 branch
+fix 1 was applied and the body is 41 bytes with four-nop labels (L0
+`0011`, L1 `1010`); K = 127 is the only passing K and is the default
+(+37.9 units per 25-tick child, half the 21-byte body's margin per
+tick); L1 is bytes 18–21 and the label-flip entry offset 22; the std
+ancestor has 25 `parasite_jump` rows under §2's label rule (fixed
+offsets, none by search), so test 3 pins those pairs instead of zero.
+E015 stages 1 and 2 run: gate fails 0 of 10; sun and noise-off arms
+follow per the README's E015 branch. Argument: synthesis §2 C and
 §3.2, PLAN §8.3 and §9 ("Ancestor addressing"), hypothesis H17.
 Depends on T02 only for the `exec_by_others` counter (the entered
 fraction in §4); build T02 first.
