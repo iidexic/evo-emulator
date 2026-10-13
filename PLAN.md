@@ -947,6 +947,18 @@ than reopening it.
   neighbourhood of both. Open: whether the ISA's search (directional,
   distance-priced, forward and backward as separate ops) gives the
   same one-hop structure Tierra's outward search did.
+- `alloc`/`copy` range edge (2026-10-13, E015). `alloc` checks the
+  locality radius from its own IP and `copy` from its own, a few bytes
+  later, so a child placed at the backward edge of the radius loses its
+  first bytes and keeps whatever stale bytes were there: byte 0 for the
+  21-byte ancestor (12.8% of births in a noise-off 3,000-tick run) and
+  bytes 0–2, its start label, for the 41-byte template ancestor (9% of
+  41-byte births in a noise-on probe; 56 of the label-flip mutant's 119
+  harness children; with noise off, the founder's second child onwards,
+  making return-parasites with no mutation). It is physics every
+  recorded run shares and a mutation-free source of new genomes; whether
+  range should hold for the whole pending region from `alloc` on, or
+  bodies should be laid out around it, is open.
 - Locality from IP (Phase 1 decision) vs from body start. IP-relative lets
   an IP wander far from its body at a per-byte energy cost; whether that
   gets abused (organisms executing free space to reach distant debris) is a

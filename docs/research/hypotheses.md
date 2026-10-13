@@ -34,7 +34,7 @@ says nothing the notes do not.
 | H14 | a graded cost selects the one-byte defence, not the five-byte | self-scan half settled against; endowment half untested | 2026-10-12 | E009, E009a, E009b |
 | H15 | profitable intrusion makes a short eject pay | refuted on its premise | 2026-10-09 | E010 |
 | H16 | a cost in time grades an entered host and makes a short eject pay | open | none | E014, designed |
-| H17 | a template-addressed ancestor has a one-hop parasite and parasitism becomes common | open | none | E015, designed |
+| H17 | a template-addressed ancestor has a one-hop parasite and parasitism becomes common | one-hop parasite confirmed by construction (1,028 search-addressed rows for the template body, 0 for the 21-byte one, which has 25 `parasite_jump` rows by fixed offsets); "common" pending: gate failed 0 of 10 at K = 127, passes at `--sun 2` (declared arm), where parasites are 8–27% of exact births and 25% of replicator-class deaths are entered, no same-sun control yet | 2026-10-13 | E015 |
 
 ---
 
@@ -905,3 +905,29 @@ the 21-byte one, so persistence in the standard world is itself a
 gate, run before the world comparison.
 
 **Status.** Open. E015, designed, not built.
+
+**Status 2026-10-13** (E015, stages 1 and 2 and two arms added after the
+gate failed; `docs/research/experiments/2026-10-13-e015-template-ancestor.md`).
+
+- The body is the candidate with four-nop labels, 41 bytes (16 of them
+  nops), K = 127, E = 16: the 45-byte one pays for itself at no K a
+  `lit` byte holds.
+- One-hop parasite: **confirmed, by construction.** Its single-mutant
+  neighbourhood has 1,028 search-addressed `parasite_jump` rows: 996
+  label flips (every op-changing substitution and deletion at L1,
+  entering the host past its L1) and 32 where the return search turns
+  forward. The 21-byte ancestor has none that search. It does have 25
+  rows the registered label rule calls `parasite_jump`: fixed-offset
+  jumps into the adjacent host, and end bytes that enter at its byte 1.
+  So "none for the ancestor" fails as worded and holds by mechanism.
+- Parasitism becomes common: **pending.** The persistence gate failed
+  0 of 10 at K = 127, which is the last K there is. With noise off the
+  body still dies (0 of 10, at a first-cycle mean ration of about 90%
+  against a 95.6% break-even), while its world persists as dependents,
+  which the `alloc`/`copy` edge (PLAN §9) makes without mutation. At
+  `--sun 2`, the registered branch's declared arm, it persists in 10 of
+  10. There the template side of the prediction is met: parasite
+  lineages are 8.0–27.0% of exact births in the last bin, and 23.5–26.4%
+  of replicator-class deaths after 25,000 are entered (median 25.0%).
+  But that is ten gate seeds with no same-sun 21-byte control. The
+  registered test is the 30-seed world comparison, which is not run.
