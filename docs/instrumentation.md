@@ -128,6 +128,20 @@ with each other and with any energy rule.
 `Patch` gains two cumulative counters: `absorbed` (energy taken by
 absorbs) and `overflow` (income lost to the cap).
 
+`Org::first_foreign_off` (2026-10-13, T03): where the organism first ran
+another living organism's byte. Set in `step` the first time the
+organism executes a byte owned by another living organism (its body or
+pending region), to the IP's offset from that owner's `start`, wrapped
+around the ring, and never changed after; `None` until then. It is
+harness-only state, not a counter in `OrgStats` and not in any output
+file: nothing in the physics reads it, no PRNG draw depends on it, and
+`Sim::state_hash` leaves it out (tested). The two-genome harness reports
+it as `HostResult::entry_off` (-1 if never), and `--host` prints it as a
+last column, `entry_off`. 0 is the fall-through entry (an intruder that
+runs off its own end into the host's byte 0, E005); anything else is a
+jump, a search, or an end byte that consumes or skips the host's byte 0
+(`lit`, a firing skip: entry 1).
+
 ## Events
 
 `Event::Birth` gains `start`, `parent_now_hash` (raw hash of the
@@ -172,6 +186,12 @@ All CSV with a header row. Written by `record.rs` (`Recorder`).
   100 units each, `parent` 0, `birth_tick` T, with no PRNG draw; like
   founders they have no `births.csv` row and their genome appears in
   `genomes.csv` with origin `seed` (unless already present).
+  Since T03 (2026-10-13) also `ancestor`: `"std"` (the 21-byte body,
+  the default) or `"tierra"` (`--ancestor tierra`, `sim::ancestor_t`,
+  the 41-byte template-addressed body of E015). It names what `--k` and
+  `--e` apply to and what is seeded without `--founder`; `ancestor_k`
+  is the K actually used (`--k` defaults to 64 for `std`, 127 for
+  `tierra`). Runs before 2026-10-13 have no key; they are all `std`.
 - `births.csv`: `tick,child,executor,source,start,len,copy_errors,slips,endowment_m,raw_hash,parent_hash,parent_now_hash,source_hash`
 - `deaths.csv`: `tick,id,cause,age,offspring,len,start,pending_len,ip_off,op_at_ip,energy_m,pool_m,birth_hash,now_hash,` then every `OrgStats` field.
 - `census.csv` (every census tick): `tick,now_hash,count`. Hash of current body bytes.
@@ -229,6 +249,76 @@ organism can be stuck in a state a fresh start never reaches (E003: most
 long-lived absorb-loopers are labeled `dies`). `report.py` therefore also
 shows each survivor's activity over the last census interval.
 
+## Neighbourhood (`--neighbours HEX`)
+
+Added 2026-10-13 (T03, E015; `harness::neighbours`). Classifies every
+single-byte mutant of HEX alone and before a host:
+
+    evo-core --neighbours HEX [--host-body HEX2] [--harness-ticks N]
+             [--neighbours-out FILE] [--neighbours-pad-only] [--threads T]
+             [physics flags]
+
+Mutant set, in file order: position by position, at each position the
+255 substitutions by every other byte value in ascending order, then the
+deletion of that byte (256 rows per position; a deletion that would
+leave no body, from a one-byte HEX, is left out). With
+`--neighbours-pad-only`, only the substitution by `pad` (byte 0) at each
+position, one row per position (T05's knockout set; where HEX already
+holds 0 the row is HEX itself). Insertions are not in this cut.
+
+Each mutant runs twice in the quiet harness (noise off, the physics
+flags given, `--harness-ticks` ticks, default 3,000): `run_alone`, and
+`run_with_host` with the mutant immediately before the host, which is
+HEX itself unless `--host-body` gives another body. Mutants are
+independent and run on `--threads` threads (default: the available
+parallelism), each run with its own `Sim`; rows are written in mutant
+order, so the file is byte-identical at any thread count (tested).
+Speed: the 21-byte ancestor's 5,376 mutants take 0.8 s on 12 threads,
+the 41-byte one's 10,496 about 2 s.
+
+Output: `FILE` (`--neighbours-out`, default `neighbours.csv` in the
+current directory), one row per mutant:
+
+`pos,kind,byte,hex,raw_hash,func_hash,class_alone,births_alone,exact_alone,alive_alone,births_host,exact_host,host_copies,host_exact,alive_host,host_alive,executed,exec_foreign,entry_off,ticks_run,label`
+
+| column | meaning |
+|---|---|
+| `pos`, `kind`, `byte` | the mutation: `sub` of `byte` (decimal) at `pos`, or `del` of `pos` (`byte` empty) |
+| `hex`, `raw_hash`, `func_hash` | the mutant's bytes and its two hashes |
+| `class_alone`, `births_alone`, `exact_alone`, `alive_alone` | the classifier's result alone (`--classify`'s columns) |
+| `births_host`, `exact_host` | before the host: children whose `divide` the mutant executed, and of those the ones equal to the mutant |
+| `host_copies` | children the mutant executed that equal the host |
+| `host_exact`, `host_alive` | the host's own exact children, and whether it is alive at the end |
+| `alive_host` | the mutant alive at the end of the run before the host |
+| `executed`, `exec_foreign` | the mutant's instructions before the host, and those run on another living organism's bytes |
+| `entry_off` | `HostResult::entry_off`: offset from the owner's start of the first foreign byte the mutant ran, -1 if none |
+| `ticks_run` | ticks simulated before the host (fewer than N if the mutant died first) |
+| `label` | below |
+
+`label`, derived in Rust (`harness::label`) so every reader uses one rule:
+
+| label | rule |
+|---|---|
+| `replicator` | `class_alone` is `replicator` (viable alone; `exact_host` says whether it also works next to a host) |
+| `parasite_fallthrough` | not `replicator` alone, `exact_host` >= 2, `exec_foreign / executed` > 0.25, `entry_off` = 0 |
+| `parasite_jump` | as above with `entry_off` != 0 |
+| `one_shot`, `inexact`, `loafer`, `dies` | `class_alone` otherwise |
+
+`entry_off` != 0 is "entered by a jump or a search, not by running off
+its own end" only approximately: E015 found that the 21-byte ancestor's
+16 end-byte mutants that turn `jmpa A` into a `lit` or a firing skip run
+off their own end but consume or skip the host's byte 0, so they enter
+at 1 and are labelled `parasite_jump`, and that `jmpr` by a constant
+into the adjacent host (`lit D 13`, or `jmpr C` with C the own length)
+also gives `parasite_jump`. Neither addresses its host by search; both
+work only at the harness's adjacency. Read `pos`, `byte` and
+`entry_off` before reading a `parasite_jump` count as search-addressed.
+
+stdout: the number of mutants, the count of each label (all seven, in
+the table's order), and the `parasite_jump` rows grouped by position:
+rows, deletions among them, entry offsets with counts, and the range of
+`exact_host`.
+
 ## Analysis (`analysis/`)
 
 - `evo_run.py`: `load(run_dir)` returns polars frames for every file above
@@ -270,6 +360,11 @@ shows each survivor's activity over the last census interval.
   Any other prefix can be passed: `INERT` (five `zero D`, E009a), and
   since E010 `EJECT` (`self 1 ; swap C ; self 0 ; sub C ; skipz A ;
   jmpa D`) and `INERT6` (six `zero D`), giving a 0–6 histogram.
+  Since T03 (2026-10-13) a trait pair for the 41-byte template ancestor,
+  `TIERRA` = (`ABSORB_T`: absorb count at byte 7, guard 6, ancestor 127;
+  `ENDOW_T`: endowment at byte 33, guard 32, ancestor 16), used with
+  `length=TIERRA_LEN` (41); on the command line `--ancestor tierra`.
+  `track_genome()`'s endowment by pattern works on it unchanged.
 
 ## Acceptance
 

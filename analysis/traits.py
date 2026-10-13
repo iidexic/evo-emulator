@@ -56,11 +56,20 @@ byte 0, a `lit` taking its operand byte; register ops keep `mod & 3`,
   EJECT (`self 1 ; swap C ; self 0 ; sub C ; skipz A ; jmpa D`) and
   INERT6 (six `zero D`), six pairs each, so k = 0..6.
 
+T03 addition: a trait pair for the 41-byte template ancestor
+(`--ancestor tierra`, `sim::ancestor_t`): `ABSORB_T` (the absorb count,
+byte 7, guarded by the `lit A` at byte 6, ancestor 127) and `ENDOW_T` (the
+endowment, byte 33, guarded by byte 32, ancestor 16), as `TIERRA`, read on
+bodies of `TIERRA_LEN` = 41 bytes. `track_genome`'s endowment by pattern
+works on that body unchanged.
+
     from traits import track
     t = track("../runs/e007/std/s1", bin_size=25_000)
     g = track_genome("../runs/e007/std/s1", bin_size=25_000)
+    t = track("../runs/e015/world/tierra/s1", 2_500, TIERRA, TIERRA_LEN)
 
     uv run traits.py ../runs/e007/std/s1 --bin 25000 [--len 21] [--out CSV] [--genome]
+    uv run traits.py ../runs/e015/world/tierra/s1 --bin 2500 --ancestor tierra
 """
 
 from __future__ import annotations
@@ -98,6 +107,15 @@ class Trait:
 ABSORB = Trait("absorb", offset=6, signed=True, guard=5, ancestor=64, threshold=96)
 ENDOW = Trait("endow", offset=17, signed=True, guard=16, ancestor=16, threshold=37)
 DEFAULTS = (ABSORB, ENDOW)
+
+# Template ancestor (T03) 0101030351fc117f1605084c0a010301036d030103011332525a71fc1845486c11101c0b030301016d:
+# byte 6 `lit A`, byte 7 the absorb count (127, the largest a `lit` byte
+# holds; 112 does not pay in the harness, hence the threshold: the share
+# still at a count that paid); byte 32 `lit A`, byte 33 the endowment.
+ABSORB_T = Trait("absorb", offset=7, signed=True, guard=6, ancestor=127, threshold=112)
+ENDOW_T = Trait("endow", offset=33, signed=True, guard=32, ancestor=16, threshold=37)
+TIERRA = (ABSORB_T, ENDOW_T)
+TIERRA_LEN = 41
 
 
 def _byte(off: int, signed: bool) -> pl.Expr:
@@ -297,15 +315,19 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("run_dir")
     ap.add_argument("--bin", type=int, default=25_000)
-    ap.add_argument("--len", type=int, default=21, dest="length")
+    ap.add_argument("--len", type=int, dest="length",
+                    help="body length the trait bytes are read on (default 21, or 41 with --ancestor tierra)")
+    ap.add_argument("--ancestor", choices=["std", "tierra"], default="std",
+                    help="which ancestor's trait offsets to read (T03; default std)")
     ap.add_argument("--out", help="CSV path (default RUN_DIR/traits_<bin>.csv, or genome_traits_<bin>.csv)")
     ap.add_argument("--genome", action="store_true", help="E009 columns (track_genome) instead of track")
     a = ap.parse_args()
+    trs, length = (TIERRA, TIERRA_LEN) if a.ancestor == "tierra" else (DEFAULTS, 21)
     if a.genome:
         df = track_genome(a.run_dir, a.bin)
         out = Path(a.out) if a.out else Path(a.run_dir) / f"genome_traits_{a.bin}.csv"
     else:
-        df = track(a.run_dir, a.bin, DEFAULTS, a.length)
+        df = track(a.run_dir, a.bin, trs, a.length or length)
         out = Path(a.out) if a.out else Path(a.run_dir) / f"traits_{a.bin}.csv"
     df.write_csv(out)
     show = df.drop("top_func_hash", strict=False).with_columns(pl.selectors.float().round(3))
