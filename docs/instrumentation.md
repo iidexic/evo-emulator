@@ -66,7 +66,11 @@ Genotype counts in the census use raw hashes (as Tierra did); grouping by
 | `paid_by_others_m` | energy other organisms (the owners of the bytes it ran) paid for its instructions, the counterpart of `paid_for_others_m` (2026-10-08, E009); not included in `spent_m`, which holds only what it paid itself; 0 with both owner-pays flags off, and always 0 under `--transfer-pct` (the executor pays its own cost there). Summed over all organisms it equals the sum of `paid_for_others_m` under the owner-pays rules |
 | `gained_from_others_m` | energy received from the owners of the bytes it ran under `--transfer-pct N` (2026-10-08, E010): the owner's loss, capped by the room left below its store cap after it paid its own cost; what does not fit is dissipated (`energy_out`). 0 without the flag. Summed over all organisms it is at most the sum of `paid_for_others_m` |
 | `writes_foreign` | writes (`store`, `copy`) that landed on a byte owned by another living organism, its body or pending region (2026-10-12, E012). Possible only with `--no-protect`; with protection on the same writes are refused and counted in `writes_blocked`, and this is 0 |
-| `overwritten` | writes by other organisms that landed on this organism's body or pending region, the victim-side counterpart of `writes_foreign` (2026-10-12, E012; the last column). Summed over all organisms the two agree (tested); 0 with protection on |
+| `overwritten` | writes by other organisms that landed on this organism's body or pending region, the victim-side counterpart of `writes_foreign` (2026-10-12, E012). Summed over all organisms the two agree (tested); 0 with protection on |
+| `cycles_lost_m` | execution budget debited from this organism by intruders' instructions under `--cycle-theft-pct N` (2026-10-13, E014): `floor(cost × N / 100)` per instruction another organism ran on its body or pending region, in the budget's own milli-units, cumulative. Not energy: it is in no ledger. 0 without the flag |
+| `cycles_taken_m` | budget this organism's instructions debited from the owners of the bytes it ran under `--cycle-theft-pct N`, the counterpart of `cycles_lost_m`. Summed over all organisms the two agree (tested); 0 without the flag |
+| `cycles_taxed_m` | budget debited by the random cycle tax, `--cycle-tax-pct P` with `--cycle-tax-frac F` (2026-10-13, E014's control): `floor(cap × P / 100)` per taxed tick, less if theft debt already took most of that tick's cap. 0 without the flag |
+| `exec_by_others` | instructions other organisms executed at bytes this organism owned (body or pending region), the victim-side counterpart of `exec_foreign` (2026-10-13, E014; the last column). Counted whatever the flags, so "entered" can be read in a world with no cost rule. Summed over all organisms it equals the sum of `exec_foreign` (tested, with and without theft) |
 
 Ledger identity (tested): for a living organism, and for a dead one with
 the `energy` of its death row,
@@ -78,7 +82,11 @@ owner's loss is in its `spent_m` and the executor's receipt in its
 `gained_from_others_m` (tested at N = 150). Runs before E010 have no
 `gained_from_others_m` column; it was 0 in all of them. Runs before
 2026-10-12 have no `writes_foreign` or `overwritten` column; every run
-before E012 had protection on, so both were 0.
+before E012 had protection on, so both were 0. Runs before 2026-10-13
+have no `cycles_lost_m`, `cycles_taken_m`, `cycles_taxed_m` or
+`exec_by_others` column; the first three were 0 in all of them, and
+`exec_by_others` was not recorded (the executor side, `exec_foreign`,
+was).
 
 `--transfer-pct N` (`Config.transfer_pct`, E010, default 0): the
 executor pays its own full cost for every instruction, as with no flag
@@ -89,6 +97,33 @@ gains it up to its store cap. Debris, free bytes and dead owners transfer
 nothing. N = 0 is bit-identical to the run without the flag. It cannot
 be combined with `--charge-owner` or a non-zero `--charge-owner-pct`
 (the CLI exits with an error; `Sim::new` panics).
+
+`--cycle-theft-pct N` (`Config.cycle_theft_pct`, E014, 0–100, default 0):
+energy is matter and is conserved; the per-tick cap is time, the
+organism's share of the machine. When an organism executes an
+instruction whose byte at IP is owned by a living organism other than
+itself, it pays the energy exactly as with no flag, and the owner's
+execution budget is debited `floor(cost × N / 100)` milli-units, where
+`cost` is the instruction's full price (search and `alloc` extras
+included). The debit is added to the owner's `Org.cycle_debt` and taken
+from its budget at the start of its next turns, after upkeep, at most
+one cap per tick; the rest carries over. An owner that owes a cap or more
+pays upkeep and runs nothing that tick (a `starved_ticks` tick), so a host
+under heavy intrusion can starve slowly through upkeep; that is reported,
+not prevented. The executor's own budget is debited by its own charge
+only. Debris, free bytes and dead owners debit nothing; a pending
+region's bytes belong to the organism that allocated it. Energy is never
+touched and the PRNG is not drawn; `cycle_debt` is in `Sim::state_hash`.
+N = 0 is bit-identical to the run without the flag (tested). Its matched
+control, the random cycle tax (`--cycle-tax-pct P`, `--cycle-tax-frac F`,
+`Config.cycle_tax_pct` and `cycle_tax_frac`, 0–100 and 0–1, defaults 0
+and 1): each tick, after upkeep and any theft debit, each living
+organism with probability F loses `floor(cap × P / 100)` of that tick's
+budget (less if the debit left less). F = 1 taxes every organism every
+tick with no PRNG draw; 0 < F < 1 draws one `chance(F)` per organism per
+tick in the shuffled order (organisms killed by upkeep that tick draw
+nothing); with P = 0 the stream is unchanged. The three flags combine
+with each other and with any energy rule.
 
 `Patch` gains two cumulative counters: `absorbed` (energy taken by
 absorbs) and `overflow` (income lost to the cap).
@@ -166,8 +201,9 @@ from `ancestor_pays_for_itself`) for `--harness-ticks` ticks (default
 whatever the command line gives (`--world-e001`, `--patch`, `--sun`,
 `--alloc-far`/`--alloc-near`, `--absorb-prop`/`--absorb-fixed`; the code
 default if none; `--self-owner`, `--charge-owner`, `--charge-owner-pct
-N` and `--transfer-pct N` are carried too, though a lone genome executes
-no foreign code); noise
+N`, `--transfer-pct N` and `--cycle-theft-pct N` are carried too, though
+a lone genome executes no foreign code, and so is the cycle tax, which
+does act on a lone genome); noise
 flags are ignored. With `--classes-out NAME` the
 file is `DIR/NAME` instead, so one run can carry classes under two
 physics (E005, 2026-10-06). The code default changed on 2026-10-07 from

@@ -91,6 +91,22 @@ pub struct OrgStats {
     /// pending region, the victim-side counterpart of `writes_foreign`
     /// (E012). Summed over all organisms the two counters agree.
     pub overwritten: u64,
+    /// Execution budget (milli-units) debited from this organism by other
+    /// organisms' instructions run on its bytes, under `cycle_theft_pct`
+    /// (E014): the victim side of `cycles_taken_m`. 0 without the flag.
+    pub cycles_lost_m: i64,
+    /// Execution budget this organism's instructions debited from the
+    /// owners of the bytes it ran, under `cycle_theft_pct` (E014). Summed
+    /// over all organisms it equals the sum of `cycles_lost_m`.
+    pub cycles_taken_m: i64,
+    /// Execution budget debited by the random cycle tax (`cycle_tax_pct`,
+    /// E014's control). 0 without the flag.
+    pub cycles_taxed_m: i64,
+    /// Instructions other organisms executed at bytes this organism owned
+    /// (body or pending region): the victim-side counterpart of
+    /// `exec_foreign`, counted whatever the flags. Summed over all
+    /// organisms the two agree.
+    pub exec_by_others: u64,
 }
 
 impl OrgStats {
@@ -123,15 +139,19 @@ impl OrgStats {
             gained_from_others_m: 0,
             writes_foreign: 0,
             overwritten: 0,
+            cycles_lost_m: 0,
+            cycles_taken_m: 0,
+            cycles_taxed_m: 0,
+            exec_by_others: 0,
         }
     }
 
     /// CSV column names, in the order `csv_row` writes them.
-    pub const CSV_HEADER: &'static str = "born_with_m,executed,absorbs,absorb_gain_m,absorb_short,absorb_capped,copies,reads_foreign,exec_foreign,exec_unowned,writes_blocked,range_faults,allocs_ok,allocs_fail,divides_ok,divides_fail,endowed_m,spent_m,upkeep_m,starved_ticks,last_divide_tick,max_energy_m,paid_for_others_m,paid_by_others_m,gained_from_others_m,writes_foreign,overwritten";
+    pub const CSV_HEADER: &'static str = "born_with_m,executed,absorbs,absorb_gain_m,absorb_short,absorb_capped,copies,reads_foreign,exec_foreign,exec_unowned,writes_blocked,range_faults,allocs_ok,allocs_fail,divides_ok,divides_fail,endowed_m,spent_m,upkeep_m,starved_ticks,last_divide_tick,max_energy_m,paid_for_others_m,paid_by_others_m,gained_from_others_m,writes_foreign,overwritten,cycles_lost_m,cycles_taken_m,cycles_taxed_m,exec_by_others";
 
     pub fn csv_row(&self) -> String {
         format!(
-            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
             self.born_with_m, self.executed, self.absorbs, self.absorb_gain_m,
             self.absorb_short, self.absorb_capped, self.copies, self.reads_foreign,
             self.exec_foreign, self.exec_unowned, self.writes_blocked, self.range_faults,
@@ -139,7 +159,8 @@ impl OrgStats {
             self.endowed_m, self.spent_m, self.upkeep_m, self.starved_ticks,
             self.last_divide_tick, self.max_energy_m, self.paid_for_others_m,
             self.paid_by_others_m, self.gained_from_others_m, self.writes_foreign,
-            self.overwritten,
+            self.overwritten, self.cycles_lost_m, self.cycles_taken_m, self.cycles_taxed_m,
+            self.exec_by_others,
         )
     }
 }
@@ -218,6 +239,13 @@ pub struct Org {
     pub genome: Vec<u8>,
     pub parent: u32,
     pub stats: OrgStats,
+    /// Execution budget (milli-units) owed to intruders under
+    /// `cycle_theft_pct` (E014): added when another organism runs an
+    /// instruction on this organism's bytes, taken from its per-tick
+    /// budget at the start of its next turns (at most one cap per tick;
+    /// the rest carries over). 0 at birth. Part of the physics, so it is
+    /// in `state_hash`.
+    pub cycle_debt: i64,
 }
 
 #[derive(Clone, Debug)]
@@ -406,6 +434,7 @@ impl Sim {
             genome: genome.to_vec(),
             parent,
             stats: OrgStats::new(energy),
+            cycle_debt: 0,
         });
         id
     }
@@ -620,6 +649,12 @@ impl Sim {
         if own >= FIRST_ID {
             if own != self.orgs[i].id {
                 self.orgs[i].stats.exec_foreign += 1;
+                // The owner's side of the same count (E014), whatever the
+                // flags. `kill` turns a dead organism's bytes to debris, so
+                // the owner here is always found.
+                if let Some(j) = self.org_index(own) {
+                    self.orgs[j].stats.exec_by_others += 1;
+                }
             }
         } else {
             self.orgs[i].stats.exec_unowned += 1;
@@ -970,8 +1005,30 @@ impl Sim {
                 }
             }
         }
+
+        // Cycle theft (E014): energy is matter and is conserved, but the
+        // per-tick cap is time, the organism's share of the machine. An
+        // intruder running on another living organism's bytes occupies that
+        // owner's cycles: the owner's budget is debited `floor(cost * N /
+        // 100)` in milli-units, where `cost` is the instruction's full price
+        // (search and `alloc` extras included). The debit goes into the
+        // owner's `cycle_debt` and is taken from its budget at the start of
+        // its next turns (`run_tick`). Energy is not touched and the PRNG is
+        // not drawn. A pending region's bytes belong to the organism that
+        // allocated them; debris, free bytes and a dead owner debit nothing.
+        let tp = self.cfg.cycle_theft_pct;
+        if tp > 0 && own >= FIRST_ID && own != self.orgs[i].id {
+            if let Some(j) = self.org_index(own) {
+                if self.orgs[j].alive {
+                    let debit = cost * tp / 100;
+                    self.orgs[j].cycle_debt += debit;
+                    self.orgs[j].stats.cycles_lost_m += debit;
+                    self.orgs[i].stats.cycles_taken_m += debit;
+                }
+            }
+        }
         // The tick budget is debited by the executor's own charge only;
-        // the transfer is not work.
+        // the transfer is not work, and the theft is charged to the owner.
         Some(total)
     }
 
@@ -1065,7 +1122,29 @@ impl Sim {
             self.energy_out += upkeep;
 
             let cap = self.cfg.cap_c0 + self.cfg.cap_c1 * self.orgs[i].len as i64;
-            let mut left = cap;
+            // Cycle theft (E014): what intruders took from this organism's
+            // time since its last turn comes off this tick's budget, at most
+            // the whole cap; the rest carries over. A host that owes a cap or
+            // more runs nothing (and counts a starved tick) but still paid
+            // upkeep above.
+            let mut debit = self.orgs[i].cycle_debt.min(cap);
+            self.orgs[i].cycle_debt -= debit;
+            // The random tax (E014's control): with probability
+            // `cycle_tax_frac` the organism loses `cycle_tax_pct`% of its cap
+            // this tick, whether or not anyone entered it. One PRNG draw per
+            // organism reaching this point, only when 0 < frac < 1 (`chance`
+            // draws nothing at 0, and 1.0 short-circuits); with the tax off
+            // the stream is unchanged.
+            let tax_pct = self.cfg.cycle_tax_pct;
+            if tax_pct > 0 {
+                let f = self.cfg.cycle_tax_frac;
+                if f >= 1.0 || self.rng.chance(f) {
+                    let taxed = (cap * tax_pct / 100).min(cap - debit);
+                    debit += taxed;
+                    self.orgs[i].stats.cycles_taxed_m += taxed;
+                }
+            }
+            let mut left = cap - debit;
             let mut ran = false;
             while left > 0 {
                 match self.step(i, left) {
@@ -1169,6 +1248,7 @@ impl Sim {
             h.u64(pl as u64);
             h.u64(o.pending_source.map_or(u64::MAX, |(s, _)| s as u64));
             h.u64(o.alive as u64);
+            h.u64(o.cycle_debt as u64);
         }
         h.0
     }

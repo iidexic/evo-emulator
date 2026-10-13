@@ -135,6 +135,14 @@ pub struct HostResult {
     /// `pad` before a host with endowment 35 or more starves within a few
     /// hundred ticks).
     pub stopped_early: bool,
+    /// The host's store at the end (milli-units), 0 if it died.
+    pub host_energy: i64,
+    /// Under `cycle_theft_pct` (E014): budget the genome's instructions took
+    /// from the owners of the bytes it ran (its `cycles_taken_m`), and
+    /// budget the host lost to intruders (its `cycles_lost_m`, as last seen
+    /// alive). Milli-units; 0 without the flag.
+    pub cycles_taken_m: i64,
+    pub host_cycles_lost_m: i64,
 }
 
 /// Run `genome` immediately before `host` under `cfg`'s physics, noise off,
@@ -158,9 +166,17 @@ pub fn run_with_host(genome: &[u8], host: &[u8], ticks: u64, cfg: &Config) -> Ho
         exec_foreign: 0,
         ticks_run: 0,
         stopped_early: false,
+        host_energy: 0,
+        cycles_taken_m: 0,
+        host_cycles_lost_m: 0,
     };
     for t in 0..ticks {
         sim.run_tick();
+        // The host's counters as last seen; it is retired the tick after
+        // it dies.
+        if let Some(h) = sim.genome_of(host_id) {
+            r.host_cycles_lost_m = h.stats.cycles_lost_m;
+        }
         for ev in sim.events.drain(..) {
             if let Event::Birth { executor, genome_hash, .. } = ev {
                 if executor == me_id {
@@ -189,6 +205,9 @@ pub fn run_with_host(genome: &[u8], host: &[u8], ticks: u64, cfg: &Config) -> Ho
     r.host_alive = sim.genome_of(host_id).map_or(false, |o| o.alive);
     r.executed = me_org.stats.executed;
     r.exec_foreign = me_org.stats.exec_foreign;
+    r.cycles_taken_m = me_org.stats.cycles_taken_m;
+    // `kill` zeroes a dead organism's store.
+    r.host_energy = sim.genome_of(host_id).map_or(0, |o| o.energy);
     r
 }
 
@@ -682,6 +701,60 @@ mod tests {
         let p = duel(&pad, &plain, 3000, &transfer(150));
         let o = duel(&open, &plain, 3000, &transfer(150));
         assert_eq!((p.host_exact, p.host_alive, o.host_exact, o.host_alive), (0, false, 1, false));
+    }
+
+    // ---- E014: cycle theft ------------------------------------------------
+
+    fn theft(pct: i64) -> Config {
+        let mut cfg = Config::default();
+        cfg.cycle_theft_pct = pct;
+        cfg
+    }
+
+    #[test]
+    fn cycle_theft_slows_the_entered_host() {
+        // E014 gate 1 (H16): a one-byte `pad` immediately before the K = 64
+        // ancestor, 3,000 ticks (`evo-core --host 00 --cycle-theft-pct N`).
+        // The pad falls into the host and runs its loop (E005); under
+        // `cycle_theft_pct` every instruction it runs on the host's bytes
+        // takes N% of its cost from the host's next tick budget. Energy is
+        // untouched and nobody runs the pad's bytes, so the pad's own
+        // children never change with N. At N = 50 the host must live and
+        // make 35-65% of the exact children it makes alone. The table is
+        // for the record: the ratio and the host's final store at each N.
+        let pad = assemble("pad\n").unwrap();
+        let host = ancestor(64, 16);
+        let alone = run_alone(&host, 3000).exact_births;
+        eprintln!("host alone: {alone} exact births in 3000 ticks");
+        eprintln!("   N | host_exact  ratio host_alive host_E | intr_exact intr_alive intr_foreign cycles_taken host_cycles_lost");
+        let mut rows = Vec::new();
+        for pct in [0, 25, 50, 75, 100] {
+            let r = run_with_host(&pad, &host, 3000, &theft(pct));
+            eprintln!(
+                "{pct:>4} | {:>10} {:>6.3} {:>10} {:>6.1} | {:>10} {:>10} {:>12} {:>12.1} {:>16.1}",
+                r.host_exact_births, r.host_exact_births as f64 / alone as f64, r.host_alive,
+                r.host_energy as f64 / 1000.0, r.exact_births, r.alive, r.exec_foreign,
+                r.cycles_taken_m as f64 / 1000.0, r.host_cycles_lost_m as f64 / 1000.0
+            );
+            rows.push((pct, r));
+        }
+        for (pct, r) in &rows {
+            assert_eq!((r.exact_births, r.alive, r.stopped_early), (rows[0].1.exact_births, true, false), "N {pct}");
+            if *pct == 0 {
+                assert_eq!((r.cycles_taken_m, r.host_cycles_lost_m), (0, 0));
+            } else if r.host_alive {
+                // Every unit the pad took, the living host lost.
+                assert_eq!(r.cycles_taken_m, r.host_cycles_lost_m, "N {pct}");
+                assert!(r.cycles_taken_m > 0, "N {pct}: the pad never entered");
+            }
+        }
+        let (_, r50) = &rows[2];
+        assert!(r50.host_alive, "the host died at N = 50");
+        let h = r50.host_exact_births;
+        assert!(
+            100 * h >= 35 * alone && 100 * h <= 65 * alone,
+            "host made {h} exact children at N = 50, {alone} alone"
+        );
     }
 
     #[test]

@@ -5,6 +5,7 @@
 //!          [--alloc-far | --alloc-near] [--absorb-prop | --absorb-fixed]
 //!          [--locality N] [--out DIR] [--census N] [--sun N] [--rot P]
 //!          [--self-owner] [--charge-owner] [--charge-owner-pct N] [--transfer-pct N]
+//!          [--cycle-theft-pct N] [--cycle-tax-pct P] [--cycle-tax-frac F]
 //!          [--world-e001] [--founder HEX:COUNT]... [--inject TICK:HEX:COUNT]...
 //! evo-core --classify DIR [--harness-ticks N] [--classes-out NAME] [physics flags]
 //! evo-core --host HEX [--host-body HEX] [--host-pad] [--harness-ticks N] [physics flags]
@@ -39,6 +40,25 @@
 //! gains it up to its own store cap (the rest is dissipated). It cannot be
 //! combined with --charge-owner or a non-zero --charge-owner-pct; the run
 //! is refused with an error.
+//!
+//! --cycle-theft-pct N (0-100, default 0) is cycle theft (E014): energy is
+//! matter and is conserved, the per-tick cap is time. When an organism runs
+//! an instruction at a byte owned by another living organism (its body or
+//! pending region), it pays the energy as with no flag, and the owner's
+//! execution budget is debited floor(cost * N / 100) milli-units, cost
+//! being the instruction's full price (search and alloc extras included).
+//! The debit is carried as the owner's debt and taken from its budget at
+//! the start of its next turns, at most one cap per tick; a host that owes
+//! a cap or more pays upkeep and runs nothing that tick. Energy is never
+//! touched and nothing is drawn from the PRNG. Debris, free bytes and dead
+//! owners debit nothing. N = 0 is bit-identical to no flag.
+//! --cycle-tax-pct P (0-100, default 0) is its matched control, a random
+//! cycle tax: each tick, each living organism, with probability
+//! --cycle-tax-frac F (0-1, default 1), loses P% of its cap that tick (on
+//! top of any theft debt, never below zero). F = 1 taxes every organism
+//! every tick with no PRNG draw; 0 < F < 1 draws once per organism per tick
+//! (after upkeep, in the shuffled order). The three flags combine with each
+//! other and with any energy rule; nothing is refused.
 //!
 //! --founder HEX:COUNT (repeatable, E009a) seeds COUNT copies of the genome
 //! HEX, 100 units each, instead of the one ancestor. All copies from all
@@ -81,7 +101,9 @@
 //! alive, the genome's foreign-execution share, and how many ticks ran.
 //! The harness stops when the genome dies, so `stopped_early` = true means
 //! fewer than --harness-ticks ticks were simulated and the counts cover only
-//! `ticks_run` ticks (E007: not evidence of a resistant host). --host-pad
+//! `ticks_run` ticks (E007: not evidence of a resistant host). Physics flags
+//! apply, so `--host 00 --cycle-theft-pct 50` is E014's gate 1 (a `pad`
+//! before the ancestor). --host-pad
 //! replaces every byte of the genome with `pad` first, to test whether its
 //! content matters.
 //! --host-body HEX uses that genome as the host instead of the ancestor
@@ -180,6 +202,21 @@ fn main() {
             "--transfer-pct" => {
                 cfg.transfer_pct = next().parse().expect("--transfer-pct N must be a whole number");
                 assert!(cfg.transfer_pct >= 0, "--transfer-pct must be 0 or more");
+                i += 1;
+            }
+            "--cycle-theft-pct" => {
+                cfg.cycle_theft_pct = next().parse().expect("--cycle-theft-pct N must be a whole number");
+                assert!((0..=100).contains(&cfg.cycle_theft_pct), "--cycle-theft-pct must be 0-100");
+                i += 1;
+            }
+            "--cycle-tax-pct" => {
+                cfg.cycle_tax_pct = next().parse().expect("--cycle-tax-pct N must be a whole number");
+                assert!((0..=100).contains(&cfg.cycle_tax_pct), "--cycle-tax-pct must be 0-100");
+                i += 1;
+            }
+            "--cycle-tax-frac" => {
+                cfg.cycle_tax_frac = next().parse().expect("--cycle-tax-frac F must be a number");
+                assert!((0.0..=1.0).contains(&cfg.cycle_tax_frac), "--cycle-tax-frac must be 0-1");
                 i += 1;
             }
             "--world-e001" => {}

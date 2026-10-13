@@ -64,6 +64,23 @@ pub struct Config {
     /// Cannot be combined with `charge_owner` or `charge_owner_pct`
     /// (`Sim::new` and the CLI refuse it).
     pub transfer_pct: i64,
+    /// Cycle theft (E014), percent 0-100: an instruction run by one
+    /// organism at a byte owned by another living organism debits the
+    /// owner's per-tick execution budget by floor(cost * pct / 100),
+    /// carried as `Org::cycle_debt`. Energy is untouched. 0 (default) is
+    /// off and bit-identical to no flag.
+    ///
+    /// Energy is matter and is conserved; the per-tick cap is time, the
+    /// organism's share of the machine. An intruder running on the
+    /// owner's bytes occupies the owner's cycles.
+    pub cycle_theft_pct: i64,
+    /// Random cycle tax (E014's matched control), percent 0-100 of the
+    /// per-tick cap, applied each tick to each living organism with
+    /// probability `cycle_tax_frac`. 0 (default) is off.
+    pub cycle_tax_pct: i64,
+    /// Probability per organism per tick that the cycle tax applies.
+    /// 1.0 (default) taxes every organism every tick with no PRNG draw.
+    pub cycle_tax_frac: f64,
 
     // Costs (milli-units)
     pub cost_simple: i64,
@@ -97,7 +114,8 @@ impl Config {
             patch_income, patch_cap, absorb_rate, upkeep_per_byte,
             store_cap_per_byte, cap_c0, cap_c1, write_protection, alloc_far,
             absorb_proportional, self_owner, charge_owner, charge_owner_pct,
-            transfer_pct, cost_simple, cost_load, cost_store, cost_copy, cost_search_base,
+            transfer_pct, cycle_theft_pct, cycle_tax_pct, cycle_tax_frac,
+            cost_simple, cost_load, cost_store, cost_copy, cost_search_base,
             cost_search_per16, cost_alloc_base, cost_alloc_per_byte, cost_divide,
             cost_absorb, p_write_flip, q_slip, p_bit_rot, p_debris_decay,
         } = self;
@@ -121,6 +139,9 @@ impl Config {
             ("charge_owner", charge_owner.to_string()),
             ("charge_owner_pct", charge_owner_pct.to_string()),
             ("transfer_pct", transfer_pct.to_string()),
+            ("cycle_theft_pct", cycle_theft_pct.to_string()),
+            ("cycle_tax_pct", cycle_tax_pct.to_string()),
+            ("cycle_tax_frac", format!("{cycle_tax_frac:?}")),
             ("cost_simple", cost_simple.to_string()),
             ("cost_load", cost_load.to_string()),
             ("cost_store", cost_store.to_string()),
@@ -184,6 +205,9 @@ impl Default for Config {
             charge_owner: false,
             charge_owner_pct: 0,
             transfer_pct: 0,
+            cycle_theft_pct: 0,
+            cycle_tax_pct: 0,
+            cycle_tax_frac: 1.0,
             cost_simple: MILLI,
             cost_load: 2 * MILLI,
             cost_store: 2 * MILLI,
