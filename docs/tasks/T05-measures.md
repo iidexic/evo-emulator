@@ -1,6 +1,14 @@
 # T05. `analysis/measures.py`: the standing measures for every experiment
 
-Status: specified 2026-10-13. Not built. Argument: synthesis finding
+Status: specified 2026-10-13; built the same day by Codex (commit
+`0d0c36b`, its first evo task), reviewed by Opus against independent
+recomputation (QNN at 501 censuses, SPD/MPD/ED/MRCA at 8 ticks, MODES
+at 501 censuses on E007 seed 1: every value matched) and accepted by
+Fable with fixes. Shakedown: criterion 1's nominal pass was a
+founder-phase artefact and criterion 2's failure was a correct
+result, so §4's criteria are rewritten below (amendment 2026-10-13)
+and the README's "shakedown fails" branch is not taken. Open fixes
+(§4.1) go to a follow-up build. Argument: synthesis finding
 9 and §3.5, PLAN §8.5, `literature.md` §3.3, §3.4, §7 ("Measures").
 Line C; built and run on E007, E012 and E013 before E014 is run, so
 the first use of the measures is on known runs. Python only, except
@@ -133,6 +141,92 @@ already found):
    `ancestor_count` in the first window (sixteen roots).
 
 If 1 or 2 fail, the implementation is wrong, not the run.
+
+**Amendment 2026-10-13, after the shakedown on E007.** The build is
+numerically right where it was recomputed independently; the two
+criteria were wrong for this world, as follows.
+
+Criterion 1 as written passed in 9 of 10 seeds but mostly on the
+founder phase: `qnn` peaks at ticks 500–1,500 while the population
+grows from 1 to about 900, and in 6 of 9 seeds under 40% of the peak
+comes from components with absorb count ≥ 96 (s1 6%, s2 15%, s4 4%,
+s6 37%, s8 3%, s9 53%; s3, s5, s7 93–98%). The sweep itself is
+invisible to QNN over `func_hash`: in seed 1 the share of bodies with
+absorb ≥ 96 rises from 0.06 at tick 1,000 to 0.78 at 10,000 and 0.92
+at 18,000, and `qnn` over that span is 0.0010–0.0022 against a
+stationary mean of 0.00116, because the sweep is spread over many
+`func_hash`es (the largest holds 0.03–0.05). A trait sweeping across
+many genotypes is below a genotype-grouped turnover measure by
+construction. This matters for E016: a defence spreading on many
+backgrounds will not show in QNN over `func_hash` either.
+
+Criterion 2 failed in 7 of 10 seeds and the result is correct: in
+seed 1 the 902 final tips split 682 via id 10 (born tick 54) and 220
+via id 7 (born tick 41), both children of id 3 (generation 1, tick
+14), which is the MRCA; absorb ≥ 96 arose separately in each line
+(ticks 918 and 4,976) and the lines never merged. The run reaches
+generation 1,012, short of the roughly 2N ≈ 1,870 generations
+expected before coalescence. The criterion also contradicted
+criterion 1: a sweep finished by tick 10,000 has its ancestor born
+before 10,000.
+
+Criteria, as they now stand:
+
+1. **The sweep is seen at the trait level.** `measures.py` gains
+   `--group COL` (default `func_hash`; `absorb_class` groups bodies
+   by `traits.py`'s absorb count read from the body, `< 96` against
+   `≥ 96`, with a third class for bodies the pattern does not match).
+   With `--group absorb_class`, `qnn` after tick 2,500 (the founder
+   phase excluded) has its maximum inside the window in which the
+   ≥ 96 share crosses from 0.25 to 0.75 in ≥ 8 of 10 E007 seeds, and
+   the stationary mean is below a fifth of that maximum. The
+   `func_hash` series is kept as the headline for genotype turnover
+   and is reported beside it; its blindness to trait sweeps is stated
+   in every record that uses it.
+2. **Coexisting lines from the founder.** `mrca_tick` stays below
+   1,000 in ≥ 8 of 10 seeds and the final tips descend from ≥ 2
+   distinct generation-1 or generation-2 ancestors in every such
+   seed (a new column `root_lines`, the number of children of the
+   MRCA with living descendants). `mrca_changes` is reported with no
+   threshold, and injections (`--inject`) are excluded from it.
+3. Unchanged, pending the E012/E013 data (not on the desktop).
+
+Filter depths: Δ1870 applies only when the run's deepest generation
+is ≥ 1,870; otherwise the column is `censored` and the summary says
+so (E007 at 250,000 ticks reaches 1,012).
+
+### 4.1 Fixes from the review, for the follow-up build
+
+- `--every K` crashes when the last census is not sampled
+  (`measures.py:366`, `measures_baseline.py:53`: `int(None)`); take
+  the last non-null value.
+- `--knockout` exits with code 2 and writes no `series.csv` or
+  `summary.json`; the sites files are added on top of the normal
+  output, not instead of it.
+- Tests: the 500-tip test compares `spd_edge` with `spd_pairwise`
+  but `compute()` uses neither; test the SPD `_tree_metrics` emits
+  against a pairwise loop. Add a single-founder case whose MRCA is a
+  real organism with `mrca_changes` > 0 and living ancestors among
+  the tips, and cover `--every`, the CLI's `summary.json`, `.gz`
+  input, `measures_baseline`, and the new `--group` and
+  `root_lines`.
+- Readings to fix in code and state in the module doc: `mean_ed`
+  includes the stem from the MRCA to the virtual root (+0.447 of
+  6.20 at seed 2's end), which is to be dropped so ED does not grow
+  with MRCA depth; `ancestor_count` leaves out living organisms with
+  living descendants (383 against 480 at seed 1's end), to be
+  counted; `ecology` takes p(c) over persistent bodies only, which
+  is Dolson's definition and stays, said in the doc;
+  `modes_censored` is to be held true once set.
+- `parasite_share` re-implements E005's test without its
+  `world_class` condition (`e005_parasites.py:197`); call or match
+  it. `entered_share` is to be over replicator-class bodies, as T02
+  §4.3 names it.
+- Delete the stale `runs/measures/e007_std_s*_series.csv` from the
+  earlier runner version; rerun the baseline on E007 and update
+  `runs/measures/summary.md`. The pytest command that works is
+  `uv run --project analysis --with pytest pytest analysis/tests/test_measures.py`
+  from the repo root; put it in `analysis/README.md`.
 
 ## 5. Tests (`analysis/tests/test_measures.py`, pytest via uv)
 

@@ -14,7 +14,7 @@ before the runs, as always.
 | [T02](T02-cycle-theft.md) | `--cycle-theft-pct`, `--cycle-tax-pct`, counters, harness gate, E014 runner | nothing | built 2026-10-13 (`0ce3338`); gate 1 passed at N = 50 (0.465, host alive; dies from N = 51 in the harness); E014 pilot run, skip branch taken, no main stage |
 | [T03](T03-template-ancestor.md) | `--ancestor tierra`, `--neighbours HEX`, E015 runner | T02's `exec_by_others` | not built |
 | [T04](T04-snapshots-replay.md) | full-state snapshots, `--replay-from` | T02/T03 fields (or extend later) | not built |
-| [T05](T05-measures.md) | `measures.py`: QNN, phylometrics, MODES, sites; baselines on E007/E012/E013 | T03's `--neighbours-pad-only` for sites only | not built |
+| [T05](T05-measures.md) | `measures.py`: QNN, phylometrics, MODES, sites; baselines on E007/E012/E013 | T03's `--neighbours-pad-only` for sites only | built 2026-10-13 (Codex, `0d0c36b`; Opus review: numbers match independent recomputation); shakedown criteria 1 and 2 rewritten (spec §4 amendment), fixes in §4.1 pending |
 | [T06](T06-lenski-lod.md) | line of descent with fitness per step, on E007's absorb sweep | nothing | built 2026-10-13 (`2f27841`); E007 record follow-up; sweep step deleterious in the harness in 8 of 9 seeds, D-before-B in seed 3 |
 | [T07](T07-density.md) | replicator density by uniform sampling (B0) | nothing | not built |
 
@@ -206,3 +206,18 @@ the laptop or after a copy.
 **T05 shakedown fails** (the measures do not see E007's sweep): the
 implementation is wrong; fix before E014 main, since the arms would
 otherwise be judged by a blind instrument.
+- **Outcome 2026-10-13: the branch is not taken.** Codex's build is
+  right where Opus recomputed it independently (QNN, SPD, MPD, ED,
+  MRCA, MODES on E007 seed 1, every value equal). The criteria were
+  wrong: criterion 1's pass was the founder phase (QNN peaks at ticks
+  500–1,500 while the population grows from 1 to 900; the absorb
+  sweep, spread over many `func_hash`es, moves `qnn` by 0.001–0.002,
+  the stationary level), and criterion 2's fail is a true result (the
+  final tips descend from two generation-1 lines that each gained
+  absorb ≥ 96 on their own and never merged; the run reaches
+  generation 1,012, under 2N ≈ 1,870). Both rewritten in T05 §4:
+  trait-level grouping (`--group absorb_class`) is the sweep
+  detector; QNN over `func_hash` is blind to a trait sweeping on many
+  backgrounds, which E016's reading rule now has to carry. Code fixes
+  (`--every` crash, `--knockout` exit, thin tests, ED stem,
+  `ancestor_count`) listed in T05 §4.1 for an Opus follow-up.
