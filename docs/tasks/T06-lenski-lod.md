@@ -1,6 +1,20 @@
 # T06. Line of descent with fitness per step: E007's absorb-count sweep
 
-Status: specified 2026-10-13. Not built. Argument: `literature.md`
+Status: specified 2026-10-13; built the same day (Opus, commit
+`2f27841`; reviewed by Fable, accepted; findings in the E007 record's
+T06 follow-up). Amendments from the build: the step to read is the
+*sweep step*, the first step whose absorb count reaches 96 or more
+(`traits.ABSORB`'s threshold), since §3's "first reached its final
+value" lands on later drift across the 112–127 plateau; both are
+reported. Result in one line: 1,294 steps over 9 seeds (seed 10 went
+extinct at tick 1,179), 261 beneficial / 747 neutral / 286
+deleterious; a deleterious step immediately precedes the sweep step
+in 1 of 9 seeds (seed 3: `lit A 64` to `-64`, a loop that never
+ends, repaired by `-128` with `inc A`), and the sweep step itself is
+deleterious *in the harness* in 8 of 9 seeds, which is §4's caveat
+made concrete. Desktop data note: `runs/e007/std/` here is the
+killed first launch; the complete reruns are under `runs/lod/e007/`.
+Argument: `literature.md`
 §7 (Lenski, Ofria, Pennock & Adami 2003 as the canonical
 path-with-fitness analysis), synthesis §3.5, PLAN §8.5. Line C: the
 shakedown of the method E016 needs for a defence, run on a sweep E007

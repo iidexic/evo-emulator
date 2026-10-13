@@ -15,7 +15,7 @@ before the runs, as always.
 | [T03](T03-template-ancestor.md) | `--ancestor tierra`, `--neighbours HEX`, E015 runner | T02's `exec_by_others` | not built |
 | [T04](T04-snapshots-replay.md) | full-state snapshots, `--replay-from` | T02/T03 fields (or extend later) | not built |
 | [T05](T05-measures.md) | `measures.py`: QNN, phylometrics, MODES, sites; baselines on E007/E012/E013 | T03's `--neighbours-pad-only` for sites only | not built |
-| [T06](T06-lenski-lod.md) | line of descent with fitness per step, on E007's absorb sweep | nothing | not built |
+| [T06](T06-lenski-lod.md) | line of descent with fitness per step, on E007's absorb sweep | nothing | built 2026-10-13 (`2f27841`); E007 record follow-up; sweep step deleterious in the harness in 8 of 9 seeds, D-before-B in seed 3 |
 | [T07](T07-density.md) | replicator density by uniform sampling (B0) | nothing | not built |
 
 ## Order
@@ -161,6 +161,20 @@ left for then.
   all): B3's soup mode is worth building.
 - Far below for every LEN ≤ 32: line B goes through the cubff fork
   with evo's rules (B1, B2), not evo's ISA. Line A is unaffected.
+
+**T06 outcome 2026-10-13.** The method works at 1.5–1.9 s per line.
+What it found changes E016's reading rule, not its design: the
+harness grades the sweep step as deleterious in 8 of 9 seeds because
+the longer absorb phase wins on a lower ration, which a lone body with
+a full pool never sees. So for E016 a defence step graded `neutral` or
+`deleterious` alone is not evidence against it; the world-fitness
+column (children per death in the step's window) is the one to read
+first, and the harness column second. T06's spec §4 said this as a
+caveat; it is now the rule. Also: the desktop's `runs/e007/std/` is
+the killed first launch (to tick ~145,000, no `genomes.csv`); complete
+reruns are at `runs/lod/e007/s<seed>/`, and `runs/e012`, `runs/e013`
+are not on the desktop at all, so T05's baselines on those two run on
+the laptop or after a copy.
 
 **T05 shakedown fails** (the measures do not see E007's sweep): the
 implementation is wrong; fix before E014 main, since the arms would
