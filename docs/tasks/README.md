@@ -11,7 +11,7 @@ before the runs, as always.
 | task | what | depends on | status |
 |---|---|---|---|
 | [T01](T01-reserve-check.md) | E007 reserve check: does any host bank energy? | nothing | done 2026-10-13 (Opus, laptop; `654783b`): **fails** in every seed; branch below taken |
-| [T02](T02-cycle-theft.md) | `--cycle-theft-pct`, `--cycle-tax-pct`, counters, harness gate, E014 runner | nothing | not built |
+| [T02](T02-cycle-theft.md) | `--cycle-theft-pct`, `--cycle-tax-pct`, counters, harness gate, E014 runner | nothing | built 2026-10-13 (`0ce3338`); gate 1 passed at N = 50 (0.465, host alive; dies from N = 51 in the harness) |
 | [T03](T03-template-ancestor.md) | `--ancestor tierra`, `--neighbours HEX`, E015 runner | T02's `exec_by_others` | not built |
 | [T04](T04-snapshots-replay.md) | full-state snapshots, `--replay-from` | T02/T03 fields (or extend later) | not built |
 | [T05](T05-measures.md) | `measures.py`: QNN, phylometrics, MODES, sites; baselines on E007/E012/E013 | T03's `--neighbours-pad-only` for sites only | not built |
@@ -65,6 +65,13 @@ left for then.
 **T02 gate 1, the harness** (pad before the ancestor at N = 50).
 - Host alive, 35–65% of its children (expected): proceed to the E014
   pilot.
+- **Outcome 2026-10-13: passed**, ratio 0.465 at N = 50, host alive
+  with 223 units left; 0.691 at N = 25, dead at N = 75 and at every N
+  from 51 up (checked 51–59). The rates run as 1 − N/100 against the
+  N = 0 host, as H16 says. The harness host is entered every tick, so
+  the world's t50 arm is expected to sit above this, but near the
+  margin; if the pilot's population collapses at N = 50 the branch
+  below applies without further checking.
 - Host dies: the slowdown starves it through upkeep. Report the N at
   which it lives; if that is below 25, the rule needs a floor (a debit
   cap per tick, say half the budget), which is one more flag and a
@@ -75,13 +82,15 @@ left for then.
   `run_tick`. Engine bug either way.
 
 **E014 pilot** (3 seeds, 50,000 ticks, all arms).
-- Population within E007's range at N ≤ 50 and `entered_children_ratio`
+- Population within E007's range at N ≤ 50 and `entered_rate_norm`
   between 0.3 and 0.8 (expected): calibrate the tax, start the main
-  stage.
+  stage. (Amended 2026-10-13: `entered_children_ratio` is confounded
+  by lifespan, 3.78 at no cost in the smoke run; the governing
+  measure is the per-tick rate normalised to the `n0` arm. T02 §4.3.)
 - Population collapses at N = 50: run the main stage at N ∈ {10, 25,
   40} instead and say so in the record; the dose prediction still
   applies.
-- `entered_children_ratio` above 0.8 at N = 50: entries are too brief
+- `entered_rate_norm` above 0.8 at N = 50: entries are too brief
   for the cost to bite (the fall-through intruder is not staying
   resident as E009b's reading assumed). Measure resident fraction
   (`exec_foreign / executed` > 0.9 at death among intruders). If it

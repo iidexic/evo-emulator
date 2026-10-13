@@ -1,8 +1,13 @@
 # T02. Cost of intrusion in time: `--cycle-theft-pct`, its control, and E014
 
-Status: specified 2026-10-13. Not built. Argument: synthesis §3.1,
-PLAN §5.4 and §8.3, hypothesis H16. Builder: Opus or Codex; review by
-a second model; Fable reads the diff summary.
+Status: specified 2026-10-13; built the same day (Opus, commit
+`0ce3338`; reviewed by Fable, accepted). Gate 1 passed at N = 50
+(host alive, 0.465 of its lone births; the host dies at every N from
+51 up in the harness, where it is entered every tick). Amendments
+after the build, below in §4.3 and §4.4: the pilot branch is governed
+by `entered_rate_norm`, not `entered_children_ratio`; the runner gzips
+each run's CSVs. Argument: synthesis §3.1, PLAN §5.4 and §8.3,
+hypothesis H16.
 
 ## 1. Rule
 
@@ -209,6 +214,19 @@ plus per bin over replicator-class deaths: `entered_share`
 `entered_age_ratio`. Over living test bodies at each census: the
 same entered share.
 
+Amendment 2026-10-13 (from the build): `entered_children_ratio` is
+confounded by lifespan, since a body that lives longer is more likely
+to be entered and has more children; in the no-cost smoke run it was
+3.78 with an age ratio of 3.18. Two more columns: `entered_rate_ratio`
+(exact children per tick of life, entered deaths over unentered) and
+`entered_rate_norm` = that ratio divided by the same ratio in the `n0`
+arm at the same injection and seed. `entered_rate_norm` governs
+prediction 2 and the pilot branch in `README.md`; the other two are
+diagnostics. The runner also gzips `births.csv`, `deaths.csv`,
+`orgs.csv` and `census.csv` after each run (the main stage would
+otherwise need about 220 GB), and `evo_run.py`'s loader reads
+`.csv.gz`.
+
 ### 4.4 Predictions, operational (H16)
 
 1. Persistence: `resident` alive with ≥ 10 bodies and ≥ 1% share at
@@ -216,8 +234,10 @@ same entered share.
    this, `t75` is reported as the slow-starvation arm and excluded
    from 2–4.
 2. Entered hosts are graded, not killed: under `t50`,
-   `entered_children_ratio` between 0.3 and 0.8 in the pilot and in
-   ≥ 20 of 30 main seeds; under `n0` it is above 0.8.
+   `entered_rate_norm` between 0.3 and 0.8 in the pilot and in
+   ≥ 20 of 30 main seeds (amended 2026-10-13; it was
+   `entered_children_ratio`, which is kept as a diagnostic, and the
+   `n0` clause is now the normalisation itself).
 3. The eject pays: under `t50`, `eject` `last_share` ≥ 1% in ≥ 20 of
    30 seeds; `inert` ≥ 1% in ≤ 5 of 30.
 4. The control: under `tax`, `eject` and `inert` ≥ 1% counts differ
