@@ -10,7 +10,7 @@ before the runs, as always.
 
 | task | what | depends on | status |
 |---|---|---|---|
-| [T01](T01-reserve-check.md) | E007 reserve check: does any host bank energy? | nothing | running on the laptop (Opus), judged against the spec |
+| [T01](T01-reserve-check.md) | E007 reserve check: does any host bank energy? | nothing | done 2026-10-13 (Opus, laptop; `654783b`): **fails** in every seed; branch below taken |
 | [T02](T02-cycle-theft.md) | `--cycle-theft-pct`, `--cycle-tax-pct`, counters, harness gate, E014 runner | nothing | not built |
 | [T03](T03-template-ancestor.md) | `--ancestor tierra`, `--neighbours HEX`, E015 runner | T02's `exec_by_others` | not built |
 | [T04](T04-snapshots-replay.md) | full-state snapshots, `--replay-from` | T02/T03 fields (or extend later) | not built |
@@ -20,8 +20,9 @@ before the runs, as always.
 
 ## Order
 
-T01 is running. Then, in parallel where hands allow: T02 (engine)
-and T05 + T06 (analysis, no new physics). T03 after T02. T04 before
+T01 is done (fails; see below). Now, in parallel where hands allow:
+T02 (engine, Opus), T05 (analysis, Codex trial) and T06 (analysis,
+Opus). T03 after T02. T04 before
 E016's main stage, not before. T07 whenever a machine is idle; it
 decides line B's route and nothing in line A waits on it.
 
@@ -43,6 +44,23 @@ left for then.
   from the margin argument), and E016 gets an income-take `drain` arm
   on the list. E010's "not energy-limited" reading is re-read against
   the banking genotypes.
+- **Outcome 2026-10-13: fails** (`analysis/e007_reserve.py`, E007
+  record follow-up, commit `654783b`). Against the rule in T01 §3:
+  reproducers' median `max_energy_m` is 279–283 units (rule: ≤ 134),
+  p90 825–939 against a cap of 1,344 (rule: p99 < 448), and 34–35% of
+  replicator absorbs are cut by the cap (rule: < 1%; fails above 10%).
+  Active hosts hold a median of about 600 units, a fifth at the cap;
+  42% of living replicator-class bodies are stalled at the cap and
+  non-reproducing. A pass costs 787–798 units, so the cap is 1.7
+  passes. What this changes: nothing in T02–T07's build order. E016
+  gains the income-take `drain` arm as planned, now as a live
+  comparator rather than a fallback (an energy charge of a tenth of
+  income is survivable at a 600-unit store and a 790-unit pass). The
+  stalled-at-cap bodies are the natural `drain` target and E016's
+  record should say whether the arm selects for draining them. The
+  store-depth sweep is reopened as a question, not a task; if it is
+  brought back it needs a `--store-cap` flag (a T08, one field and one
+  CLI flag, not specified until E016's design is written).
 
 **T02 gate 1, the harness** (pad before the ancestor at N = 50).
 - Host alive, 35–65% of its children (expected): proceed to the E014

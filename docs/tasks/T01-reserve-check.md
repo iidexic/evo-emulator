@@ -1,9 +1,13 @@
 # T01. The E007 reserve check
 
-Status: specified 2026-10-13; a build was already started on the laptop
-(Opus) from the synthesis text alone. This file is the acceptance
-standard for whatever that run produces; if it reported something
-else, redo it to this.
+Status: done 2026-10-13 (Opus, laptop, commit `654783b`,
+`analysis/e007_reserve.py`, E007 record follow-up). Result: **fails**
+in every seed by the rule in §3; the numbers and what follows are in
+`README.md` under T01. This file was written as the acceptance
+standard while that run was underway; the run reported the
+percentiles and the capped-absorb share the rule needs, plus a
+living-body split (active / newborn / stalled) the spec did not ask
+for.
 
 ## Question
 
