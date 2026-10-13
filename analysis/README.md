@@ -24,6 +24,15 @@ World memory at every census tick is in `world.bin` (since 2026-10-07):
 debris, 2 owned) as numpy arrays, and `evo_run.disasm(w.bytes[a:b])`
 decodes a slice through `evo-core --disasm`.
 
+## Standing measures (T05)
+
+`measures.py RUN_DIR [--every K] [--depths 187,1870] [--out DIR]`
+writes QNN, tree measures, and MODES by census; its `compute(run)` entry
+point is also available to experiment runners. `measures_baseline.py`
+applies it to E007, E012 and E013 and writes the per-seed table under
+`runs/measures/`. `--knockout` also needs the `--neighbours` support from
+T03.
+
 To see what one genome does, tick by tick, without reading its
 disassembly: `cargo run --release --example trace -- HEX [ticks]
 [ADDR=HEX ...]` in `evo-core/` (the last form plants dead code in free
