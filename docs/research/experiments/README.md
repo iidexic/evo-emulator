@@ -25,10 +25,10 @@ regenerates any figure.
 | E013 | 2026-10-12 | `2026-10-12-e013-founders.md` | do sixteen founders change anything after the founder phase? | all seeds persist; window 2 matches E007; absorb sweep slower in its second half |
 | E014 | 2026-10-13 | `2026-10-13-e014-cycle-theft.md` | pilot: is an entered host graded, not killed, under `--cycle-theft-pct`? (H16) | yes, 0.90 at N = 50 on reproducing hosts, dose clean, tax control clean; but intruders not resident (< 10%), so the main stage is skipped and gate 2 moves to E016 with the template ancestor |
 | E015 | 2026-10-13 | `2026-10-13-e015-template-ancestor.md` | does a template-addressed ancestor have a one-hop parasite, and does it persist? (H17) | one-hop parasite by construction (1,095 `parasite_jump` rows, 996 label flips; std 25, none by search); gate fails 0 of 10 at K = 127 and 0 of 10 with noise off, passes 10 of 10 at `--sun 2` with parasite share 8–27% and 25% of replicator deaths entered (no same-sun std control yet); parasites arise with no mutation from the `alloc`/`copy` range edge, in std too |
+| E016 | 2026-10-13 | `2026-10-13-e016-defence-search.md` | pre-registered, not run: under `--cycle-theft-pct 50` with the template ancestor, does a defence arise and hold? (H16 gate 2, H17 stage 3 folded in) | waits on T08's sun level and T04's snapshots |
 
-Next: E014 (cost in time), E015 (template-addressed ancestor), E016
-(cost x ancestor, the defence search), per PLAN.md §8.3 and
-`synthesis-2026-10-13.md`.
+Next: E016 (pre-registered above; runs after T08 and T04), per PLAN.md
+§8.3 and `synthesis-2026-10-13.md`.
 
 ## Status log (moved verbatim from PLAN.md §8 on 2026-10-13)
 
