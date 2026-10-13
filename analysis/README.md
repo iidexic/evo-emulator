@@ -32,6 +32,32 @@ memory). To test a genome against a host: `evo-core --host HEX`, with
 ancestor (E007). `e007_long_run.py` runs the standard world for 250,000
 ticks and reads it in windows (`runs/e007/summary_windows.md`).
 
+## Line of descent (T06)
+
+`lod.py` draws one line of descent and measures every step on it, in the
+manner of Lenski, Ofria, Pennock & Adami (2003); spec
+`docs/tasks/T06-lenski-lod.md`.
+
+```
+uv run lod.py RUN_DIR [--at TICK] [--pick top|id:N] [--harness-ticks 3000] [--out DIR] [--evo-bin PATH]
+```
+
+The end organism is the body with the most offspring in the largest
+replicator-class `func_hash` group alive at the census `--at` (default the
+last). The line runs back from it through `births.csv` (child to executor)
+to the founder. Each step (consecutive birth genomes that differ) gets its
+edits, whether it is synonymous, whether it was a copy error or a somatic
+change in the parent, the absorb count, and its fitness. Fitness is
+measured in the harness alone and with a `pad` before it, and in the world
+over the step's 25,000-tick window. Output goes to `RUN_DIR/lod/`:
+`steps.csv`, `genomes.csv`, `line.csv` and `summary.md`. The harness binary
+is `--evo-bin`, else `$EVO_BIN`, else the cargo build.
+
+`lod_e007.py` runs it on E007's ten seeds at tick 250,000 and writes
+`runs/lod/summary.md` and `runs/lod/seeds.csv`. A seed whose E007 directory
+is incomplete is rerun into `runs/lod/e007/` and checked against the
+partial run. Tests: `uv run --with pytest pytest tests/test_lod.py`.
+
 ## Looking at a run
 
 Record a run directory with the CLI, then report on it:
