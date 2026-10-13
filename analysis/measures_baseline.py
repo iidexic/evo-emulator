@@ -8,7 +8,7 @@ from pathlib import Path
 import polars as pl
 
 from evo_run import ROOT, load
-from measures import compute
+from measures import compute, last_value
 
 
 RUNS = ROOT / "runs"
@@ -50,7 +50,7 @@ def _process(exp: str, arm: str, seed: int) -> tuple[dict | None, pl.DataFrame |
                    qnn_cum_end=float(series["qnn_cum"][-1]),
                    qnn_max=float(max_row["qnn"]), qnn_max_tick=int(max_row["tick"]),
                    qnn_max_window=max(1, (int(max_row["tick"]) - 1) // 25_000 + 1),
-                   mrca_tick=int(series["mrca_tick"][-1]),
+                   mrca_tick=last_value(series["mrca_tick"]),
                    mrca_tick_max=int(mrca_max) if mrca_max is not None else None,
                    mrca_changes=int(series["mrca_changed"].sum()),
                    runtime_s=runtime,

@@ -363,8 +363,15 @@ def compute(run: Run | str | Path, every: int = 1, depths: tuple[int, ...] = (18
             for name in ("change", "novelty", "ecology"):
                 col = f"{name}_{d}"
                 summary[f"mean_{col}"] = float(stationary_modes[col].mean()) if stationary_modes.height else None
-        summary["mrca_tick"] = int(series["mrca_tick"][-1])
+        summary["mrca_tick"] = last_value(series["mrca_tick"])
     return series, summary
+
+
+def last_value(col: pl.Series):
+    """Last non-null value of a series column, or None. With `--every K`
+    the tree columns are null at unsampled censuses, the last one included."""
+    vals = col.drop_nulls()
+    return vals[-1] if vals.len() else None
 
 
 def site_entropy(bodies: list[bytes]) -> list[float | None]:
@@ -444,20 +451,20 @@ def main() -> None:
     ap.add_argument("--out")
     a = ap.parse_args()
     depths = tuple(int(x) for x in a.depths.split(","))
-    if a.knockout:
-        run = load(a.run_dir)
-        out = Path(a.out) if a.out else Path(a.run_dir) / "measures"
-        out.mkdir(parents=True, exist_ok=True)
-        for win, sites in site_entropy_windows(run).items():
-            sites.write_csv(out / f"sites_{win}.csv")
-        print("knockout columns require evo-core --neighbours/--neighbours-pad-only from task T03; entropy-only site rows were written where classes.csv was available.", file=sys.stderr)
-        raise SystemExit(2)
-    series, summary = compute(a.run_dir, a.every, depths)
+    run = load(a.run_dir)
+    series, summary = compute(run, a.every, depths)
     out = Path(a.out) if a.out else Path(a.run_dir) / "measures"
     out.mkdir(parents=True, exist_ok=True)
     series.write_csv(out / "series.csv")
     import json
     (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    if a.knockout:
+        # The sites files come on top of the normal output.
+        for win, sites in site_entropy_windows(run).items():
+            sites.write_csv(out / f"sites_{win}.csv")
+        print("sites: entropy columns written where classes.csv is present; the knockout columns "
+              "(exact_pad, class_pad, meaningful) stay empty until the --neighbours loop is wired in.",
+              file=sys.stderr)
     print(f"wrote {out}")
 
 
