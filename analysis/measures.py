@@ -719,7 +719,8 @@ def evo_bin(path: str | Path | None = None) -> Path:
     not built here."""
     p = path or os.environ.get("EVO_BIN")
     if p:
-        p = Path(p)
+        # Absolute, so a subprocess run from another directory finds it.
+        p = Path(p).resolve()
     else:
         rel = ROOT / "evo-core" / "target" / "release"
         p = next((rel / n for n in ("evo-core.exe", "evo-core") if (rel / n).exists()), rel / "evo-core.exe")
