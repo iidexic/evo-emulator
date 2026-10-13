@@ -14,7 +14,7 @@ before the runs, as always.
 | [T02](T02-cycle-theft.md) | `--cycle-theft-pct`, `--cycle-tax-pct`, counters, harness gate, E014 runner | nothing | built 2026-10-13 (`0ce3338`); gate 1 passed at N = 50 (0.465, host alive; dies from N = 51 in the harness); E014 pilot run, skip branch taken, no main stage |
 | [T03](T03-template-ancestor.md) | `--ancestor tierra`, `--neighbours HEX`, E015 runner | T02's `exec_by_others` | built 2026-10-13 (Opus, `368ce56`…`ae15991`); body 41 bytes, K = 127; 1,095 `parasite_jump` rows for tierra against 25 for std; E015 gate **fails** 0 of 10, sun and noise-off arms running |
 | [T04](T04-snapshots-replay.md) | full-state snapshots, `--replay-from` | T02/T03 fields (or extend later) | not built |
-| [T05](T05-measures.md) | `measures.py`: QNN, phylometrics, MODES, sites; baselines on E007/E012/E013 | T03's `--neighbours-pad-only` for sites only | built 2026-10-13 (Codex, `0d0c36b`; Opus review: numbers match independent recomputation); shakedown criteria 1 and 2 rewritten (spec §4 amendment), fixes in §4.1 pending |
+| [T05](T05-measures.md) | `measures.py`: QNN, phylometrics, MODES, sites; baselines on E007/E012/E013 | T03's `--neighbours-pad-only` for sites only | built 2026-10-13 (Codex, `0d0c36b`; Opus review: numbers match independent recomputation; Opus follow-up `d198fa3`…`6cad7ca`: fixes, `--group absorb_class`, `root_lines`, 15 tests); shakedown closed: criterion 1 "5 of 10, explained", criterion 2 a report, QNN a weak sweep detector here (spec §4); knockout loop not wired, E007 reruns need `--classify` |
 | [T06](T06-lenski-lod.md) | line of descent with fitness per step, on E007's absorb sweep | nothing | built 2026-10-13 (`2f27841`); E007 record follow-up; sweep step deleterious in the harness in 8 of 9 seeds, D-before-B in seed 3 |
 | [T07](T07-density.md) | replicator density by uniform sampling (B0) | nothing | not built |
 
@@ -249,3 +249,17 @@ otherwise be judged by a blind instrument.
   backgrounds, which E016's reading rule now has to carry. Code fixes
   (`--every` crash, `--knockout` exit, thin tests, ED stem,
   `ancestor_count`) listed in T05 §4.1 for an Opus follow-up.
+- **Follow-up outcome 2026-10-13** (`d198fa3`…`6cad7ca`): fixes in,
+  15 tests, 12–15 s per 250,000-tick seed. The amended criterion 1
+  passes 5 of 10 (seeds 4 and 5 beaten by a late single-census spike
+  of the `unmatched` class, seed 3's sweep never reaches a 0.75 share,
+  seed 7 peaks two censuses late); the amended criterion 2 fails
+  because three seeds coalesce late (generations 347–419), `root_lines`
+  = 2 everywhere. Closed as a reading, not re-tuned: QNN under any
+  grouping is a weak detector of this world's sweep; the sweep's trace
+  is the trait share. E016 reads a defence's spread on its own trait
+  share first, `qnn` over the defence class second, `qnn` over
+  `func_hash` as context. Before E016 reads `parasite_share`,
+  `entered_share` or `rep_alive`, `runs/lod/e007/s*/` needs
+  `--classify`; the knockout loop is still to be wired to T03's
+  `--neighbours-pad-only`.

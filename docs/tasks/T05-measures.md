@@ -195,6 +195,47 @@ Filter depths: Δ1870 applies only when the run's deepest generation
 is ≥ 1,870; otherwise the column is `censored` and the summary says
 so (E007 at 250,000 ticks reaches 1,012).
 
+**Outcome of the amended criteria, 2026-10-13** (follow-up build
+`d198fa3`…`6cad7ca`, `runs/measures/summary.md`). Criterion 1 as
+amended passes in 5 of 10 seeds (1, 2, 6, 8, 9). The failures are
+features of the data: seeds 4 and 5 have their global `qnn` maximum
+in a single late census (ticks 215,500 and 216,000) from a jump of
+about 0.03 in the `unmatched` class, which holds 20–37% of bodies
+(one-off damaged variants); their in-window peaks are 0.0030 at
+3,500 and 0.00086 at 3,000. Seed 3's ≥ 96 share never reaches 0.75
+(maximum 0.716), so its window never closes. Seed 7 peaks two
+censuses after its window closes. Criterion 2 as amended cannot be
+met: seeds 2, 7 and 9 coalesce late (`mrca_tick` 110,057, 77,422 and
+101,820; generations 419, 347 and 400), so `mrca_tick` < 1,000 holds
+in 6 of 9 living seeds, and only seeds 1, 6 and 8 have the MRCA at
+generation 0–1 (seeds 3, 4, 5 at 2, 3, 20). `root_lines` is 2 in
+every living seed.
+
+Reading, and the criteria's final form. The measures are verified
+(independent recomputation; 15 tests). What the shakedown shows is
+that QNN under any grouping is a weak detector of this world's sweep:
+the sweep's own trace is the trait-share series (`traits.py`'s
+absorb count, the ≥ 96 share crossing 0.25 to 0.75 between ticks
+500–2,000 and 3,500–12,500), and `qnn` over `absorb_class` marks it
+in half the seeds, with late single-census spikes from the
+`unmatched` class elsewhere. So criterion 1 is closed as "5 of 10,
+explained", not re-tuned, and the rule carried into E016 is: a
+defence's spread is read on its own trait share (pattern-located
+presence of the defence bytes) first, `qnn` over the defence class
+second, `qnn` over `func_hash` as genotype-turnover context only.
+Criterion 2 is closed as a report with no threshold: coalescence
+time is a feature of the run (2N ≈ 1,870 generations not reached;
+three seeds coalesced anyway at generations 347–419), `root_lines`
+= 2 is the common state. Criterion 3 waits for E012/E013 data (not
+on the desktop).
+
+Still open from §4.1 after the follow-up: `--knockout` writes its
+files but the knockout columns are empty, since the `--neighbours
+--neighbours-pad-only` loop (T03, now built) is not wired in; and
+`parasite_share`, `entered_share`, `rep_alive` are empty on the E007
+reruns because `runs/lod/e007/s*/` has no `classes.csv` (run
+`evo-core --classify` on them before E016 reads those columns).
+
 ### 4.1 Fixes from the review, for the follow-up build
 
 - `--every K` crashes when the last census is not sampled
