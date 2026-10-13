@@ -3,6 +3,7 @@
     uv run --project analysis --with pytest pytest analysis/tests/test_measures.py
 """
 from pathlib import Path
+from types import SimpleNamespace
 import gzip
 import json
 import subprocess
@@ -10,13 +11,16 @@ import sys
 
 import numpy as np
 import polars as pl
+import pytest
 
 ANALYSIS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ANALYSIS))
 
 from evo_run import Run, load
-from measures import (_euler, _tree, _tree_metrics, absorb_class, compute, qnn_series,
-                      site_entropy, spd_edge, spd_pairwise)
+from measures import (_euler, _tree, _tree_metrics, absorb_class, compute, evo_bin, is_meaningful,
+                      knockout, knockout_windows, merge_knockout, parse_args, qnn_series,
+                      read_neighbours, site_entropy, site_windows, sites_relation, spd_edge,
+                      spd_pairwise)
 import measures_baseline
 
 # The E007 ancestor (absorb count 64 at byte 6, `lit A` at byte 5), two
@@ -185,15 +189,141 @@ def test_every_k_with_last_census_unsampled(tmp_path):
 
 
 def test_cli_knockout_writes_normal_output_and_sites(tmp_path):
+    # Calls the engine: $EVO_BIN, else evo-core/target/release; skipped
+    # without one.
+    try:
+        exe = evo_bin()
+    except FileNotFoundError as e:
+        pytest.skip(str(e))
     run = one_founder(tmp_path / "run")
     out = tmp_path / "out"
-    res = run_cli(run, "--every", "2", "--knockout", "--depths", "1,2", "--out", out)
+    res = run_cli(run, "--every", "2", "--knockout", "--evo-bin", exe, "--depths", "1,2", "--out", out)
     assert res.returncode == 0, res.stderr
     series = pl.read_csv(out / "series.csv")
     assert series["tick"].to_list() == [1, 2, 3]
     summary = json.loads((out / "summary.json").read_text())
     assert summary["final_tick"] == 3
-    assert list(out.glob("sites_*.csv"))
+    # One window; its top body is the ancestor (3 exact births of `a`).
+    sites = pl.read_csv(out / "sites_1.csv")
+    assert sites.columns == ["pos", "op", "entropy", "exact_pad", "class_pad", "meaningful"]
+    assert sites.height == 21 and sites.null_count().row(0) == (0,) * 6
+    rec = summary["sites"]["1"]
+    assert rec["hex"] == ANC and rec["exact_births_window"] == 3 and rec["class_alone"] == "replicator"
+    assert rec["meaningful"] == int(sites["meaningful"].sum())
+    assert summary["sites_harness"]["harness_ticks"] == 3000
+
+
+NB_HEADER = ("pos,kind,byte,hex,raw_hash,func_hash,class_alone,births_alone,exact_alone,alive_alone,"
+             "births_host,exact_host,host_copies,host_exact,alive_host,host_alive,executed,exec_foreign,"
+             "entry_off,ticks_run,label")
+
+
+def nb_csv(rows: list[tuple]) -> str:
+    """A --neighbours CSV (T03 §2 header) from (pos, kind, byte, class_alone,
+    exact_alone) tuples; the other columns are filler, hashes all digits."""
+    lines = [NB_HEADER]
+    for pos, kind, byte, cls, exact in rows:
+        lines.append(f"{pos},{kind},{'' if byte is None else byte},00,{1000 + pos:016d},{2000 + pos:016d},"
+                     f"{cls},{exact},{exact},true,0,0,0,0,true,true,10,0,-1,3000,{cls}")
+    return "\n".join(lines) + "\n"
+
+
+def test_meaningful_rule():
+    # Below half the unmutated body's exact births alone, or the class changed.
+    assert not is_meaningful(100, "replicator", 100, "replicator")
+    assert not is_meaningful(50, "replicator", 100, "replicator")   # exactly half: not below
+    assert is_meaningful(49, "replicator", 100, "replicator")
+    assert is_meaningful(120, "inexact", 100, "replicator")          # more births, other class
+    assert is_meaningful(0, "dies", 100, "replicator")
+    assert not is_meaningful(0, "loafer", 0, "loafer")
+
+
+def test_merge_of_a_neighbours_csv_into_the_sites_frame(tmp_path):
+    p = tmp_path / "neighbours.csv"
+    # Pad rows out of order, plus a substitution by 5 and a deletion that the
+    # merge must leave out.
+    p.write_text(nb_csv([(2, "sub", 0, "replicator", 49), (0, "sub", 0, "replicator", 100),
+                         (1, "sub", 0, "replicator", 50), (3, "sub", 0, "inexact", 120),
+                         (1, "sub", 5, "dies", 0), (2, "del", None, "dies", 0)]))
+    nb = read_neighbours(p)
+    assert nb["raw_hash"].dtype == pl.Utf8 and nb["raw_hash"][0] == "0000000000001002"
+    assert nb["byte"].to_list()[-1] is None
+    sites = pl.DataFrame({"pos": [0, 1, 2, 3], "op": ["19", "operand", "18", "5"],
+                          "entropy": [0.0, 0.5, 0.0, 0.1], "exact_pad": [None] * 4,
+                          "class_pad": [None] * 4, "meaningful": [None] * 4})
+    got = merge_knockout(sites, nb, dict(exact_alone=100, class_alone="replicator"))
+    assert got.columns == ["pos", "op", "entropy", "exact_pad", "class_pad", "meaningful"]
+    assert got["exact_pad"].to_list() == [100, 50, 49, 120]
+    assert got["class_pad"].to_list() == ["replicator", "replicator", "replicator", "inexact"]
+    assert got["meaningful"].to_list() == [False, False, True, True]
+    assert got["op"].to_list() == ["19", "operand", "18", "5"]
+    rel = sites_relation(got)
+    # Entropy ranks 1.5, 4, 1.5, 3 against meaningful ranks 1.5, 1.5, 3.5,
+    # 3.5: rho = -1 / sqrt(4.5 * 4).
+    assert (rel["positions"], rel["meaningful"]) == (4, 2)
+    assert np.isclose(rel["entropy_meaningful"], 0.05) and np.isclose(rel["entropy_other"], 0.25)
+    assert np.isclose(rel["spearman"], -1 / np.sqrt(18))
+    # Meaningful 0.0, 0.1 against other 0.0, 0.5: pairs tie, below, above,
+    # below.
+    assert rel["auc"] == 0.625
+    with pytest.raises(ValueError):
+        merge_knockout(sites, nb.filter(pl.col("pos") != 3), dict(exact_alone=100, class_alone="replicator"))
+
+
+def fake_engine(calls: list, dead: set[int]):
+    """A stand-in for subprocess.run: `--classify` writes a replicator with
+    230 exact births; `--neighbours` writes a pad row per position of the
+    body, `dies` at the positions in `dead`, the body's result elsewhere."""
+    def run(cmd, **kw):
+        calls.append(cmd)
+        if "--classify" in cmd:
+            d = Path(cmd[cmd.index("--classify") + 1])
+            assert (d / "genomes.csv").read_text().splitlines()[0] == "raw_hash,bytes_hex"
+            (d / "classes.csv").write_text(
+                "raw_hash,class,births,exact_births,first_birth_tick,alive,final_energy_m,executed,absorbs\n"
+                "base,replicator,231,230,14,true,1,1,1\n")
+        else:
+            n = len(cmd[cmd.index("--neighbours") + 1]) // 2
+            Path(cmd[cmd.index("--neighbours-out") + 1]).write_text(nb_csv(
+                [(p, "sub", 0, "dies" if p in dead else "replicator", 0 if p in dead else 230)
+                 for p in range(n)]))
+        return SimpleNamespace(returncode=0, stderr="")
+    return run
+
+
+def test_knockout_calls_classify_and_pad_only_neighbours_with_the_flags():
+    calls = []
+    base, nb = knockout(ANC, "evo", 1234, ["--sun", "2"], runner=fake_engine(calls, {0}))
+    assert base == dict(class_alone="replicator", births_alone=231, exact_alone=230)
+    assert nb.height == 21 and nb["exact_alone"][0] == 0
+    cls, nbr = calls
+    assert cls[:2] == ["evo", "--classify"] and cls[3:] == ["--harness-ticks", "1234", "--sun", "2"]
+    assert nbr[:4] == ["evo", "--neighbours", ANC, "--neighbours-pad-only"]
+    assert nbr[4] == "--neighbours-out" and nbr[6:] == ["--harness-ticks", "1234", "--sun", "2"]
+
+
+def test_knockout_windows_on_a_tiny_run_with_a_fake_engine(tmp_path):
+    run = load(one_founder(tmp_path))
+    sw = site_windows(run)
+    assert list(sw) == [1] and sw[1].hex == ANC and sw[1].exact_births == 3
+    # Entropy over the four same-length exact births (a a a h1): byte 6 only.
+    ent = sw[1].sites["entropy"].to_list()
+    assert np.isclose(ent[6], -(0.75 * np.log2(0.75) + 0.25 * np.log2(0.25)))
+    assert sum(ent) == ent[6] and sw[1].bodies == 4
+    calls = []
+    frames, record = knockout_windows(run, "evo", runner=fake_engine(calls, {6, 7}))
+    assert frames[1]["meaningful"].to_list() == [p in (6, 7) for p in range(21)]
+    rec = record["1"]
+    assert (rec["meaningful"], rec["positions"], rec["exact_alone"]) == (2, 21, 230)
+    assert rec["spearman"] > 0  # the varying site is a meaningful one here
+    assert len(calls) == 2
+
+
+def test_evo_flags_take_a_lone_flag_value():
+    a = parse_args(["RUN", "--knockout", "--evo-flags", "--legacy-pending-range", "--harness-ticks", "500"])
+    assert a.evo_flags == ["--legacy-pending-range"] and a.harness_ticks == 500 and a.knockout
+    assert parse_args(["RUN", "--evo-flags", "--sun 2 --no-protect"]).evo_flags == ["--sun", "2", "--no-protect"]
+    assert parse_args(["RUN"]).evo_flags == []
 
 
 def test_single_founder_living_ancestors_stem_free_ed_and_mrca_change(tmp_path):

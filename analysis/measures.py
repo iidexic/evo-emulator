@@ -1,7 +1,8 @@
 """Standing evolutionary measures for recorded evo runs (T05,
 docs/tasks/T05-measures.md).
 
-    uv run measures.py RUN_DIR [--every K] [--depths 187,1870] [--group COL] [--knockout] [--out DIR]
+    uv run measures.py RUN_DIR [--every K] [--depths 187,1870] [--group COL] [--out DIR]
+                       [--knockout [--evo-bin PATH] [--harness-ticks 3000] [--evo-flags "..."]]
 
 from analysis/, or `compute(run)` from experiment runners. Writes
 `RUN_DIR/measures/series.csv` (one row per census), `summary.json`, and
@@ -67,18 +68,60 @@ Definitions, as computed (spec §2, with the §4 amendment and §4.1):
   `foreign_share`: sum of `exec_foreign` over sum of `executed`, living.
 - Summary means (`mean_mpd`, `mean_mean_ed`, `mean_<modes>_D`) are over
   censuses at or after tick 25,000 (MODES: uncensored ones only).
+
+Sites (`--knockout`, spec §3), per 25,000-tick window `w` (ticks
+25,000(w-1)+1 .. 25,000w), `sites_<w>.csv` with `pos, op, entropy,
+exact_pad, class_pad, meaningful`:
+
+- The top component is the replicator-class (classes.csv) `func_hash` with
+  the most exact births in the window; the body knocked out is its most
+  common raw body among them. `pos` is a byte position (the canonical body
+  of `traits.canonical_instrs` has the raw body's length), `op` the
+  canonical op number there or `operand` for a `lit`'s operand byte.
+- `entropy`: Shannon entropy (bits) of the canonical byte at `pos` over the
+  window's replicator-class exact births of bodies of the same length.
+- `exact_pad`, `class_pad`: `exact_alone` and `class_alone` of the mutant
+  with `pad` (byte 0) at `pos`, from `evo-core --neighbours HEX
+  --neighbours-pad-only` (T03 §2; a position already `pad` gives the body
+  itself). The unmutated body's own `exact_alone` and `class_alone` come
+  from `evo-core --classify` on a one-row genomes.csv: the same
+  `harness::run_alone_with` the neighbours mode runs each mutant alone
+  with, at the same `--harness-ticks` and physics flags (the neighbours CSV
+  has no unmutated row).
+- `meaningful` (`is_meaningful`): `exact_pad` below half the unmutated
+  body's exact births alone, or `class_pad` differs from its class alone.
+- summary.json gains `sites` (per window: the body, its exact births in the
+  window, the number of bodies the entropy is over, the unmutated harness
+  result, the meaningful count, mean entropy of meaningful and other sites,
+  Spearman's rho of entropy with meaningful and `auc`, the chance that a
+  meaningful site has lower entropy than a non-meaningful one;
+  `sites_relation`) and `sites_harness`. Single
+  knockouts mishandle interacting sites (Willkens 2023): a diagnostic.
+- The engine is `--evo-bin PATH`, else $EVO_BIN, else
+  evo-core/target/release/evo-core.exe (not built here). `--evo-flags
+  "..."` (split on whitespace) is passed to both engine calls so the
+  harness physics matches the run's (e.g. `--no-protect` for E012). Runs
+  recorded before T08's alloc/copy range edge fix (2026-10-13) are the
+  legacy world: with a post-T08 binary give them `--evo-flags
+  "--legacy-pending-range"`; a binary built before T08 (the t03 build)
+  needs nothing.
 """
 from __future__ import annotations
 
 import argparse
 import math
+import os
+import subprocess
 import sys
+import tempfile
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable, Sequence
 
 import numpy as np
 import polars as pl
 
-from evo_run import Run, load
+from evo_run import ROOT, Run, load
 
 STATIONARY = 25_000  # the stationary phase starts here (summary means)
 FIRST_ID = 2  # evo-core's first organism id (sim.rs FIRST_ID)
@@ -597,17 +640,35 @@ def site_entropy(bodies: list[bytes]) -> list[float | None]:
             continue
         counts = np.bincount(np.asarray(vals, dtype=np.uint8), minlength=256)
         p = counts[counts > 0] / len(vals)
-        out.append(float(-(p * np.log2(p)).sum()))
+        h = float(-(p * np.log2(p)).sum())
+        out.append(h if h > 0 else 0.0)  # a constant site gives -0.0
     return out
 
 
-def site_entropy_windows(run: Run, window: int = 25_000) -> dict[int, pl.DataFrame]:
-    """Compute the registered entropy half of the sites analysis.
+SITE_WINDOW = 25_000
+HARNESS_TICKS = 3_000  # evo-core's default --harness-ticks
+SITES_COLUMNS = ("pos", "op", "entropy", "exact_pad", "class_pad", "meaningful")
+# Integer columns of a --neighbours CSV (T03 §2); the rest stay strings.
+NEIGHBOURS_INTS = ("pos", "byte", "births_alone", "exact_alone", "births_host", "exact_host",
+                   "host_copies", "host_exact", "executed", "exec_foreign", "entry_off", "ticks_run")
 
-    Returns window-number keyed frames with the available ``pos``, ``op``
-    and ``entropy`` columns. Knockout results remain absent until T03 adds
-    the engine's neighbour command.
-    """
+
+@dataclass
+class SiteWindow:
+    """One window of the sites analysis before the knockout: the top
+    replicator-class component, the raw body to knock out, and the sites
+    frame (knockout columns empty)."""
+    window: int
+    func_hash: str
+    hex: str
+    exact_births: int  # the window's exact births of `func_hash`
+    bodies: int        # same-length replicator-class exact births under `entropy`
+    sites: pl.DataFrame
+
+
+def site_windows(run: Run, window: int = SITE_WINDOW) -> dict[int, SiteWindow]:
+    """The entropy half of the sites analysis (spec §3), keyed by window
+    number (ticks (w-1)*window+1 .. w*window); empty without classes.csv."""
     if run.classes is None:
         return {}
     from traits import canonical_instrs
@@ -617,16 +678,18 @@ def site_entropy_windows(run: Run, window: int = 25_000) -> dict[int, pl.DataFra
     )
     exact = run.class_of(exact, "raw_hash").filter(pl.col("class") == "replicator")
     exact = exact.join(run.genomes.select("raw_hash", "func_hash", "bytes_hex"), on="raw_hash", how="left")
-    results: dict[int, pl.DataFrame] = {}
+    results: dict[int, SiteWindow] = {}
     for win in sorted(exact["bin"].unique().to_list()):
         frame = exact.filter(pl.col("bin") == win)
-        top = (frame.group_by("func_hash").len().sort(["len", "func_hash"], descending=[True, False]).row(0, named=True))
-        top_hash = top["func_hash"]
-        top_hex = frame.filter(pl.col("func_hash") == top_hash)["bytes_hex"][0]
-        top_body = bytes.fromhex(top_hex)
-        top_ins = canonical_instrs(top_body)
+        top = (frame.group_by("func_hash").agg(n=pl.len())
+               .sort(["n", "func_hash"], descending=[True, False]).row(0, named=True))
+        # Raw bodies of one func_hash differ only in bits the canonical form
+        # drops; the one knocked out is the most common among the births.
+        raw = (frame.filter(pl.col("func_hash") == top["func_hash"]).group_by("bytes_hex").agg(n=pl.len())
+               .sort(["n", "bytes_hex"], descending=[True, False]).row(0, named=True))
+        top_body = bytes.fromhex(raw["bytes_hex"])
         ops, canonical = [], bytearray()
-        for op, modifier, operand in top_ins:
+        for op, modifier, operand in canonical_instrs(top_body):
             canonical.append(op | (modifier << 5))
             ops.append(str(op))
             if operand is not None:
@@ -635,12 +698,133 @@ def site_entropy_windows(run: Run, window: int = 25_000) -> dict[int, pl.DataFra
         same_len = frame.filter(pl.col("len") == len(top_body))
         bodies = [bytes.fromhex(h) for h in same_len["bytes_hex"].to_list()]
         ent = site_entropy([bytes(_canonical_body(b, canonical_instrs)) for b in bodies])
-        results[int(win)] = pl.DataFrame({
-            "pos": list(range(len(canonical))), "op": ops[:len(canonical)], "entropy": ent,
-            "exact_pad": [None] * len(canonical), "class_pad": [None] * len(canonical),
-            "meaningful": [None] * len(canonical),
-        })
+        n = len(canonical)
+        sites = pl.DataFrame({
+            "pos": list(range(n)), "op": ops[:n], "entropy": ent,
+            "exact_pad": [None] * n, "class_pad": [None] * n, "meaningful": [None] * n,
+        }, schema_overrides={"exact_pad": pl.Int64, "class_pad": pl.Utf8, "meaningful": pl.Boolean})
+        results[int(win)] = SiteWindow(int(win), top["func_hash"], raw["bytes_hex"], int(top["n"]),
+                                       len(bodies), sites)
     return results
+
+
+def evo_bin(path: str | Path | None = None) -> Path:
+    """`path`, else $EVO_BIN, else evo-core/target/release/evo-core(.exe);
+    not built here."""
+    p = path or os.environ.get("EVO_BIN")
+    if p:
+        p = Path(p)
+    else:
+        rel = ROOT / "evo-core" / "target" / "release"
+        p = next((rel / n for n in ("evo-core.exe", "evo-core") if (rel / n).exists()), rel / "evo-core.exe")
+    if not p.exists():
+        raise FileNotFoundError(f"evo-core binary not found: {p} (give --evo-bin or EVO_BIN)")
+    return p
+
+
+def read_neighbours(path: str | Path) -> pl.DataFrame:
+    """A `--neighbours` CSV (T03 §2 columns), hashes and labels as strings,
+    counts as integers (`byte` null for a deletion)."""
+    df = pl.read_csv(path, infer_schema=False)
+    return df.with_columns(pl.col(c).cast(pl.Int64) for c in NEIGHBOURS_INTS if c in df.columns)
+
+
+def _engine(runner: Callable, cmd: list[str]) -> None:
+    res = runner(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        raise RuntimeError(f"{' '.join(cmd)}: exit {res.returncode}: {(res.stderr or '').strip()}")
+
+
+def knockout(hex_: str, exe: str | Path, harness_ticks: int = HARNESS_TICKS,
+             evo_flags: Sequence[str] = (), runner: Callable = subprocess.run) -> tuple[dict, pl.DataFrame]:
+    """The engine half of the sites analysis for one body: `(base,
+    neighbours)`. `base` is the unmutated body alone (`class_alone`,
+    `births_alone`, `exact_alone`) from `--classify` on a one-row
+    genomes.csv; `neighbours` the `--neighbours HEX --neighbours-pad-only`
+    CSV (read_neighbours). Both calls get `--harness-ticks` and `evo_flags`.
+    `runner` stands in for subprocess.run in tests."""
+    flags = [*map(str, evo_flags)]
+    ticks = ["--harness-ticks", str(harness_ticks)]
+    with tempfile.TemporaryDirectory(prefix="t05_sites_") as tmp:
+        tmp = Path(tmp)
+        (tmp / "genomes.csv").write_text(f"raw_hash,bytes_hex\nbase,{hex_}\n", encoding="utf-8", newline="")
+        _engine(runner, [str(exe), "--classify", str(tmp), *ticks, *flags])
+        cls = pl.read_csv(tmp / "classes.csv", infer_schema=False).row(0, named=True)
+        out = tmp / "neighbours.csv"
+        _engine(runner, [str(exe), "--neighbours", hex_, "--neighbours-pad-only",
+                         "--neighbours-out", str(out), *ticks, *flags])
+        nb = read_neighbours(out)
+    base = dict(class_alone=cls["class"], births_alone=int(cls["births"]),
+                exact_alone=int(cls["exact_births"]))
+    return base, nb
+
+
+def is_meaningful(exact_pad: int, class_pad: str, base_exact: int, base_class: str) -> bool:
+    """Spec §3: a knockout is meaningful when the mutant's exact births alone
+    are below half the unmutated body's, or its class alone differs."""
+    return 2 * exact_pad < base_exact or class_pad != base_class
+
+
+def merge_knockout(sites: pl.DataFrame, neighbours: pl.DataFrame, base: dict) -> pl.DataFrame:
+    """Fill `exact_pad`, `class_pad`, `meaningful` in a sites frame from a
+    neighbours frame (its `sub` rows with byte 0, one per position) and the
+    unmutated body's `base` (`exact_alone`, `class_alone`)."""
+    pad = neighbours.filter((pl.col("kind") == "sub") & (pl.col("byte") == 0)).select(
+        "pos", exact_pad="exact_alone", class_pad="class_alone")
+    if sorted(pad["pos"].to_list()) != sites["pos"].to_list():
+        raise ValueError(f"neighbours file has pad rows at {sorted(pad['pos'].to_list())}, "
+                         f"sites positions are 0..{sites.height - 1}")
+    out = sites.drop("exact_pad", "class_pad", "meaningful", strict=False).join(
+        pad, on="pos", how="left").sort("pos")
+    flags = [is_meaningful(e, c, base["exact_alone"], base["class_alone"])
+             for e, c in zip(out["exact_pad"].to_list(), out["class_pad"].to_list())]
+    return out.with_columns(meaningful=pl.Series(flags, dtype=pl.Boolean)).select(SITES_COLUMNS)
+
+
+def sites_relation(sites: pl.DataFrame) -> dict:
+    """The diagnostic per window: positions, meaningful count, mean entropy
+    of meaningful and of other sites, Spearman's rho of entropy against
+    meaningful (average ranks for ties; None when either is constant), and
+    `auc`, the probability that a meaningful site has lower entropy than a
+    non-meaningful one (ties count half; None when a group is empty).
+    Negative rho, auc near 1: the low-entropy sites are the meaningful ones.
+    With few non-meaningful sites rho is bounded well inside -1 (one of 21:
+    about -0.37 at most), so auc is the one to read."""
+    s = sites.drop_nulls(["entropy", "meaningful"])
+    ent, mean = s["entropy"], s["meaningful"]
+    rho = None
+    if s.height > 1 and ent.n_unique() > 1 and mean.n_unique() > 1:
+        rho = float(np.corrcoef(ent.rank("average").to_numpy(),
+                                mean.cast(pl.Float64).rank("average").to_numpy())[0, 1])
+    yes, no = ent.filter(mean).to_numpy(), ent.filter(~mean).to_numpy()
+    auc = None
+    if yes.size and no.size:
+        auc = float(((yes[:, None] < no[None, :]).sum() + 0.5 * (yes[:, None] == no[None, :]).sum())
+                    / (yes.size * no.size))
+    return dict(positions=sites.height, meaningful=int(mean.sum()),
+                entropy_meaningful=_mean(ent.filter(mean)), entropy_other=_mean(ent.filter(~mean)),
+                spearman=rho, auc=auc)
+
+
+def knockout_windows(run: Run, exe: str | Path, harness_ticks: int = HARNESS_TICKS,
+                     evo_flags: Sequence[str] = (), window: int = SITE_WINDOW,
+                     runner: Callable = subprocess.run) -> tuple[dict[int, pl.DataFrame], dict]:
+    """The sites analysis (spec §3): per window the filled sites frame, and
+    the `sites` record for summary.json. A body that tops several windows
+    is run once."""
+    frames, record, done = {}, {}, {}
+    for win, sw in site_windows(run, window).items():
+        if sw.hex not in done:
+            done[sw.hex] = knockout(sw.hex, exe, harness_ticks, evo_flags, runner)
+        base, nb = done[sw.hex]
+        if base["class_alone"] != "replicator":
+            print(f"sites window {win}: the top body is {base['class_alone']!r} in the harness, "
+                  "replicator in classes.csv; check --evo-flags against the run's physics",
+                  file=sys.stderr)
+        frames[win] = merge_knockout(sw.sites, nb, base)
+        record[str(win)] = dict(func_hash=sw.func_hash, hex=sw.hex, exact_births_window=sw.exact_births,
+                                bodies=sw.bodies, **base, **sites_relation(frames[win]))
+    return frames, record
 
 
 def _canonical_body(body: bytes, parser) -> bytes:
@@ -652,7 +836,7 @@ def _canonical_body(body: bytes, parser) -> bytes:
     return bytes(out)
 
 
-def main() -> None:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="Compute QNN, tree measures and MODES for a run")
     ap.add_argument("run_dir")
     ap.add_argument("--every", type=int, default=1)
@@ -660,24 +844,54 @@ def main() -> None:
     ap.add_argument("--group", default="func_hash",
                     help="QNN components: func_hash (default), another genomes.csv column, "
                          "or absorb_class (lt96 / ge96 / unmatched by traits.py's absorb read)")
-    ap.add_argument("--knockout", action="store_true")
+    ap.add_argument("--knockout", action="store_true",
+                    help="also write sites_<window>.csv (entropy against pad knockouts, spec §3)")
+    ap.add_argument("--evo-bin", help="evo-core binary for --knockout (default $EVO_BIN, else "
+                                      "evo-core/target/release/evo-core.exe; not built)")
+    ap.add_argument("--harness-ticks", type=int, default=HARNESS_TICKS)
+    ap.add_argument("--evo-flags", default="",
+                    help='physics flags for the engine calls, one string split on whitespace, '
+                         'e.g. --evo-flags "--legacy-pending-range" for a pre-T08 run with a '
+                         'post-T08 binary')
     ap.add_argument("--out")
-    a = ap.parse_args()
+    argv = list(sys.argv[1:] if argv is None else argv)
+    # argparse takes a lone "--flag" value for an option; bind the value
+    # after --evo-flags to it so `--evo-flags "--no-protect"` works.
+    for i in range(len(argv) - 1):
+        if argv[i] == "--evo-flags":
+            argv[i:i + 2] = [f"--evo-flags={argv[i + 1]}"]
+            break
+    a = ap.parse_args(argv)
+    a.evo_flags = a.evo_flags.split()
+    return a
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    a = parse_args(argv)
+    exe = None
+    if a.knockout:
+        try:
+            exe = evo_bin(a.evo_bin)
+        except FileNotFoundError as e:
+            raise SystemExit(f"--knockout: {e}")
     depths = tuple(int(x) for x in a.depths.split(","))
     run = load(a.run_dir)
     series, summary = compute(run, a.every, depths, a.group)
     out = Path(a.out) if a.out else Path(a.run_dir) / "measures"
     out.mkdir(parents=True, exist_ok=True)
     series.write_csv(out / "series.csv")
-    import json
-    (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-    if a.knockout:
+    if exe is not None:
         # The sites files come on top of the normal output.
-        for win, sites in site_entropy_windows(run).items():
+        frames, summary["sites"] = knockout_windows(run, exe, a.harness_ticks, a.evo_flags)
+        summary["sites_harness"] = dict(binary=str(exe), harness_ticks=a.harness_ticks,
+                                        evo_flags=a.evo_flags)
+        for win, sites in frames.items():
             sites.write_csv(out / f"sites_{win}.csv")
-        print("sites: entropy columns written where classes.csv is present; the knockout columns "
-              "(exact_pad, class_pad, meaningful) stay empty until the --neighbours loop is wired in.",
-              file=sys.stderr)
+        if not frames:
+            print("sites: no classes.csv, so no replicator-class bodies; no sites files written",
+                  file=sys.stderr)
+    import json
+    (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8", newline="")
     print(f"wrote {out}")
 
 

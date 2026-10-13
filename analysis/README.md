@@ -35,8 +35,17 @@ column's definition. `--group` picks the QNN components: `func_hash`
 genotypes), any other `genomes.csv` column, or `absorb_class` (`lt96` /
 `ge96` by `traits.py`'s absorb-count read of the body, `unmatched` where
 the read does not apply), which is the trait-level sweep detector.
-`--knockout` adds `sites_<window>.csv` (entropy per site; the knockout
-columns stay empty until the `--neighbours` loop is wired in).
+`--knockout` adds `sites_<window>.csv` per 25,000-tick window: for the
+top replicator-class body, each site's entropy over the window's
+same-length exact births against its `pad` knockout (`evo-core
+--neighbours HEX --neighbours-pad-only`; the unmutated body's exact
+births alone from `--classify` at the same `--harness-ticks`), with
+`meaningful` = exact births below half the body's or class changed, and
+a `sites` record (meaningful count, Spearman and AUC of entropy against
+meaningful) in `summary.json`. The engine is `--evo-bin PATH`, else `$EVO_BIN`, else
+`evo-core/target/release/evo-core.exe` (not built); `--evo-flags "..."`
+passes physics flags to it. Runs recorded before T08 (2026-10-13) need
+`--evo-flags "--legacy-pending-range"` with a post-T08 binary.
 `measures_baseline.py` applies it to E007, E012 and E013 with both
 groupings and writes the per-seed table and the shakedown criteria to
 `runs/measures/summary.md`. Tests, from the repo root:
