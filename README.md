@@ -22,15 +22,23 @@ a longer absorb phase, which sweeps every run in its first 10,000
 ticks. Hosts evolve no defence against parasites, and three rules that
 make parasitism cost the host (E008–E010) did not change that; the
 diagnosis is that a host's energy store is one pass of its loop deep,
-so any cost to it is either invisible or fatal. The next design
-question is store depth (PLAN §9), together with a `drain` op that
-moves energy between organisms
-([proposal](docs/research/drain-proposal-2026-10-12.md)). Turning write protection off
-changes nothing structural (E012), there is no producer/consumer split
-because nothing moves energy between organisms (E011), and sixteen
-founders remove founder loss (E013). Every experiment, with its
-predictions written before the runs, is in
-[docs/research/experiments/](docs/research/experiments/).
+so any cost to it is either invisible or fatal. Turning write
+protection off changes nothing structural (E012), there is no
+producer/consumer split because nothing moves energy between
+organisms (E011), and sixteen founders remove founder loss (E013).
+
+After two rounds of literature review the plan was re-sequenced on
+2026-10-13 ([synthesis](docs/research/synthesis-2026-10-13.md)):
+the cost of intrusion moves from energy to time (an intruder consumes
+the host's cycles, the form under which every published defence
+evolved), a template-addressed ancestor makes a Tierra-style parasite
+one mutation away instead of a placement accident, and the defence
+search runs at 30 seeds per arm with matched controls (E014–E016,
+PLAN §8.3). A second line reproduces the BFF replicator-discovery
+protocol and adds energy, ownership and write protection one rule at
+a time (PLAN §8.4). Every experiment, with its predictions written
+before the runs, is indexed in
+[docs/research/experiments/README.md](docs/research/experiments/README.md).
 
 ## Layout
 

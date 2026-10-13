@@ -127,3 +127,20 @@ producers depends on store depth: at the current store, consumers crash
 their hosts and themselves or never pay; at a store several passes deep
 they coexist. The thresholds, the opcode and the target rule are fixed
 in the experiment record before any run.
+
+## Status note (2026-10-13)
+
+Demoted, not dropped, by `synthesis-2026-10-13.md` §3.3 and PLAN §8.3.
+Two of its conditions no longer stand as written. Condition 1 (pair
+`drain` with store depth): store depth is not reachable by a cap or
+income setting in this world, because proportional absorb on a shared
+pool equilibrates every host to zero margin (synthesis §2 B); a 21-byte
+body may hold 1,344 units and holds 100–130 at any cap. The next cost
+rule is a cost in time (`--cycle-theft-pct`, E014, H16), which needs no
+reserve. The "where things stand" section above is unchanged and
+correct. `drain` itself follows E016 if a consumer mode is still
+wanted, in the form with precedent (a take from income or proportional
+to the victim's store, capped so it cannot kill; Symbulation's nutrient
+mode, Jha 2026's STEAL at α = 0.8). The opcode-placement argument in
+condition 2 and the target, amount and ledger questions carry over
+unchanged.

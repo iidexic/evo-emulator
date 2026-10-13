@@ -33,6 +33,8 @@ says nothing the notes do not.
 | H13 | a cost alone gives no defence on the E007 timescale | supported | 2026-10-09 | E008 |
 | H14 | a graded cost selects the one-byte defence, not the five-byte | self-scan half settled against; endowment half untested | 2026-10-12 | E009, E009a, E009b |
 | H15 | profitable intrusion makes a short eject pay | refuted on its premise | 2026-10-09 | E010 |
+| H16 | a cost in time grades an entered host and makes a short eject pay | open | none | E014, designed |
+| H17 | a template-addressed ancestor has a one-hop parasite and parasitism becomes common | open | none | E015, designed |
 
 ---
 
@@ -782,3 +784,117 @@ page's figure, and the five-instruction object is a precursor), and
 Perrico & Banzhaf 2026's three-instruction copier does not allocate or
 divide, so evo's `alloc`, `divide` and restart are where length could
 be saved. Status: open.
+
+---
+
+## H13, H14, H15 note (2026-10-13, from the synthesis)
+
+`synthesis-2026-10-13.md` §2 B adds a reason the three energy charges
+could not grade a host that is independent of the cost rule and of
+the store cap (inference, with a check named there): proportional
+absorb on a shared, depleting pool lets the population grow until the
+ration a body gets per `absorb` is what its cycle costs. E007's
+follow-up measured that break-even at about 6.0 units against a
+maximum ration of 8 for K = 120. At that equilibrium no host banks
+anything: a 21-byte body may hold 1,344 units under the 64-per-byte
+cap and holds 100–130. Raising the cap or the sun raises the
+population until the margin is zero again. So "store depth as a
+parameter" (PLAN §9, the `drain` proposal's condition 1, the
+2026-10-09 note above) is not reachable by a cap or income setting in
+this world, and the systems where a charged host survived paid each
+organism a fixed income that neighbours cannot deplete. The next cost
+rule is therefore not an energy rule at all: H16. Status of H13, H14
+and H15 unchanged.
+
+---
+
+## H16. A cost in time grades an entered host and makes a short eject pay (2026-10-13)
+
+**Prediction.** Under `--cycle-theft-pct N` (an instruction run by X
+on a byte owned by living Y debits Y's per-tick budget by
+`floor(cost × N / 100)`, carried as a debt; energy untouched), an
+entered host survives and reproduces at roughly (1 − N/100) of the
+uninfected rate for as long as the intruder is resident, which for a
+fall-through intruder is the rest of the host's life. The six-byte
+eject (`self 1 ; swap C ; self 0 ; sub C ; skipz A ; jmpa D`),
+injected at tick 25,000 into the parasitised standard world (E009b's
+protocol), is then maintained by selection at N = 50 where the inert
+six-byte prefix (INERT6) is lost, because the saving (full speed for
+life, at 7–14% of hosts entered) exceeds the cost (about 1% of a cycle
+plus six bytes of upkeep). This is the gradient E009b found missing
+under the energy charges, where an entry cost at most one pass.
+
+**Reasoning.** Every system in which a charged host evolved a defence
+charged cycles or income and left the host reproducing (Avida's
+virulence 0.8, Kelley 2026's 75% cycle theft, Symbulation's income
+theft); evo's energy charges were invisible or fatal because the host
+is one pass deep by equilibrium (H13–H15 note above). A cost in time
+cannot kill by itself, and the fall-through geometry makes it
+lifelong.
+
+**Confirms.** E014 gate 1: in the harness, the ancestor with a
+resident `pad` at N = 50 is alive after 3,000 ticks and makes 35–65%
+of its uninfected exact children. Gate 2: the eject injected at tick
+25,000 is above 1% of replicator-class exact births at tick 250,000
+in at least 20 of 30 seeds at N = 50, and INERT6 in at most 5 of 30;
+under the `--cycle-tax-pct` control (random debit at the matched
+rate) the eject is lost at INERT6's rate.
+
+**Refutes.** Gate 1 fails (the host dies or is unaffected), or the
+eject is lost at INERT6's rate at every N in {25, 50, 75}, or it is
+maintained equally under the random-tax control (then the cost, not
+the intruder, is selecting it, which would be an accounting error).
+
+**Caveat.** At zero margin a slowdown still costs upkeep, about 6% of
+a cycle per extra cycle of delay at K = 120, so at N = 75 an entered
+host may starve slowly; gate 1 at N = 75 reports that. The de novo
+appearance of a defence is not part of H16; it is E016 (H17's world
+with this cost), where the look-back and time-to-loss are
+pre-registered.
+
+**Status.** Open. E014, designed, not built.
+
+---
+
+## H17. A template-addressed ancestor has a one-hop parasite, and parasitism becomes common (2026-10-13)
+
+**Prediction.** With an ancestor whose copy procedure is entered by
+`searchf` on a label and returns by `searchb` to the body's start
+label (the 45-byte candidate in `synthesis-2026-10-13.md` §3.2, or
+whatever body passes the harness), the single-mutant neighbourhood
+contains at least one working parasite: a body whose own procedure
+label is broken by one bit flip (`nop0` and `nop1` differ in one
+bit), so that its search finds the next label within locality, which
+is a neighbour's procedure, and which then makes exact copies of
+itself before an ancestor in the two-genome harness. The 21-byte
+ancestor's neighbourhood contains no such body (only fall-through
+cases). In the standard world without any cost rule, the share of
+exact births by parasite lineages (E005's test, two executors
+required) is above 5% in at least 20 of 30 seeds by tick 50,000,
+against 0.8–1.0% for the 21-byte ancestor, and the entered fraction
+of replicator-class deaths is above 25%, against 7–14%.
+
+**Reasoning.** Tierra's parasite was one mutation from its ancestor
+because the ancestor addressed its procedure by template; Cosmos made
+neighbours' code readable and got no parasites because none was one
+mutation away. evo's ancestor never searches (synthesis §2 C). A
+searching parasite reaches every host within 512 bytes, not only the
+body behind it, so entries stop being a placement accident.
+
+**Confirms.** The neighbourhood count shows at least one searching
+parasite for the template ancestor and none for the 21-byte one, and
+the world shares above are met.
+
+**Refutes.** No single or double mutant of the template ancestor is a
+parasite in the harness (then the ISA's search semantics differ from
+Tierra's in a way that matters, and the open question in PLAN §9 is
+the next thing to settle); or the parasites exist but stay at about
+1% of births (then placement, not addressing, limits them).
+
+**Caveats.** Twenty of 45 bytes are label nops, so nop inflation
+(Amoeba-IV's emergence fell once nops passed 25% of memory) is logged
+from the first run. The template ancestor is longer and slower than
+the 21-byte one, so persistence in the standard world is itself a
+gate, run before the world comparison.
+
+**Status.** Open. E015, designed, not built.

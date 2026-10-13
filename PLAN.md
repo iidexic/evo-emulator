@@ -47,6 +47,17 @@ organized around the best current guesses for what pushes against equilibrium:
    one-way pressure.
 5. Scale: as many instructions per second as the hardware allows.
 
+Revised 2026-10-13 after two rounds of literature review
+(`docs/research/synthesis-2026-10-13.md` §1): of the five, only item 3
+has a record. The one endogenous driver of complexity in any task-free
+instruction substrate is coevolution with a parasite that costs its
+host in a graded, survivable way (Tierra's keystone parasite, Zaman
+2014 and Kelley 2026 in Avida-style systems, spatial Stringmol).
+Non-stationary environments (item 2) have no such record anywhere,
+geography (item 1) is a confound for the measures as much as a
+pressure, and scale alone "would certainly not" help (Ray). The plan
+now treats parasites as the lever and the other four as background.
+
 ## 3. Core design principles
 
 **Evolvability of the encoding.** A random mutation to real x86 code produces a
@@ -175,6 +186,13 @@ Design constraints:
   iterations, Amoeba-IV never held two species); Tierra had it and got
   coexisting parasites. Phase 3 `guard`/`drain` then evolve the boundary
   rather than create it. A no-protection run is a Phase 4 control.
+  E012 (2026-10-12) ran that control in the standard world: nothing
+  structural changed, because `alloc` gives every replicator a private
+  copy target and nothing gains from overwriting. The first sentence's
+  "every system that lacked protection collapsed" is therefore not a
+  law; it held where replicators had no allocation of their own.
+  Protection stays on as the Tierra condition and because bodies may
+  become worth overwriting once something passes between organisms.
 
 Evaluation criterion for the ISA: with a random soup and no seed, do
 replicators emerge? If not, the encoding is probably not evolvable enough.
@@ -406,6 +424,26 @@ ancestor cannot pay for replication or when nothing bothers to absorb.
   and that slice set Tierra's size trend outright (§2). Phase 1: c1 = 0
   (constant slice; expect shrinking). Phase 3 sweeps c1. An instruction
   whose cost exceeds the remaining cap waits for the next tick.
+- Cost of intrusion in time (2026-10-13, line A, E014): under
+  `--cycle-theft-pct N`, when organism X executes an instruction at a
+  byte owned by a living organism Y ≠ X, X pays the energy as above and
+  Y's per-tick budget is debited `floor(cost × N / 100)` in the same
+  units, carried as a debt into Y's next ticks (`left = cap − min(debt,
+  cap)`). Energy is untouched, so the ledger identity holds unchanged.
+  An entered host runs at about (1 − N/100) of its speed while an
+  intruder is resident and never dies of the debit itself. Analog: a
+  virus occupies a cell's ribosomes rather than draining its ATP by
+  instruction; the per-tick cap is the organism's share of the
+  machinery, energy is its matter. This is Avida's virulence (each
+  parasite instruction costs a host cycle with probability 0.8) and
+  Kelley 2026's cycle theft (75%) in a shared-memory substrate with
+  ownership. It replaces the three energy charges of E008–E010, which
+  cannot grade a host here: proportional absorb on a shared pool
+  equilibrates every host to zero energy margin whatever the store
+  cap (a 21-byte body may hold 1,344 units and holds 100–130), so an
+  energy charge is invisible or fatal (synthesis §2 B, inference with
+  a named check). `--cycle-tax-pct N` is the matched control: unentered
+  hosts debited at random at the entered hosts' mean rate.
 - Tick order: upkeep is charged to every organism at the start of the tick,
   then organisms execute in a seeded random permutation, fresh each tick.
   Fixed id order would give the first-born permanent priority on contested
@@ -437,6 +475,19 @@ provides that gradient without hand-coding roles:
 With these in place, a producer is simply an organism that spends its cycles
 absorbing, and a consumer is one that spends them draining. Whether the split
 happens, and at what ratio, is an experimental result.
+
+Status 2026-10-13. E011 found no split and no consumer mode, because
+the physics as built moves nothing between organisms except code and
+placement. The order of the channels above is now: (1) a cost in time
+for running another organism's bytes (§5.4, E014), because that is
+the form of parasite cost under which every published defence
+evolved; (2) a template-addressed ancestor (§8.3, E015) so that a
+parasite which borrows a neighbour's procedure is one mutation away,
+as Tierra's was, rather than the fall-through accident E005 found;
+(3) `drain` afterwards, in the form with precedent (a take from
+income or proportional to the victim's store, capped so it cannot
+kill), if a consumer mode is still wanted. Defence ops (`guard`,
+`sense`) stay held back until something exists to defend against.
 
 ### 5.6 Environment heterogeneity
 
@@ -608,225 +659,207 @@ for now, §6.2).
 - First visualizer: image of the byte array colored by lineage, one frame per
   snapshot. Web or terminal viewer later.
 
-## 8. Phases
+## 8. Roadmap
 
-**Phase 0 — Design (this doc).** ISA draft, op cost table, world model. Each
-rule with its physical justification. Decide open questions in §9.
+Rewritten 2026-10-13 from the literature synthesis
+(`docs/research/synthesis-2026-10-13.md`), which carries the argument
+for every change here. The per-experiment status log that used to
+fill this section (E001–E013) now lives verbatim in
+`docs/research/experiments/README.md`, as the index of the experiment
+records. Nothing was dropped.
 
-**Phase 1 — Minimal living system.** Status 2026-10-01: `evo-core` builds
-and passes its tests, the ancestor replicates, first runs are recorded in
-`docs/research/experiments/2026-10-01-e001-first-runs.md`.
-Follow-ups 2026-10-01: entropy loops use a geometric skip, about 29x faster
-(2ade71f); `alloc` range check fixed to cover the whole region (12513a3);
-E002 dispersal experiment set up, not yet run: six arms over patch size and
-farthest-free `alloc`, runner `analysis/e002_dispersal.py`, hypothesis H10
-(5c7aa74). E002 run at d89e634: farthest-free `alloc` helped a little (0 of
-10 extinct, 2 of 10 still replicating vs 0 for control); smaller patches
-made extinction more likely, because founder and first child starve in
-one small patch. H10 mixed. Rust VM, 1D ring world, energy, noisy
-writes, hand-written ancestor. Success criterion: the ancestor replicates,
-mutants appear, and parasites (organisms that use another's copy loop)
-emerge. This is roughly a Tierra reimplementation with energy instead of a
-reaper.
+### 8.1 Where the phases stand
 
-**Phase 2 — Instrumentation.** Everything in §7. Success criterion: we can
-draw the phylogeny of a Phase 1 run and see the parasite lineage appear.
-Status 2026-10-03: diagnostic first cut built (§7). First use, E003
-(`docs/research/experiments/2026-10-03-e003-crash-diagnosis.md`):
-replicators starve in their own crowded patch (newborns at a median age of
-3 ticks, adults at 14–17, zero `alloc` failures), replicator lineages end
-by tick 2,100–9,400 in control seeds 1–5, and broken-loop absorbers are
-what remains. Also seen: reproduction from debris, where an organism that
-copies one byte per child gets working replicators because the claimed
-region already holds dead ancestors' bytes. The parasite criterion cannot be
-met until replication persists, so the next design pass is physics (E003
-lists the options).
-Physics pass, E004 (2026-10-05,
-`docs/research/experiments/2026-10-05-e004-physics-pass.md`): replication
-persists when children disperse into a world of many small patches that
-can each feed a founder. 128 patches of 512 bytes, each with a control
-patch's income and cap (8× sun per byte), with far `alloc`: replicating at
-tick 50,000 in 38 of 40 runs, about 950 organisms over all 128 patches.
-Every arm without all three of small patches, more sun and far `alloc`
-failed (0 of 10, or 2 of 10 for 8× sun and far `alloc` in 16 large
-patches). Proportional absorb (§5.4) halves newborn starvation; bit rot
-1e-4 turns loafers over in a large population and wipes out a small one.
-Standard world from here on (recorded 2026-10-05; code defaults
-unchanged for now): `--patch 512 --sun 8 --alloc-far --absorb-prop
---rot 1e-4` (E004 "Decision"). Decision 2026-10-07: the code defaults
-stay as they are until E005 is recorded, because E005 reads the E004
-run files and the harness yardstick must not move under it. Done the
-same day, after E005 and E006: `Config::default()` is now the E004 world
-(`Config::e001()` and `--world-e001` give the Phase 1 world; `--alloc-near`
-and `--absorb-fixed` undo the two new rules), checked byte-for-byte
-against the recorded E004 stdout of the control, p512_far and
-p512_far_prop_rot arms over 3,000 ticks. The single-genome harness
-therefore labels genomes under the E004 world from now on; `classes.csv`
-files written before this date used the Phase 1 physics, and E005's
-`classes_world.csv` is the same yardstick as a new `classes.csv`. Every
-run's `meta.json` carries every config field, so older runs stay
-reproducible either way.
-E005 (2026-10-06, `docs/research/experiments/2026-10-06-e005-parasite-search.md`):
-parasite search in the 40 p512_far runs, pre-registered before any query
-of the files. Definitions, predictions and the runner are in the record.
-A consequence of Phase 1 `self` (executing organism) plus far `alloc`,
-noticed while reviewing the design: any body that ends without a jump and
-sits right before a replicator reproduces by falling into it, and the
-smallest such body is one byte, so a "parasite lineage" may be a
-placement lineage rather than a code lineage. E005 reports both.
-Result 2026-10-07: criterion met in the letter. Every surviving run has
-13–72 lineages (depth up to 63 generations) that replicate by running a
-neighbour's copy loop, almost all of them the ancestor with a broken
-restart falling into the body behind it; 1–2-byte bodies do the same
-under proportional absorb. Parasites are 0.4–0.8% of exact births.
-Also found: genomes that jump to a fixed address and come home through
-`self ; jmpa` left in free memory by a dead body (dead-code
-trampolines), as common as the parasites; and that world snapshots are
-needed to read such cases (§7).
-E006 (2026-10-07, `docs/research/experiments/2026-10-07-e006-self-owner.md`):
-the same world with `self` naming the owner of the byte at IP
-(`--self-owner`). Persistence unchanged; parasitism through living
-hosts gone (host harness 0–2 exact children against 60–180), replaced
-by intruders copying their hosts (3.9–4.1% of births, from 0.4–0.5%)
-with no measurable gain to the hosts; dead-code users unchanged. H8
-supported in kind. Decision: `self` = executor stays the default, since
-parasites are the interaction to evolve defences against; the switch
-stays for Phase 4 ISA comparisons.
-E007 (2026-10-07, `docs/research/experiments/2026-10-07-e007-long-run.md`):
-the standard world over 250,000 ticks, 10 seeds, on Linux (bit-identical
-to Windows over the 20,000 ticks checked). Stationary from tick 25,000
-on: population about 935, length 21 in every window of every seed,
-parasites 0.8–1.0% of exact births and reinvented at E005's rate, no
-resistance (H12 supported). The one event is a post-hoc find: the absorb
-loop count swept from 64 to 112–127 inside the first 10,000 ticks in
-every run, with or without parasites (three `--self-owner` runs do the
-same), and the landscape is flat from 112 up (K-seeded follow-up). So
-selection acts within 10,000 ticks when a byte pays, and the missing
-defence is a mutational-path problem, not a selection-strength problem.
-Lesson for measures: predictions 6 and 7 counted raw-genotype leaders
-among 2%-share near-ties and could not see the sweep; track traits (a
-byte, a loop constant) and canonical genomes (`func_hash`) from now on.
-E008 (2026-10-07, `docs/research/experiments/2026-10-07-e008-charge-owner.md`):
-`--charge-owner`, the living owner of the byte at IP pays for every
-instruction another organism executes there. H13 supported: no top host
-survives the `pad` probe in any of 90 seed-windows. The outcome was
-implied by the pre-run harness table (every host dies at tick 11–18
-before its first child), so the registered test was safe; the
-informative part is the ecology. An entered host dies within one
-intruder cycle, so foreign execution fell from 12–15% to 0.4%, unowned
-execution rose to 6–7%, and `pad`'s lineage doubled its output by
-running the hosts it killed: the full charge rewards killing. There is
-no long-lived infected host for selection to grade. Next: E009, a split
-charge, so an infected host survives and a partial defence can pay.
-E009 (2026-10-08, `docs/research/experiments/2026-10-08-e009-split-charge.md`,
-designed and built; the 250,000-tick search itself not run, its gates
-E009a and E009b were): `--charge-owner-pct N`, the owner pays a
-share. Calibration found no graded cost at any N (a cliff in the
-harness; matched-age entered hosts reproduce as well as unentered ones
-in the world), so the search was gated by invasion tests of the
-finished defence, a working five-byte self-scan
-(`self 1 ; swap C ; self 0 ; sub C ; jmpr A`; the ISA already allows
-it). New tools: `--founder HEX:COUNT` and `--inject TICK:HEX:COUNT`.
-E009a (founder mix) and E009b (injected at tick 25,000 into the
-parasitised world): the defence is lost in every seed under every rule,
-at a length-matched control's rate, because few hosts are ever entered
-and an entry costs at most one pass; the saving is an order of
-magnitude below the five-byte cost. Split-charge line closed; next cost
-rule is a transfer (the intruder gains what the host loses), checked
-first by injection.
-E010 (2026-10-08, `docs/research/experiments/2026-10-08-e010-transfer.md`,
-designed): `--transfer-pct N`, every instruction run on another living
-organism's bytes moves `floor(cost * N / 100)` from the owner to the
-executor, on top of the executor's own cost; informative for N > 100,
-where intrusion profits. H15. Gated as E009 was: world calibration
-picks N (entries common, hosts persist), then the E009b injection test
-with an ejecting six-byte defence (`skipz A ; jmpa D` after the
-self-scan; the E009 trap is a drain under transfer and becomes the
-negative control). Calibration (15 runs, 50,000 ticks): entered
-fraction 12–14% at every N, births 104–122% of N = 0's; no N qualifies,
-stop rule applied, gate and search not run. Intruders are not
-energy-limited (profit does not multiply them) and an entry still
-kills the host within one pass (the store is one pass deep), so
-entries stay rare and fatal under any per-instruction rule. H15
-falsified on its premise. The eject defence works in the harness and
-is kept. Cost-rule line (E008–E010) closed; the cause is physics (the
-one-pass store, placement-limited intruders), see §9 energy location.
-Next: the recent-literature review, then choose between the
-energy-location change and the Phase 4 BFF harness.
-E011 (2026-10-12, `docs/research/experiments/2026-10-12-e011-absorb-split.md`,
-no new runs): H2's producer/consumer split read from E007's death
-records. Persistent genomes take 97–99% of their income from `absorb`,
-and parasites spend more of their instructions on it than their hosts
-(0.245 against 0.229): a fall-through parasite runs the host's absorb
-loop. The registered "under 1% low-absorb" failed at 2.1–2.5%, all of
-it single-parent bursts (a parent damaged after birth copies a body its
-children cannot run), so H2 is mixed by the rule and leaning refuted:
-the physics moves no energy between organisms. Measure lesson: 16.5% of
-E007's exact births copy a parent's body as changed after birth, and
-E005's ≥ 2-exact-births test admits these bursts (about a quarter of
-the dependent genomes); a lineage test should require two executors.
-E012 (2026-10-12, `docs/research/experiments/2026-10-12-e012-no-protect.md`):
-`--no-protect` in the standard world, 10 seeds × 100,000 ticks, with
-new counters `writes_foreign` and `overwritten`. Nothing structural
-changed: population 941, about 2,300 canonical genotypes per window,
-leader at most 15%, parasites 0.8–0.9%, the absorb sweep on E007's
-course; foreign writes land at 0.7–1.1 times E007's refused rate,
-mostly from a few damaged bodies. H4 refuted in this world: `alloc`
-gives every replicator a private copy target, so nothing gains from
-overwriting. Protection stays the default.
-E013 (2026-10-12, `docs/research/experiments/2026-10-12-e013-founders.md`):
-sixteen founders instead of one, 10 seeds × 50,000 ticks. All 10
-persist (seed 10 included), the world fills twice as fast, and window 2
-matches E007 (population −0.6%, canonical genotypes −2.5%,
-replicator-class bodies −10%, on the registered bound). Not as
-predicted: the absorb sweep is slower in its second half (median 105.5
-against 112 at tick 10,000; level from 32,500), plausibly because 9–16
-founder lineages share the world through it. Sixteen founders are fine
-for measures after tick 35,000 or against a matched control.
-Next: unchanged, the energy-location change (store depth) or the Phase
-4 BFF harness.
+**Phase 0 — Design.** This document. Done, revised as decisions land.
 
-Ordering note 2026-10-09: E005–E010 were run as Phase 2 follow-ups
-while Phase 3 (richer physics) has not started, and the next step is a
-choice between an energy-location change and the Phase 4 BFF harness.
-Phase 3 as written is therefore not next; its items (2D torus, drift,
-`drain`) stay listed but are not scheduled, and the c1 sweep it was to
-carry (H3) has no date.
+**Phase 1 — Minimal living system.** Done. The ancestor replicates
+(E001), replication persists only with dispersal into many small
+patches that can each feed a founder (E002–E004), and the E004 world
+(128 patches of 512 bytes at 8× sun, far `alloc`, proportional absorb,
+bit rot 1e-4) is the code default and the standard world. Parasites
+reached in the letter (E005): fall-through placement lineages at about
+1% of births, stable over 250,000 ticks (E007).
 
-**Phase 3 — Richer physics.** 2D torus, per-patch parameters,
-seasons, slow drift, drain/defense ops (bit rot and debris exist since
-Phase 1, §5.7). Success criteria: spatial
-differentiation of lineages; some form of producer/consumer split;
-evidence for or against evolved repair.
+**Phase 2 — Instrumentation.** Mostly done (§7, `docs/instrumentation.md`).
+Still missing, and now scheduled under line C: full-state snapshots
+(PRNG state and organism registers, not only memory) so a run can be
+replayed from a mid-run tick; the measures script; the ALife phylogeny
+export.
 
-**Phase 4 — Experiments.** BFF calibration harness first: reproduce
-Agüera y Arcas et al. (2024) exactly (2^17 tapes of 64 bytes, random
-pairing, 8,192 steps per interaction, byte-replacement mutation at 2^-12)
-to confirm their 40% emergence rate, then swap in evo's ISA on the same
-protocol, then add evo's physics one rule at a time (energy, ownership,
-locality). This isolates which rule, if any, kills emergence. Literature
-(2026-10-09, `literature.md` §6.3.3, §6.4): nobody has done this;
-energy was added to a soup once (Jha et al. 2026, c = 1 per op,
-ε = 24 per epoch) without an off control, and ownership, write
-protection and death by energy never. Sweep order: start-execution
-head position first (the one rule with quantified prior art), energy
-with an off control second, ownership third. Report QNN over
-`func_hash` groups and MRCA depth from the next experiment on
-(§6.4 question 4); and run the Lenski 2003 line-of-descent analysis
-(fitness of every step on the winning lineage) on E007's ancestry
-table for the K sweep, which no digital system has done for a
-defence or a physiological trait. Round 2 (2026-10-12, `literature.md`
-§7.1, §7.4): the 40% is a takeover statistic; Dušek et al. 2026 find a
-replicator in 99 of 100 standard soups at mutation 0 (median 2,453
-epochs) but takeover in 45. So the sweep's primary outcome is
-first-discovery time per seed, counted in executed tapes as well as
-epochs, with takeover second; Dušek's uniform-sampling (U) and
-fresh-partner (N) regimes run beside the soup as controls; operator
-frequencies are logged. Build from their cubff fork
-(`koutefra/bff-replicator-discovery`), where the regimes are flags.
-Then soup
-runs with no seed in the full world, with a start-execution rule (§9). Chemistry (multiple
-resource types). Multi-day runs. Compare ISA variants for evolvability.
+**Phase 3 — Richer physics, as written (2D torus, seasons, drift).**
+Retired 2026-10-13. No reviewed system shows a non-stationary or
+two-dimensional environment doing anything for open-endedness (Ray's
+network Tierra: 2 to 3 cell types; Sayama & Nehaniv 2024; BFF's 2D
+grid slowed takeover), and on a ring space already moves every
+phylometric more than ecology does (Moreno 2023). H9 stays open as a
+hypothesis with its three-way control, unscheduled. The ring with
+locality is the world. The two items of Phase 3 that the review does
+support, an energy channel between organisms and a defence to evolve,
+are line A.
+
+**Phase 4 — Experiments.** Becomes line B (seedless emergence rule by
+rule) plus the ISA comparisons, which wait on line B's density screen.
+
+### 8.2 What the standard world is, after E007–E013
+
+Stationary from tick 25,000 over 250,000 ticks: population about 935,
+length 21 in every window of every seed, about 2,300 canonical
+genotypes per 25,000-tick window with no leader above 15%, parasites
+0.8–1.0% of exact births and reinvented at a constant rate. One
+adaptation, the absorb count sweeping from 64 to 112–127 inside the
+first 10,000 ticks, then nothing. No defence under three owner-side
+energy charges (E008–E010). No producer/consumer split, because
+nothing moves energy between organisms (E011). Write protection
+changes nothing (E012). Sixteen founders remove founder loss (E013).
+
+The synthesis reads this as three structural facts, not as a tuning
+problem: (A) the only interaction channels are code and placement;
+(B) the host's reserve is one pass deep because proportional absorb on
+a shared pool equilibrates every host to zero margin, whatever the
+store cap, so an energy charge on a host is always invisible or fatal
+(inference, with a check named in the synthesis §2 B); (C) the
+ancestor is addressed by relative jumps and `self ; jmpa`, never by
+template search, so a parasite that borrows a neighbour's procedure
+(Tierra's, one mutation from its ancestor) is not in its one-hop
+neighbourhood, and the only parasite available is the fall-through
+accident, whose frequency is set by geometry at 7–14% of hosts
+entered.
+
+### 8.3 Line A — coevolution with a cost in time
+
+The review's one robust driver of complexity in a task-free world is a
+parasite that costs its host in a graded, survivable way (Zaman 2014,
+Kelley 2026, Stringmol 2021, Tierra's keystone parasite), and in every
+such system the cost was paid in cycles or income, never from a
+reserve the host needs to keep running (`literature.md` §6.3.2, §7.2).
+Line A gives evo that condition with two physics changes, each gated
+in the harness before any world run, as E009 and E010 were.
+
+**E014 — cost in time.** `--cycle-theft-pct N` (§5.4): an instruction
+run by X on a byte owned by living Y debits Y's per-tick execution
+budget by `floor(cost × N / 100)`, carried as a debt into Y's next
+ticks; energy is untouched; N = 0 is the current world. An entered
+host runs at about (1 − N/100) of its speed while the intruder is
+resident, and a fall-through intruder is resident for life, so the
+saving from ejecting it is large and lasts. Gates: (1) harness, the
+ancestor with a resident `pad` at N = 50 survives 3,000 ticks and makes
+roughly half its children; (2) E009b's injection test, the six-byte
+eject (`self 1 ; swap C ; self 0 ; sub C ; skipz A ; jmpa D`) injected
+at tick 25,000 is maintained where INERT6 is lost. Arms N ∈ {25, 50,
+75}, plus `--cycle-tax-pct` as the matched control (unentered hosts
+debited at random at the entered hosts' mean rate, Johnson 2026's
+bottleneck control in this currency). H16.
+
+**E015 — a template-addressed ancestor.** `--ancestor tierra`: the
+copy procedure is entered by `searchf` on a label and returns by
+`searchb` to the body's start label (candidate body in the synthesis
+§3.2, 45 bytes, to be verified in the harness as the 2026-09-30
+ancestor was). A one-bit flip in the procedure label makes the body's
+own search find a neighbour's procedure instead: Tierra's parasite,
+one mutation away, and a resident intruder. Before any world run, the
+whole single-mutant neighbourhood of both ancestors (about 11,500
+bodies for the 45-byte one) is classified alone and before an
+ancestor in the harness: how many one-hop parasites each ancestor has,
+which is literature item 12 (2026-09-30) done at last. Then the world
+without a cost: parasite share and resident fraction against the
+21-byte ancestor's 1% and 7–14%. H17.
+
+**E016 — cost × ancestor, the defence search.** 30 seeds, 250,000
+ticks, cost N = 50 (or the N E014 picks) × template ancestor, with
+cost-off and tax-control arms. Pre-registered: any defence maintained
+or arising; for the first complete defence in each seed, Croft 2024's
+look-back (parent and grandparent classified by how much of it they
+carry, over all births, not the survivors' tree); per-lineage gain
+and loss logged at birth with time-to-loss; replays from full-state
+snapshots for potentiation (Escondo & Ferguson 2026). A defence with
+the harness fitness of every intermediate is the result nobody has
+(`literature.md` §6.4 Q1, §7.4 Q2). No defence under a graded,
+survivable, lifelong cost with a one-hop parasite is a clean negative
+against the Tierra-with-energy premise, also reportable.
+
+`drain` (`docs/research/drain-proposal-2026-10-12.md`) follows E016 if
+a consumer mode is still wanted, in the form with precedent: a take
+from income or proportional to the victim's store, capped so it cannot
+kill. Store depth as a cap sweep is dropped (8.2 B).
+
+### 8.4 Line B — seedless emergence, rule by rule
+
+Nobody has added physics rules one at a time to a random-soup
+protocol with controls and reported which rule kills emergence; energy
+was added once (Jha 2026) without an off control; ownership, write
+protection and death by energy never (`literature.md` §6.3.3). Dušek
+et al. 2026 fixed the protocol: first-discovery time per executed
+tape as the primary outcome, takeover second, U (uniform sampling) and
+N (fresh random partner) as controls beside the soup, operator
+frequencies logged, mutation setting stated. Reproduction targets at
+mutation 0, 2^17 tapes: discovery in 99–100 of 100 runs, median 2,453
+epochs, takeover in 45 of 100; the original 40% at 2^-12.
+
+- **B0, now, CPU.** evo's replicator density by uniform sampling with
+  a short harness (the H3 shortest-replicator search in Dušek's U
+  form: fixed test, declared sample size, density bound), and the
+  ancestor-neighbourhood counts of E015. If evo's density is orders
+  of magnitude below BFF's 7.1 × 10^-11 per 64-byte program, seedless
+  emergence on the ring is out of reach without an ISA change, and
+  that is known before the GPU is touched.
+- **B1.** Reproduce Dušek on the local GPU (RTX 4070 SUPER, 12 GB;
+  cubff fork `koutefra/bff-replicator-discovery`, regimes as flags),
+  20 seeds first.
+- **B2.** Rules one at a time in the fork, each with an off control:
+  start-execution head position (the one rule with quantified prior
+  art); per-op energy with income and halt at 0 (Jha's c = 1, ε = 24,
+  an ε sweep, ε = ∞ as the control); ownership and write protection
+  (a tape may write only into dead tapes, death by energy freeing
+  them). Thirty seeds per rule level where the GPU allows.
+- **B3.** evo's ISA on the same protocol, in a soup mode of
+  `evo-core`; then evo's physics one rule at a time on the ring with a
+  start-execution rule (H7).
+
+### 8.5 Line C — measures and analyses, before E014
+
+- `analysis/measures.py`: QNN over `func_hash` per census interval
+  (the headline); MRCA depth, ancestor count, mean and sum pairwise
+  distance, mean evolutionary distinctiveness on individual-level
+  trees; MODES change, novelty and ecology at filter depths N/5 and
+  2N in generations; per-column entropy of canonical bodies against
+  per-site knockout effect. Run on E007, E012 and E013 first as the
+  baselines, and on every experiment from E014 on. The control for
+  any ecological reading is parasites on against off at the same
+  `--locality` and world size; the spatial term is measured by a
+  `--locality` or `--alloc-far` sweep. No MODES complexity headline,
+  no pseudo-perplexity, no conclusions from snapshots (Sayama 2024).
+- The Lenski 2003 line-of-descent analysis of E007's absorb-count
+  sweep: every step on the winning lineage, classified in the harness
+  for children per 3,000 ticks alone and before `pad`. The first
+  path-with-fitness analysis in this substrate, and the shakedown of
+  the method E016 needs.
+- The E007 reserve check named in the synthesis §2 B (`max_energy_m`
+  of replicator-class bodies against the 1,344-unit cap).
+
+### 8.6 Engine work items
+
+- `--cycle-theft-pct N`, `cycle_debt` on the organism, `--cycle-tax-pct
+  N`, counters `cycles_lost` and `cycles_taken` in `OrgStats`; the
+  energy ledger is untouched and its tests must pass unchanged.
+- `--ancestor tierra` (`sim::ancestor_t(k, e)`), and a harness mode
+  `--neighbours HEX` that classifies every single substitution and
+  deletion of HEX alone and before an ancestor.
+- Full-state snapshots at census ticks (world, ownership, organism
+  table with registers and IP, PRNG state) and `--replay-from DIR:TICK
+  --seed S`.
+- A uniform-sampling density mode with a short harness (`--density
+  LEN:N`).
+- A soup mode (random pairing of fixed-length bodies, run, split) for
+  B3; later.
+
+### 8.7 Order and ownership
+
+Line C and B0 first (they need no new physics and change how every
+later result is read), then E014, E015, E016 in that order, then B1–B3
+when the emergence paper is wanted. Thirty seeds per arm from E014 on;
+every costed arm has a matched control. Specs for each work item go in
+`docs/` as task files for the builder (Fable writes them; Opus or
+Codex builds; a second model reviews), per the working split in §12.
 
 ## 9. Open questions
 
@@ -872,7 +905,25 @@ resource types). Multi-day runs. Compare ISA variants for evolvability.
   same day's `drain` proposal (`docs/research/drain-proposal-2026-10-12.md`)
   pairs `drain` with store depth; the round-2 precedent for its "amount"
   choice is a take from income or proportional to the victim's store,
-  capped so it cannot kill outright.
+  capped so it cannot kill outright. Resolved 2026-10-13
+  (`docs/research/synthesis-2026-10-13.md` §2 B, §3.1): store depth
+  as a cap or income parameter is not reachable, because the shared
+  depleting pool equilibrates every host to zero margin; the charge
+  moves from energy to time (`--cycle-theft-pct`, §5.4, E014). The
+  depth sweep is dropped; the arms listed above that do not depend on
+  a reserve (a per-entry death probability, the mortality-matched
+  control, depth crossed with defence length, 30 seeds, per-lineage
+  gain and loss, the look-back) carry over to E014–E016.
+- Ancestor addressing (2026-10-13). The 21-byte ancestor never
+  searches, so "use a neighbour's procedure" is not in its one-hop
+  neighbourhood and the only parasite available is the fall-through
+  accident (E005), whose frequency is fixed by geometry at 7–14% of
+  hosts. Tierra's parasite was one mutation away because its ancestor
+  entered the copy procedure by template search. E015 adds a
+  template-addressed ancestor and classifies the full single-mutant
+  neighbourhood of both. Open: whether the ISA's search (directional,
+  distance-priced, forward and backward as separate ops) gives the
+  same one-hop structure Tierra's outward search did.
 - Locality from IP (Phase 1 decision) vs from body start. IP-relative lets
   an IP wander far from its body at a per-byte energy cost; whether that
   gets abused (organisms executing free space to reach distant debris) is a
@@ -925,34 +976,40 @@ resource types). Multi-day runs. Compare ISA variants for evolvability.
 ## 10. Expectations
 
 Realistic at desktop scale: parasites, immunity, arms races, evolved
-proofreading, scavenging, regionally specialized metabolic strategies, some
-producer/consumer structure. Any of the latter four would exceed most prior
-work.
+proofreading, scavenging, regionally specialized metabolic strategies,
+some producer/consumer structure. Any of the latter four would exceed
+most prior work.
 
-Standing as of 2026-10-09: parasites reached in the letter (E005, as
-placement lineages that fall into a neighbour's loop, 0.8–1.0% of
-births) and stable over 250,000 ticks (E007). Immunity not reached:
-three cost rules (E008–E010) gave no defence, and the diagnosis is that
-the host's store is one pass deep, so an owner-side cost is invisible
-or fatal (§9 energy location). The one adaptation seen is a longer
-absorb phase (H6). Nothing on this list beyond parasites has been
-observed, and the expectation of immunity now rests on a physics
-change, not on more run time. What would exceed prior work, after the
-2026-10-09 literature review (`literature.md` §6.4): a traced
-mutational path to an evolved defence with the fitness of each
-intermediate (nobody has one); a cost-versus-defence comparison in an
-instruction substrate under ownership (E008–E010 are the first, and
-negative); and a rule-by-rule emergence study with energy and
-ownership (nobody has one). The owner-pays rule itself is published
-(Jha et al. 2026) and is not a claim. Round 2 (2026-10-12,
-`literature.md` §7.4) checked the ALIFE 2023–2026 proceedings: still
-no traced path to a defence, and every defence in the Symbulation and
-Avida line is graded at each step by construction. The bar moved on
-replicates: that group runs 30–50 per condition with a
-mortality-matched control, so 10 seeds per arm is short of it.
+Standing as of 2026-10-13 (`docs/research/synthesis-2026-10-13.md`):
+parasites reached in the letter (E005, placement lineages at about 1%
+of births, stable over 250,000 ticks, E007), and nothing else on the
+list. The one adaptation seen is a longer absorb phase (H6), which is
+the known endpoint of every task-free instruction substrate in the
+literature. Immunity was not reached under three energy charges
+(E008–E010) and the review now says why: every system in which a
+charged host evolved a defence paid in cycles or income and kept
+reproducing, and evo's hosts sit at zero energy margin by equilibrium,
+so an energy charge cannot grade them. The expectation of immunity
+rests on line A (a cost in time and a template-addressed ancestor
+with a one-hop parasite), not on more run time or more cost rules.
 
-Not realistic: multicellularity, nervous systems, anything requiring the
-roughly 20+ orders of magnitude of scale separating a desktop from Earth.
+What would exceed prior work, with the review in hand: a traced
+mutational path to an evolved defence with the harness fitness of
+every intermediate (nobody has one, in any substrate, including the
+ALIFE 2023–2026 proceedings); a cost-versus-defence comparison in a
+shared-memory instruction substrate under ownership (E008–E010 are
+the first and are negative; E014–E016 would be the first with a
+graded cost); a rule-by-rule emergence study with energy, ownership
+and write protection against controls (nobody has one; line B); and
+the Lenski line-of-descent analysis of a physiological trait in a
+costed substrate (E007's absorb sweep, line C). The owner-pays rule
+itself is published (Jha et al. 2026) and is not a claim. The bar for
+the peer-reviewed neighbours is 30–50 replicates per condition,
+10^5 or more updates, and a mortality-matched control.
+
+Not realistic: multicellularity, nervous systems, anything requiring
+the roughly 20+ orders of magnitude of scale separating a desktop from
+Earth.
 
 ## 11. Research record
 
@@ -1004,6 +1061,14 @@ test them.
   and read the same day.
 - `docs/research-historic/`: the earlier Codex pass. Superseded by
   `literature.md`; kept for the reference list.
+- `docs/research/synthesis-2026-10-13.md`: the reading of both review
+  rounds against E001–E013 (ten findings, three structural facts about
+  the standard world, the decisions behind §8 as rewritten that day,
+  and a from-scratch plan with the distance from it). H16 and H17
+  were written from it.
+- `docs/research/experiments/README.md`: index of the records with a
+  one-line outcome each, plus the per-experiment status log that
+  PLAN.md §8 carried until 2026-10-13, verbatim.
 - `docs/research/experiments/`: one file per experiment (E001 onward): seed, config hash,
   commit, what was varied, what was observed, which hypothesis it bears on.
   Runs are reproducible from seed and config (§3), so a record plus the repo
