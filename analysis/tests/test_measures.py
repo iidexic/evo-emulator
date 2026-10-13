@@ -192,3 +192,105 @@ def test_cli_knockout_writes_normal_output_and_sites(tmp_path):
     summary = json.loads((out / "summary.json").read_text())
     assert summary["final_tick"] == 3
     assert list(out.glob("sites_*.csv"))
+
+
+def test_single_founder_living_ancestors_stem_free_ed_and_mrca_change(tmp_path):
+    # Tips: t1 {1, 2, 3}; t2 {2, 3, 4, 5, 6}; t3 {2, 4, 7, 8}. The MRCA is
+    # a real organism throughout (1, 1, then 2), living at t1 and t3.
+    series, summary = compute(load(one_founder(tmp_path)), depths=(1, 5))
+    t1, t2, t3 = series.iter_rows(named=True)
+    assert (t1["mrca_gen"], t1["mrca_tick"]) == (0, 0)
+    assert (t2["mrca_gen"], t2["mrca_tick"]) == (0, 0)
+    assert (t3["mrca_gen"], t3["mrca_tick"]) == (1, 1)
+    assert summary["mrca_changes"] == 1 and summary["mrca_tick"] == 1
+    # Induced trees. t1: 1 -> {2, 3}. t2: 1 -> {2, 3}, 2 -> {4, 5}, 3 -> {6}.
+    # t3: 2 -> {4, 8 (through 5, stripped)}, 4 -> {7}.
+    # Internal nodes (branch points): t1 the living 1; t2 the dead 1 and the
+    # living 2 (3 has one line, through 6); t3 the living 2 (4 has one
+    # line, through 7, and is a unifurcation like 5).
+    assert [r["ancestor_count"] for r in (t1, t2, t3)] == [1, 2, 1]
+    # Pair distances (generations through the LCA). t1: 1+1+2. t2: (2,3) 2,
+    # (2,4) 1, (2,5) 1, (2,6) 3, (3,4) 3, (3,5) 3, (3,6) 1, (4,5) 2, (4,6) 4,
+    # (5,6) 4. t3: (2,4) 1, (2,7) 2, (2,8) 2, (4,7) 1, (4,8) 3, (7,8) 4.
+    assert [r["spd"] for r in (t1, t2, t3)] == [4, 24, 13]
+    assert np.isclose(t1["mpd"], 4 / 3) and np.isclose(t2["mpd"], 2.4) and np.isclose(t3["mpd"], 13 / 6)
+    # Fair-proportion ED below the MRCA (the stem to the virtual root is
+    # dropped). t1: 0, 1, 1. t2: 2 1/3, 3 1/2, 4 and 5 1 + 1/3, 6 1 + 1/2.
+    # t3: 2 0, 4 1/2, 7 1 + 1/2, 8 2. With the stem t3 would be 1.5.
+    assert np.isclose(t1["mean_ed"], 2 / 3)
+    assert np.isclose(t2["mean_ed"], 1.0)
+    assert np.isclose(t3["mean_ed"], 1.0)
+    # Depth 5 is beyond the run's deepest generation (3): censored.
+    assert series["change_5"].null_count() == 3 and series["ecology_5"].null_count() == 3
+    assert series["modes_censored_5"].to_list() == [True, True, True]
+    assert summary["max_gen"] == 3
+    assert summary["mean_change_5"] == "censored" and "5" in summary["censored_depths"]
+    assert summary["mean_change_1"] is None  # no census at or after 25,000
+
+
+def test_modes_censored_is_held_once_set(tmp_path):
+    # Depth 1, deepest generation 3. t3's tips reach generation 3, so 3 < 3
+    # + 1 censors it; at t4 only generation 1 is alive (3 >= 1 + 1), and the
+    # flag stays set.
+    alive = {**ONE_ALIVE, 4: [2]}
+    run = write_run(tmp_path, ONE_BIRTHS, alive, ONE_BODY, ONE_BORN)
+    series, _ = compute(load(run), depths=(1,))
+    assert series["modes_censored_1"].to_list() == [False, False, True, True]
+    assert series["modes_censored"].to_list() == [False, False, True, True]
+
+
+def test_injected_lines_are_left_out_of_mrca_changes(tmp_path):
+    # Id 9, an injected copy at tick 2, alive at t2 only. The MRCA of all
+    # tips is the virtual root at t2; the sweep counter follows the
+    # founder's line (1, 1, 2) and counts one change, not two.
+    alive = {1: [1, 2, 3], 2: [2, 3, 4, 5, 6, 9], 3: [2, 4, 7, 8]}
+    body, born = {**ONE_BODY, 9: "a"}, {**ONE_BORN, 9: 2}
+    inj = [{"tick": 2, "hex": ANC, "count": 1, "starts": [0]}]
+    series, summary = compute(load(write_run(tmp_path / "inj", ONE_BIRTHS, alive, body, born,
+                                             injections=inj)), depths=(1,))
+    assert series["mrca_gen"].to_list() == [0, -1, 1]
+    assert series["mrca_changed"].to_list() == [False, False, True]
+    assert summary["mrca_changes"] == 1
+    # The same run without `injections` in meta.json: id 9 is a second line
+    # and both MRCA moves count.
+    _, plain = compute(load(write_run(tmp_path / "plain", ONE_BIRTHS, alive, body, born)), depths=(1,))
+    assert plain["mrca_changes"] == 2
+
+
+def parasite_run(d: Path, world_class: str | None) -> Run:
+    # Founder 2 carries genome p; five exact births of p in a chain (3..7),
+    # so p's exact-birth generation depth is 5. Founder 8 carries r. Every
+    # p carrier ran half its instructions in foreign bytes.
+    d.mkdir(parents=True, exist_ok=True)
+    if world_class is not None:
+        pl.DataFrame({"raw_hash": ["p", "r"], "class": [world_class, "replicator"]}).write_csv(
+            d / "classes_world.csv")
+    births = pl.DataFrame({"tick": [1, 2, 3, 4, 5], "child": [3, 4, 5, 6, 7],
+                           "executor": [2, 3, 4, 5, 6], "raw_hash": ["p"] * 5,
+                           "parent_now_hash": ["p"] * 5, "len": [21] * 5})
+    orgs = pl.DataFrame({"tick": [10, 10, 10], "id": [6, 7, 8], "parent": [5, 6, 0],
+                         "birth_tick": [4, 5, 0], "birth_hash": ["p", "p", "r"], "len": [21] * 3,
+                         "executed": [10, 10, 10], "exec_foreign": [5, 5, 0],
+                         "exec_by_others": [1, 0, 1]})
+    deaths = pl.DataFrame({"tick": [6, 6, 7, 8], "id": [2, 3, 4, 5], "birth_hash": ["p"] * 4,
+                           "executed": [10] * 4, "exec_foreign": [5] * 4})
+    census = pl.DataFrame({"tick": [10, 10], "now_hash": ["p", "r"], "count": [2, 1]})
+    genomes = pl.DataFrame({"raw_hash": ["p", "r"], "func_hash": ["P", "R"]})
+    classes = pl.DataFrame({"raw_hash": ["p", "r"], "class": ["one_shot", "replicator"]})
+    patches = pl.DataFrame({"tick": [10], "patch": [0]})
+    return Run(d, {}, births, deaths, census, orgs, patches, genomes, classes)
+
+
+def test_parasite_share_applies_e005_world_class_and_entered_share_is_over_replicators(tmp_path):
+    rows = {}
+    for wc in ("one_shot", "replicator", None):
+        series, _ = compute(parasite_run(tmp_path / str(wc), wc), depths=(1,))
+        rows[wc] = series.row(0, named=True)
+    # p passes E005's test only when its world class is not replicator.
+    assert np.isclose(rows["one_shot"]["parasite_share"], 2 / 3)
+    assert rows["replicator"]["parasite_share"] == 0.0
+    assert rows[None]["parasite_share"] is None  # no classes_world.csv
+    # Entered share over replicator-class bodies (by birth hash): only 8,
+    # which was entered; over all bodies it would be 2/3.
+    assert rows["one_shot"]["entered_share"] == 1.0
+    assert rows["one_shot"]["rep_alive"] == 1

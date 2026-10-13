@@ -1,7 +1,61 @@
-"""Standing evolutionary measures for recorded evo runs.
+"""Standing evolutionary measures for recorded evo runs (T05,
+docs/tasks/T05-measures.md).
 
-Run with ``uv run measures.py RUN_DIR`` (from analysis/), or import
-``compute`` from experiment runners.
+    uv run measures.py RUN_DIR [--every K] [--depths 187,1870] [--knockout] [--out DIR]
+
+from analysis/, or `compute(run)` from experiment runners. Writes
+`RUN_DIR/measures/series.csv` (one row per census), `summary.json`, and
+with `--knockout` also `sites_<window>.csv`.
+
+Definitions, as computed (spec §2, with the §4 amendment and §4.1):
+
+- QNN (`qnn`, `qnn_cum`, `n_func`, `top_func_share`): census bodies by
+  `now_hash`, joined to genomes.csv's `func_hash`; q_i = max(0, p_i(t) -
+  p_i(t_prev))^2 summed over components; the first census is 0.
+- Tree: an organism's parent is the `executor` of its births row;
+  founders and injected copies hang from a virtual root at generation -1.
+  Tips are the living ids at the census. The induced tree is the union of
+  the tips' root paths with non-tip unifurcations stripped; edge length is
+  the difference in generation.
+- `mrca_gen`, `mrca_tick`: the MRCA of all tips (the virtual root, -1 and
+  0, when they descend from different roots).
+- `mrca_changed`, summary `mrca_changes`: the sweep counter. It follows the
+  MRCA of the tips that descend from founders: tips from `--inject` copies
+  (ids after the founders with no births row, read when meta.json lists
+  `injections`) are left out, so an injection's arrival and loss are not
+  counted. With `--every K`, consecutive sampled censuses are compared.
+- `ancestor_count`: internal nodes of the induced tree, i.e. its branch
+  points, living or dead: a living organism counts when its living
+  descendants run through two or more of its children (one line of living
+  descendants makes it a unifurcation, stripped like any other). The
+  virtual root counts when it is a branch point. (E007 seed 1's last
+  census: 383 dead branch points + 97 living = 480; 112 more living
+  organisms have one line of living descendants.)
+- `spd`, `mpd`: sum and mean over tip pairs of the generations between
+  them through their LCA (edge identity sum of length x k x (n - k)).
+- `mean_ed`: mean over tips of Isaac et al. 2007's fair proportion, summed
+  over the edges of the tip's path below the MRCA: the stem from the MRCA
+  to the virtual root is dropped, so ED does not grow with MRCA depth. A
+  tip that is itself the MRCA has ED 0.
+- MODES at each depth D (`change_D`, `novelty_D`, `ecology_D`): components
+  are `func_hash` of birth genomes; an organism of generation g is
+  persistent at D if a descendant reaches g + D. `ecology_D` takes p(c)
+  over persistent bodies only (Dolson's definition). `modes_censored_D` is
+  set from the first census at which the run's deepest generation is below
+  (deepest living generation) + D and held true from then on;
+  `modes_censored` is the deepest D's flag. A depth D above the run's
+  deepest generation does not apply: its three columns are empty at every
+  census, and summary.json gives "censored" for their means and the reason
+  under `censored_depths`.
+- `rep_alive`: living bodies whose birth hash is replicator-class
+  (classes.csv). `entered_share`: among those, the share with
+  `exec_by_others` > 0 (T02 §4.3); empty without classes.csv.
+- `parasite_share`: living bodies whose birth hash passes E005's
+  registered parasite-lineage test (`_parasite_genomes`), world-class
+  condition included; empty without classes.csv and classes_world.csv.
+  `foreign_share`: sum of `exec_foreign` over sum of `executed`, living.
+- Summary means (`mean_mpd`, `mean_mean_ed`, `mean_<modes>_D`) are over
+  censuses at or after tick 25,000 (MODES: uncensored ones only).
 """
 from __future__ import annotations
 
@@ -14,6 +68,9 @@ import numpy as np
 import polars as pl
 
 from evo_run import Run, load
+
+STATIONARY = 25_000  # the stationary phase starts here (summary means)
+FIRST_ID = 2  # evo-core's first organism id (sim.rs FIRST_ID)
 
 
 def _tree(run: Run):
@@ -138,12 +195,18 @@ def _tree_metrics(tips: np.ndarray, depth: np.ndarray, born: np.ndarray,
             length = (int(depth[node]) if node else -1) - (int(depth[par]) if par else -1)
             spd += length * k * (n - k)
             counts[par] += k
-    ancestors = sum(1 for x in nodes if x not in tip_pos and children[x] >= 2)
-    # Fair proportion over the original root paths. On the virtual tree each
-    # edge represents a chain with constant descendant-tip count.
+    # Internal nodes of the induced tree: its branch points, tips included
+    # (a living organism whose living descendants run through two or more of
+    # its children). A tip with one line of living descendants is a
+    # unifurcation, stripped as any other.
+    ancestors = sum(1 for x in nodes if children[x] >= 2)
+    # Fair proportion over the original root paths, below the MRCA only (the
+    # stem from the MRCA to the virtual root is shared by every tip and would
+    # make ED grow with MRCA depth). On the virtual tree each edge represents
+    # a chain with constant descendant-tip count.
     for node in nodes:
         par = vparent.get(node)
-        if par is None:
+        if par is None or node == mrca:
             continue
         k = counts[node]
         if not k:
@@ -208,41 +271,75 @@ def _persistence(run: Run, depth: np.ndarray) -> np.ndarray:
     return max_desc
 
 
+def _injected(run: Run, parent: np.ndarray, depth: np.ndarray, up: list[np.ndarray]) -> np.ndarray:
+    """Boolean per id: the organism descends from an `--inject` copy.
+
+    Ids are issued in sequence from FIRST_ID (`sim.rs`): the founders first
+    (meta.json `founders`, one copy without the key), then one id per birth
+    or injected copy. An injected copy is an id after the founders with no
+    births row; read only when meta.json lists `injections`."""
+    size = len(parent)
+    out = np.zeros(size, dtype=bool)
+    if not run.meta.get("injections"):
+        return out
+    founders = sum(int(f.get("count", 1)) for f in run.meta.get("founders", [])) or 1
+    seeded = np.ones(size, dtype=bool)
+    seeded[:FIRST_ID + founders] = False
+    if run.births.height:
+        seeded[run.births["child"].to_numpy()] = False
+    if not seeded.any():
+        return out
+    # Root of every id (its generation-0 ancestor) by binary lifting.
+    node = np.arange(size, dtype=np.int64)
+    d = depth.astype(np.int64)
+    for j, step in enumerate(up):
+        hop = ((d >> j) & 1).astype(bool)
+        node[hop] = step[node[hop]]
+    out = seeded[node]
+    out[0] = False
+    return out
+
+
 def _parasite_genomes(run: Run) -> set[str] | None:
-    """E005's parasite-lineage test, evaluated once over the whole run."""
-    required = {"raw_hash", "parent_now_hash", "child", "executor", "tick"}
-    if run.classes is None or not required.issubset(run.births.columns):
+    """E005's registered parasite-lineage test (`e005_parasites.py`,
+    `analyse`, column `parasite`), evaluated once over the whole run: a raw
+    hash with >= 2 exact births, harness class (classes.csv) != replicator,
+    world class (classes_world.csv, E005's world-physics classes; missing
+    hashes `unknown`) != replicator, median foreign share > 0.25 over
+    carriers that executed (deaths.csv plus the living at the last
+    patches.csv tick), and exact-birth generation depth >= 5 (E005's
+    `generation_depth`, imported). None when classes.csv or
+    classes_world.csv is absent: the world-class condition cannot be read."""
+    from evo_run import _read, csv_path
+    from e005_parasites import generation_depth
+
+    world_path = csv_path(run.dir, "classes_world")
+    if run.classes is None or world_path is None:
         return None
+    world = _read(world_path, "classes").select("raw_hash", world_class="class")
     exact = run.births.filter(pl.col("raw_hash") == pl.col("parent_now_hash"))
-    replicated = exact.group_by("raw_hash").len().filter(pl.col("len") >= 2)
-    replicated = run.class_of(replicated, "raw_hash").filter(pl.col("class") != "replicator")
-    candidates = set(replicated["raw_hash"].to_list())
-    if not candidates or not {"exec_foreign", "executed"}.issubset(run.deaths.columns):
+    per_g = exact.group_by("raw_hash").agg(exact_births=pl.len()).filter(pl.col("exact_births") >= 2)
+    per_g = (run.class_of(per_g, "raw_hash").join(world, on="raw_hash", how="left")
+             .with_columns(pl.col("world_class").fill_null("unknown")))
+    cols = ["birth_hash", "executed", "exec_foreign"]
+    final = run.patches["tick"].max()
+    living = run.orgs.filter(pl.col("tick") == final).select(cols)
+    carriers = pl.concat([run.deaths.select(cols), living]).with_columns(
+        foreign=pl.col("exec_foreign") / pl.col("executed").clip(lower_bound=1))
+    shares = (carriers.filter(pl.col("executed") > 0).group_by("birth_hash")
+              .agg(foreign_med=pl.col("foreign").median()).rename({"birth_hash": "raw_hash"}))
+    dep = per_g.join(shares, on="raw_hash", how="left").filter(pl.col("class") != "replicator")
+    if not dep.height:
         return set()
-    rows = exact.filter(pl.col("raw_hash").is_in(list(candidates))).sort("tick", "child")
-    lineage_depth: dict[tuple[str, int], int] = {}
-    best = {h: 0 for h in candidates}
-    for h, child, executor in rows.select("raw_hash", "child", "executor").iter_rows():
-        d = lineage_depth.get((h, int(executor)), 0) + 1
-        lineage_depth[(h, int(child))] = d
-        if d > best[h]:
-            best[h] = d
-    if not {"birth_hash", "executed", "exec_foreign"}.issubset(run.orgs.columns):
-        return set()
-    last = int(run.orgs["tick"].max()) if run.orgs.height else -1
-    living = run.orgs.filter(pl.col("tick") == last)
-    carriers = pl.concat([
-        run.deaths.select("birth_hash", "executed", "exec_foreign"),
-        living.select("birth_hash", "executed", "exec_foreign"),
-    ]).filter(pl.col("executed") > 0).with_columns(
-        foreign=pl.col("exec_foreign") / pl.col("executed")
-    ).group_by("birth_hash").agg(foreign_med=pl.col("foreign").median())
-    median_foreign = dict(carriers.iter_rows())
-    return {h for h in candidates if best.get(h, 0) >= 5
-            and median_foreign.get(h) is not None and median_foreign[h] > 0.25}
+    depth = generation_depth(exact, set(dep["raw_hash"]))
+    dep = dep.with_columns(depth=pl.col("raw_hash").replace_strict(depth, default=0, return_dtype=pl.Int64))
+    par = dep.filter((pl.col("world_class") != "replicator") & (pl.col("foreign_med") > 0.25)
+                     & (pl.col("depth") >= 5))
+    return set(par["raw_hash"].to_list())
 
 
-def _series(run: Run, every: int, depths: tuple[int, ...]) -> pl.DataFrame:
+def _series(run: Run, every: int, depths: tuple[int, ...]) -> tuple[pl.DataFrame, int]:
+    """Per-census rows, and the deepest generation reached in the run."""
     parent, gen, born, up = _tree(run)
     tin, tout = _euler(parent, gen)
     max_desc = _persistence(run, gen)
@@ -256,15 +353,27 @@ def _series(run: Run, every: int, depths: tuple[int, ...]) -> pl.DataFrame:
         proportions.setdefault(int(tick), {})[str(h)] = float(p)
     ticks = sorted(proportions)
     max_depth = int(gen.max()) if gen.size else 0
+    injected = _injected(run, parent, gen, up)
+    any_injected = bool(injected.any())
     org = run.orgs
     hashmap = dict(run.genomes.select("raw_hash", "func_hash").iter_rows())
     classes = dict(run.classes.select("raw_hash", "class").iter_rows()) if run.classes is not None else {}
     parasites = _parasite_genomes(run)
+    if run.classes is not None:
+        org = run.class_of(org, "birth_hash", "birth_class")
+    if parasites is not None:
+        org = org.with_columns(is_parasite=pl.col("birth_hash").is_in(sorted(parasites)))
     rows = []
     org_by_tick = {int(k[0] if isinstance(k, tuple) else k): v
                    for k, v in org.partition_by("tick", as_dict=True).items()}
     seen_components: dict[int, set[str]] = {d: set() for d in depths}
     previous_modes: dict[int, set[str]] = {d: set() for d in depths}
+    # A depth deeper than any generation the run reached is censored at every
+    # census; its MODES columns are left empty.
+    applies = {d: max_depth >= d for d in depths}
+    censored = {d: not applies[d] for d in depths}
+    deepest = max(depths, default=0)
+    censored_all = deepest > 0 and not applies[deepest]
     previous_mrca = None
     cumulative = 0.0
     for ix, tick in enumerate(ticks):
@@ -280,11 +389,22 @@ def _series(run: Run, every: int, depths: tuple[int, ...]) -> pl.DataFrame:
         tips = alive["id"].to_numpy().astype(np.int32, copy=False)
         sampled = ix % every == 0
         tm = _tree_metrics(tips, gen, born, tin, tout, up) if sampled else None
+        mrca_changed = None
         if tm is not None:
-            mrca_changed = previous_mrca is not None and tm["mrca_id"] != previous_mrca
-            previous_mrca = tm["mrca_id"]
-        else:
-            mrca_changed = None
+            # The sweep counter follows the MRCA of the tips that descend from
+            # founders; lines from `--inject` copies are left out, so their
+            # arrival and loss are not counted as MRCA changes.
+            sweep_mrca = tm["mrca_id"]
+            if any_injected and injected[tips].any():
+                own = tips[~injected[tips]]
+                sweep_mrca = None
+                if own.size:
+                    sweep_mrca = int(own[0])
+                    for tip in own[1:]:
+                        sweep_mrca = _lca(sweep_mrca, int(tip), gen, up)
+            if sweep_mrca is not None:
+                mrca_changed = previous_mrca is not None and sweep_mrca != previous_mrca
+                previous_mrca = sweep_mrca
         hashes = alive["birth_hash"].to_list()
         tips_list = alive["id"].to_list()
         component_bodies = []
@@ -308,34 +428,35 @@ def _series(run: Run, every: int, depths: tuple[int, ...]) -> pl.DataFrame:
                    mpd=tm["mpd"] if tm else None, spd=tm["spd"] if tm else None,
                    mean_ed=tm["mean_ed"] if tm else None,
                    parasite_share=None, entered_share=None)
+        top_gen = max((int(gen[int(i)]) for i in tips_list), default=0)
         for d in depths:
             f = set(persistent_components[d])
-            row[f"change_{d}"] = len(f - previous_modes[d])
-            row[f"novelty_{d}"] = len(f - seen_components[d])
-            seen_components[d] |= f
-            previous_modes[d] = f
             counts = {}
             for c in persistent_components[d]:
                 counts[c] = counts.get(c, 0) + 1
             n = sum(counts.values())
-            row[f"ecology_{d}"] = -sum((v / n) * math.log2(v / n) for v in counts.values()) if n else 0.0
-            row[f"modes_censored_{d}"] = bool(
-                max_depth < (max((int(gen[int(i)]) for i in tips_list), default=0) + d)
-            )
-        deepest = max(depths, default=0)
-        row["modes_censored"] = bool(
-            max_depth < (max((int(gen[int(i)]) for i in tips_list), default=0) + deepest)
-        )
+            if applies[d]:
+                row[f"change_{d}"] = len(f - previous_modes[d])
+                row[f"novelty_{d}"] = len(f - seen_components[d])
+                row[f"ecology_{d}"] = -sum((v / n) * math.log2(v / n) for v in counts.values()) if n else 0.0
+            else:
+                row[f"change_{d}"] = row[f"novelty_{d}"] = row[f"ecology_{d}"] = None
+            seen_components[d] |= f
+            previous_modes[d] = f
+            # Held true once set: persistence cannot be known from here on.
+            censored[d] = censored[d] or max_depth < top_gen + d
+            row[f"modes_censored_{d}"] = censored[d]
+        censored_all = censored_all or max_depth < top_gen + deepest
+        row["modes_censored"] = censored_all
         if "exec_foreign" in alive.columns:
             row["foreign_share"] = float(alive["exec_foreign"].sum() / max(1, alive["executed"].sum()))
             if parasites is not None:
-                row["parasite_share"] = float(
-                    alive["birth_hash"].is_in(list(parasites)).mean()
-                )
-        if "exec_by_others" in alive.columns:
-            row["entered_share"] = float((alive["exec_by_others"] > 0).mean())
+                row["parasite_share"] = float(alive["is_parasite"].mean())
+        if "exec_by_others" in alive.columns and run.classes is not None:
+            rep = alive.filter(pl.col("birth_class") == "replicator")
+            row["entered_share"] = float((rep["exec_by_others"] > 0).mean()) if rep.height else None
         rows.append(row)
-    return pl.DataFrame(rows) if rows else pl.DataFrame()
+    return (pl.DataFrame(rows) if rows else pl.DataFrame()), max_depth
 
 
 def compute(run: Run | str | Path, every: int = 1, depths: tuple[int, ...] = (187, 1870)) -> tuple[pl.DataFrame, dict]:
@@ -344,7 +465,7 @@ def compute(run: Run | str | Path, every: int = 1, depths: tuple[int, ...] = (18
         raise ValueError("every must be at least 1")
     if not isinstance(run, Run):
         run = load(run)
-    series = _series(run, every, depths)
+    series, max_gen = _series(run, every, depths)
     summary: dict = {}
     if series.height:
         summary = {
@@ -352,19 +473,30 @@ def compute(run: Run | str | Path, every: int = 1, depths: tuple[int, ...] = (18
             "qnn_cum": float(series["qnn_cum"][-1]),
             "mrca_changes": int(series["mrca_changed"].sum()),
             "final_tick": int(series["tick"][-1]),
+            "max_gen": max_gen,
         }
-        stationary_tree = series.filter(pl.col("tick") >= 25_000)
+        stationary_tree = series.filter(pl.col("tick") >= STATIONARY)
         for col in ("mpd", "mean_ed"):
-            summary[f"mean_{col}"] = float(stationary_tree[col].mean()) if stationary_tree.height else None
+            summary[f"mean_{col}"] = _mean(stationary_tree[col])
         for d in depths:
+            if max_gen < d:
+                for name in ("change", "novelty", "ecology"):
+                    summary[f"mean_{name}_{d}"] = "censored"
+                summary.setdefault("censored_depths", {})[str(d)] = (
+                    f"the run's deepest generation is {max_gen}, below {d}")
+                continue
             stationary_modes = series.filter(
-                (pl.col("tick") >= 25_000) & pl.col(f"modes_censored_{d}").eq(False)
+                (pl.col("tick") >= STATIONARY) & pl.col(f"modes_censored_{d}").eq(False)
             )
             for name in ("change", "novelty", "ecology"):
-                col = f"{name}_{d}"
-                summary[f"mean_{col}"] = float(stationary_modes[col].mean()) if stationary_modes.height else None
+                summary[f"mean_{name}_{d}"] = _mean(stationary_modes[f"{name}_{d}"])
         summary["mrca_tick"] = last_value(series["mrca_tick"])
     return series, summary
+
+
+def _mean(col: pl.Series) -> float | None:
+    m = col.drop_nulls().mean() if col.len() else None
+    return None if m is None else float(m)
 
 
 def last_value(col: pl.Series):
