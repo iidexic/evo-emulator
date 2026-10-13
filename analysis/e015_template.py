@@ -30,7 +30,9 @@ Stages (subcommands):
   `lit` byte, so that knob is spent), then `--sun` as a declared arm change.
   Gate arms added after the gate failed (`gate --arm NAME`, directories
   runs/e015/world/<arm>/s<seed>, outputs gate_<arm>.csv and .md):
-  `tierra_quiet` (noise off: `--p 0 --rot 0`; see GATE_ARMS). Each gate
+  `tierra_quiet` (noise off: `--p 0 --rot 0`), `tierra_sun2` and
+  `tierra_sun3` (`--sun 2`, `--sun 3`, noise on; the choice of N is in
+  GATE_ARMS's comment). Each gate
   summary also has stage 3's per-bin measures on its runs (gate[_<arm>]_bins.csv,
   _runs.csv) and the profile of replicator-class deaths (median age, share
   with no child, share of absorbs short, mean ration).
@@ -121,9 +123,22 @@ ARMS = ["std", "tierra"]
 #   both write probabilities, `--rot 0` bit rot): E005's quiet world but for
 #   debris decay, which has no flag and changes no byte (it relabels debris
 #   as free, and every op treats the two alike; it only draws from the PRNG).
+# - tierra_sun2, tierra_sun3: the registered next knob, `--sun N` (patch
+#   income and cap times N), noise on. `--sun` does not move the body's
+#   break-even ration (the share of a full ration at which a cycle pays:
+#   95.61% at every N, 92.34% for the 21-byte body; the ration at a full pool
+#   is 8 units whatever the sun). It moves the load a patch carries at that
+#   ration: a patch whose bodies would draw D units per tick at a full ration
+#   settles at the share income / D, so it carries D* = income / break-even.
+#   The 21-byte body at sun 1: 256 / 0.9234 = 277.2 units per tick, 7.04
+#   bodies at 39.38 each; this body at sun N: 256 N / 0.9561 = 267.8 N, 6.59 N
+#   bodies at 40.64 each. Equal at N = 1.068; `--sun` is a whole number, so 2,
+#   then 3 if 2 fails. (2026-10-13: sun 2 passed 10 of 10; sun 3 not run.)
 GATE_ARMS = {
     "tierra": [],
     "tierra_quiet": ["--p", "0", "--rot", "0"],
+    "tierra_sun2": ["--sun", "2"],
+    "tierra_sun3": ["--sun", "3"],
 }
 for _arm, _flags in GATE_ARMS.items():
     ARM_FLAGS[_arm] = ["--ancestor", "tierra", *_flags]
