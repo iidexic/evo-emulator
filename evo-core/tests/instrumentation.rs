@@ -33,6 +33,7 @@ fn run(seed: u64, record: Option<&std::path::Path>) -> (Vec<Event>, u64) {
             census_every: 50,
             ancestor_k: 64,
             ancestor_e: 16,
+            ancestor: "std".to_string(),
             founders: Vec::new(),
             founder_starts: Vec::new(),
             injections: Vec::new(),

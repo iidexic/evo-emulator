@@ -1,6 +1,7 @@
 //! CLI: run a seeded world and print a census.
 //!
-//! evo-core [--ticks N] [--seed S] [--report N] [--log PATH] [--k K] [--e E]
+//! evo-core [--ticks N] [--seed S] [--report N] [--log PATH]
+//!          [--ancestor std|tierra] [--k K] [--e E]
 //!          [--no-protect] [--p P] [--world N] [--patch N]
 //!          [--alloc-far | --alloc-near] [--absorb-prop | --absorb-fixed]
 //!          [--locality N] [--out DIR] [--census N] [--sun N] [--rot P]
@@ -9,7 +10,18 @@
 //!          [--world-e001] [--founder HEX:COUNT]... [--inject TICK:HEX:COUNT]...
 //! evo-core --classify DIR [--harness-ticks N] [--classes-out NAME] [physics flags]
 //! evo-core --host HEX [--host-body HEX] [--host-pad] [--harness-ticks N] [physics flags]
+//! evo-core --neighbours HEX [--host-body HEX] [--harness-ticks N] [--neighbours-out FILE]
+//!          [--neighbours-pad-only] [--threads T] [physics flags]
 //! evo-core --disasm HEX
+//!
+//! --ancestor NAME (T03) picks the seeded ancestor: `std` (default, the
+//! 21-byte body of PLAN §5.3.3, `sim::ancestor`) or `tierra` (the
+//! template-addressed 41-byte body, `sim::ancestor_t`, E015). --k and --e
+//! apply to either; --k defaults to 64 for `std` and to 127 for `tierra`
+//! (`sim::ANCESTOR_T_K`, the smallest K at which it pays for itself in the
+//! harness), --e to 16. meta.json records `"ancestor"`. --founder replaces
+//! the ancestor as before; --host without --host-body uses the selected
+//! ancestor as the host.
 //!
 //! The default physics is the E004 world (`Config::default()`: 128 patches
 //! of 512 bytes at 8x the Phase 1 sunlight per byte, far `alloc`,
@@ -96,9 +108,11 @@
 //! --host HEX runs the genome given as hex immediately before the ancestor
 //! (two-genome harness, E005) and prints a CSV header and one row:
 //! `len,births,exact_births,host_copies,host_exact_births,alive,host_alive,
-//! executed,exec_foreign,ticks_run,stopped_early`: the genome's births and
-//! exact births, the host copies it made, the host's exact births, who is
-//! alive, the genome's foreign-execution share, and how many ticks ran.
+//! executed,exec_foreign,ticks_run,stopped_early,entry_off`: the genome's
+//! births and exact births, the host copies it made, the host's exact
+//! births, who is alive, the genome's foreign-execution share, how many
+//! ticks ran, and where it first ran a host byte (offset from the host's
+//! start, -1 if never; T03).
 //! The harness stops when the genome dies, so `stopped_early` = true means
 //! fewer than --harness-ticks ticks were simulated and the counts cover only
 //! `ticks_run` ticks (E007: not evidence of a resistant host). Physics flags
@@ -108,11 +122,29 @@
 //! content matters.
 //! --host-body HEX uses that genome as the host instead of the ancestor
 //! (E007: a parasite against the hosts that evolved alongside it).
+//!
+//! --neighbours HEX (T03, E015) classifies every single-byte mutant of HEX:
+//! at each position each of the 255 substitutions, then the deletion (with
+//! --neighbours-pad-only, only the substitution by `pad`, byte 0, at each
+//! position: T05's knockout set). Each mutant runs alone in the quiet
+//! harness for --harness-ticks ticks (default 3,000) and immediately before
+//! a host, which is HEX itself unless --host-body gives another body; the
+//! physics flags apply as for --host. One CSV row per mutant, in that order,
+//! to FILE (--neighbours-out; default neighbours.csv in the current
+//! directory): `pos,kind,byte,hex,raw_hash,func_hash,class_alone,
+//! births_alone,exact_alone,alive_alone,births_host,exact_host,host_copies,
+//! host_exact,alive_host,host_alive,executed,exec_foreign,entry_off,
+//! ticks_run,label` (`byte` empty for a deletion; `executed` through
+//! `ticks_run` from the run before the host; the label rule is
+//! `harness::label`, docs/instrumentation.md). stdout gets the counts by
+//! label and the `parasite_jump` rows by position. --threads T (default:
+//! the available parallelism) runs the mutants on T threads; the file is
+//! the same at any T.
 
 use evo_core::config::{Config, MILLI};
 use evo_core::harness;
 use evo_core::record::{Recorder, RunInfo};
-use evo_core::sim::{ancestor, Event, Injection, Sim};
+use evo_core::sim::{AncestorKind, Event, Injection, Sim};
 use std::io::Write;
 use std::path::Path;
 
@@ -132,7 +164,13 @@ fn main() {
     let mut host: Option<String> = None;
     let mut host_body: Option<String> = None;
     let mut host_pad = false;
-    let mut k: i8 = 64;
+    let mut neighbours: Option<String> = None;
+    let mut neighbours_out = String::from("neighbours.csv");
+    let mut neighbours_pad_only = false;
+    let mut threads: Option<usize> = None;
+    let mut kind = AncestorKind::Std;
+    // --k defaults by ancestor (resolved after parsing).
+    let mut k: Option<i8> = None;
     let mut e: i8 = 16;
     let mut patch: Option<u32> = None;
     let mut sun: i64 = 1;
@@ -155,6 +193,23 @@ fn main() {
             "--classes-out" => { classes_out = next(); i += 1; }
             "--host" => { host = Some(next()); i += 1; }
             "--host-body" => { host_body = Some(next()); i += 1; }
+            "--neighbours" => { neighbours = Some(next()); i += 1; }
+            "--neighbours-out" => { neighbours_out = next(); i += 1; }
+            "--neighbours-pad-only" => neighbours_pad_only = true,
+            "--threads" => {
+                let t: usize = next().parse().expect("--threads T must be a whole number");
+                assert!(t > 0, "--threads must be at least 1");
+                threads = Some(t);
+                i += 1;
+            }
+            "--ancestor" => {
+                let v = next();
+                kind = AncestorKind::parse(&v).unwrap_or_else(|| {
+                    eprintln!("error: --ancestor wants std or tierra, not {v}");
+                    std::process::exit(2);
+                });
+                i += 1;
+            }
             "--founder" => {
                 let v = next();
                 // `split_once` returns Option<(&str, &str)>, Rust's way of
@@ -180,7 +235,7 @@ fn main() {
             // Disassemble hex bytes and exit: for reading world.bin from Python.
             "--disasm" => { println!("{}", evo_core::record::disasm(&parse_hex(&next()))); return; }
             "--host-pad" => host_pad = true,
-            "--k" => { k = next().parse().unwrap(); i += 1; }
+            "--k" => { k = Some(next().parse().unwrap()); i += 1; }
             "--e" => { e = next().parse().unwrap(); i += 1; }
             "--p" => { cfg.p_write_flip = next().parse().unwrap(); cfg.q_slip = cfg.p_write_flip / 4.0; i += 1; }
             "--world" => { cfg.world_size = next().parse().unwrap(); i += 1; }
@@ -243,9 +298,25 @@ fn main() {
     assert!(sun > 0, "--sun must be positive");
     cfg.patch_income *= sun;
     cfg.patch_cap *= sun;
+    let k = k.unwrap_or(kind.default_k());
 
     if let Some(dir) = classify {
         run_classify(Path::new(&dir), &classes_out, harness_ticks, &cfg);
+        return;
+    }
+    if let Some(hex) = neighbours {
+        let g = parse_hex(&hex);
+        assert!(!g.is_empty(), "--neighbours wants a non-empty HEX");
+        let h = host_body.map(|hx| parse_hex(&hx)).unwrap_or_else(|| g.clone());
+        let t = threads.unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()));
+        let t0 = std::time::Instant::now();
+        let rows = harness::neighbours(&g, &h, harness_ticks, &cfg, neighbours_pad_only, t);
+        let mut w = std::io::BufWriter::new(std::fs::File::create(&neighbours_out).expect("create neighbours file"));
+        harness::write_neighbours(&mut w, &rows).expect("write neighbours file");
+        w.flush().expect("write neighbours file");
+        print!("{}", harness::neighbours_summary(&rows));
+        eprintln!("# {} mutants x 2 runs of {harness_ticks} ticks on {t} threads in {:.1}s; wrote {neighbours_out}",
+                  rows.len(), t0.elapsed().as_secs_f64());
         return;
     }
     if let Some(hex) = host {
@@ -253,15 +324,15 @@ fn main() {
         if host_pad {
             g.iter_mut().for_each(|b| *b = 0);
         }
-        let h = host_body.map(|hx| parse_hex(&hx)).unwrap_or_else(|| ancestor(k, e));
+        let h = host_body.map(|hx| parse_hex(&hx)).unwrap_or_else(|| kind.body(k, e));
         let r = harness::run_with_host(&g, &h, harness_ticks, &cfg);
         println!(
-            "len,births,exact_births,host_copies,host_exact_births,alive,host_alive,executed,exec_foreign,ticks_run,stopped_early"
+            "len,births,exact_births,host_copies,host_exact_births,alive,host_alive,executed,exec_foreign,ticks_run,stopped_early,entry_off"
         );
         println!(
-            "{},{},{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{}",
             g.len(), r.births, r.exact_births, r.host_copies, r.host_exact_births, r.alive,
-            r.host_alive, r.executed, r.exec_foreign, r.ticks_run, r.stopped_early
+            r.host_alive, r.executed, r.exec_foreign, r.ticks_run, r.stopped_early, r.entry_off
         );
         return;
     }
@@ -272,7 +343,7 @@ fn main() {
     // No --founder: the ancestor once, which `seed_founders` puts at
     // world_size / 2, where the single founder has always been.
     if founders.is_empty() {
-        founders.push((ancestor(k, e), 1));
+        founders.push((kind.body(k, e), 1));
     }
     let founder_starts = sim.seed_founders(&founders, 100 * MILLI);
     let mut logf = log.map(|p| std::io::BufWriter::new(std::fs::File::create(p).unwrap()));
@@ -282,6 +353,7 @@ fn main() {
             census_every: census,
             ancestor_k: k,
             ancestor_e: e,
+            ancestor: kind.name().to_string(),
             founders: founders.iter().map(|(g, n)| (to_hex(g), *n)).collect(),
             founder_starts: founder_starts.clone(),
             injections: injections.iter().map(|j| (j.tick, to_hex(&j.genome), j.count)).collect(),

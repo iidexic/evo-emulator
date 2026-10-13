@@ -3,8 +3,10 @@
 //! by test (`--classify`), not by reading their disassembly.
 
 use crate::config::{Config, MILLI};
-use crate::sim::{fnv1a, Event, Sim, FIRST_ID};
+use crate::sim::{fnv1a, func_hash, Event, Sim, FIRST_ID};
+use std::io::Write;
 
+#[derive(Clone, Debug)]
 pub struct HarnessResult {
     pub births: u32,
     /// Children whose bytes equal the tested genome.
@@ -112,6 +114,7 @@ pub fn run_alone_with(genome: &[u8], ticks: u64, cfg: &Config) -> HarnessResult 
 
 /// Two-genome harness result (E005): `genome` placed immediately before
 /// `host`, both with 100 units of seed energy, children removed every tick.
+#[derive(Clone, Debug)]
 pub struct HostResult {
     /// Children whose `divide` was executed by the genome.
     pub births: u32,
@@ -143,6 +146,11 @@ pub struct HostResult {
     /// alive). Milli-units; 0 without the flag.
     pub cycles_taken_m: i64,
     pub host_cycles_lost_m: i64,
+    /// Where the genome first ran another living organism's byte: the IP's
+    /// offset from that owner's start (`Org::first_foreign_off`, T03), -1
+    /// if it never did. 0 is the fall-through entry (running off its own
+    /// end into the host's byte 0); anything else is a jump or a search.
+    pub entry_off: i64,
 }
 
 /// Run `genome` immediately before `host` under `cfg`'s physics, noise off,
@@ -169,6 +177,7 @@ pub fn run_with_host(genome: &[u8], host: &[u8], ticks: u64, cfg: &Config) -> Ho
         host_energy: 0,
         cycles_taken_m: 0,
         host_cycles_lost_m: 0,
+        entry_off: -1,
     };
     for t in 0..ticks {
         sim.run_tick();
@@ -206,9 +215,187 @@ pub fn run_with_host(genome: &[u8], host: &[u8], ticks: u64, cfg: &Config) -> Ho
     r.executed = me_org.stats.executed;
     r.exec_foreign = me_org.stats.exec_foreign;
     r.cycles_taken_m = me_org.stats.cycles_taken_m;
+    r.entry_off = me_org.first_foreign_off.map_or(-1, i64::from);
     // `kill` zeroes a dead organism's store.
     r.host_energy = sim.genome_of(host_id).map_or(0, |o| o.energy);
     r
+}
+
+// ---- T03: the single-mutant neighbourhood (`--neighbours HEX`) ---------------
+
+/// One single-byte mutant of a genome: the substitution of `byte` at `pos`
+/// (`kind` "sub") or the deletion of `pos` (`kind` "del", `byte` None).
+#[derive(Clone, Debug)]
+pub struct Mutant {
+    pub pos: usize,
+    pub kind: &'static str,
+    pub byte: Option<u8>,
+    pub genome: Vec<u8>,
+}
+
+/// The mutant set of `g`, in the order the file is written: position by
+/// position, at each position every substitution by a value other than
+/// `g[pos]` in ascending byte order (255), then the deletion of that byte.
+/// `pad_only` (`--neighbours-pad-only`, T05's knockout set): only the
+/// substitution by `pad` (byte 0) at each position, one row per position;
+/// where `g[pos]` is already 0 that row is the genome itself. A deletion
+/// that would leave no body (a one-byte `g`) is left out.
+pub fn mutants(g: &[u8], pad_only: bool) -> Vec<Mutant> {
+    let mut out = Vec::new();
+    for pos in 0..g.len() {
+        let mut sub = |v: u8| {
+            let mut m = g.to_vec();
+            m[pos] = v;
+            out.push(Mutant { pos, kind: "sub", byte: Some(v), genome: m });
+        };
+        if pad_only {
+            sub(0);
+            continue;
+        }
+        for v in 0..=255u8 {
+            if v != g[pos] {
+                sub(v);
+            }
+        }
+        if g.len() > 1 {
+            let mut m = g.to_vec();
+            m.remove(pos);
+            out.push(Mutant { pos, kind: "del", byte: None, genome: m });
+        }
+    }
+    out
+}
+
+/// The neighbourhood label (T03 §2), one rule for every reader:
+/// `replicator` if the mutant is `replicator` alone; else, if before the
+/// host it made at least 2 exact copies of itself with more than a quarter
+/// of its instructions on foreign bytes, `parasite_fallthrough` when it
+/// entered at the owner's byte 0 (`entry_off` 0: ran off its own end) and
+/// `parasite_jump` otherwise (a jump or a search); else its class alone
+/// (`one_shot`, `inexact`, `loafer`, `dies`).
+pub fn label(alone: &HarnessResult, host: &HostResult) -> &'static str {
+    let class = alone.class();
+    if class == "replicator" {
+        return class;
+    }
+    // exec_foreign / executed > 0.25, in integers.
+    if host.exact_births >= 2 && 4 * host.exec_foreign > host.executed {
+        return if host.entry_off == 0 { "parasite_fallthrough" } else { "parasite_jump" };
+    }
+    class
+}
+
+/// Labels in the order the summary prints them.
+pub const LABELS: [&str; 7] =
+    ["replicator", "parasite_fallthrough", "parasite_jump", "one_shot", "inexact", "loafer", "dies"];
+
+/// One row of `neighbours.csv`.
+#[derive(Clone, Debug)]
+pub struct NeighbourRow {
+    pub mutant: Mutant,
+    pub alone: HarnessResult,
+    pub host: HostResult,
+    pub label: &'static str,
+}
+
+pub const NEIGHBOURS_HEADER: &str = "pos,kind,byte,hex,raw_hash,func_hash,class_alone,births_alone,exact_alone,alive_alone,births_host,exact_host,host_copies,host_exact,alive_host,host_alive,executed,exec_foreign,entry_off,ticks_run,label";
+
+impl NeighbourRow {
+    /// The CSV row (columns as `NEIGHBOURS_HEADER`). `byte` is empty for a
+    /// deletion; `executed`, `exec_foreign`, `entry_off` and `ticks_run`
+    /// are from the run before the host.
+    pub fn csv_row(&self) -> String {
+        let (m, a, h) = (&self.mutant, &self.alone, &self.host);
+        let hex: String = m.genome.iter().map(|b| format!("{b:02x}")).collect();
+        format!(
+            "{},{},{},{hex},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            m.pos, m.kind, m.byte.map_or(String::new(), |b| b.to_string()),
+            crate::record::hex(fnv1a(&m.genome)), crate::record::hex(func_hash(&m.genome)),
+            a.class(), a.births, a.exact_births, a.alive,
+            h.births, h.exact_births, h.host_copies, h.host_exact_births, h.alive, h.host_alive,
+            h.executed, h.exec_foreign, h.entry_off, h.ticks_run, self.label
+        )
+    }
+}
+
+/// Classify every mutant of `g` (`mutants(g, pad_only)`): `run_alone_with`
+/// for `ticks` ticks, and `run_with_host` with the mutant immediately before
+/// `host`, both quiet under `cfg`'s physics. The mutants are independent and
+/// run on `threads` threads (`std::thread::scope`), each run with its own
+/// `Sim`; each thread takes the next unclaimed mutant, and the rows come back
+/// in mutant order, so the result does not depend on the thread count.
+pub fn neighbours(g: &[u8], host: &[u8], ticks: u64, cfg: &Config, pad_only: bool, threads: usize) -> Vec<NeighbourRow> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let ms = mutants(g, pad_only);
+    let next = AtomicUsize::new(0);
+    let threads = threads.max(1).min(ms.len().max(1));
+    // Each thread returns (index, row) pairs; `scope` joins them all before
+    // returning, so the borrows of `ms`, `next`, `host` and `cfg` are safe.
+    let mut parts: Vec<(usize, NeighbourRow)> = std::thread::scope(|s| {
+        let handles: Vec<_> = (0..threads)
+            .map(|_| {
+                s.spawn(|| {
+                    let mut got = Vec::new();
+                    loop {
+                        let i = next.fetch_add(1, Ordering::Relaxed);
+                        if i >= ms.len() {
+                            break;
+                        }
+                        let m = &ms[i];
+                        let alone = run_alone_with(&m.genome, ticks, cfg);
+                        let with = run_with_host(&m.genome, host, ticks, cfg);
+                        let label = label(&alone, &with);
+                        got.push((i, NeighbourRow { mutant: m.clone(), alone, host: with, label }));
+                    }
+                    got
+                })
+            })
+            .collect();
+        handles.into_iter().flat_map(|h| h.join().expect("neighbour thread panicked")).collect()
+    });
+    parts.sort_by_key(|(i, _)| *i);
+    parts.into_iter().map(|(_, r)| r).collect()
+}
+
+/// Write `rows` as `neighbours.csv` (header, then one row per mutant).
+pub fn write_neighbours<W: Write>(w: &mut W, rows: &[NeighbourRow]) -> std::io::Result<()> {
+    writeln!(w, "{NEIGHBOURS_HEADER}")?;
+    for r in rows {
+        writeln!(w, "{}", r.csv_row())?;
+    }
+    Ok(())
+}
+
+/// The stdout summary: counts by label (every label, in `LABELS` order),
+/// then the `parasite_jump` rows grouped by position: how many (and how
+/// many of them deletions), their entry offsets with counts, and the range
+/// of their exact copies before the host. The byte values are in the file.
+pub fn neighbours_summary(rows: &[NeighbourRow]) -> String {
+    let mut s = format!("mutants {}\n", rows.len());
+    for l in LABELS {
+        s += &format!("{l} {}\n", rows.iter().filter(|r| r.label == l).count());
+    }
+    let jumps: Vec<&NeighbourRow> = rows.iter().filter(|r| r.label == "parasite_jump").collect();
+    s += &format!("parasite_jump by pos ({} rows)\n", jumps.len());
+    let mut pos: Vec<usize> = jumps.iter().map(|r| r.mutant.pos).collect();
+    pos.dedup();
+    for p in pos {
+        let here: Vec<&&NeighbourRow> = jumps.iter().filter(|r| r.mutant.pos == p).collect();
+        let dels = here.iter().filter(|r| r.mutant.kind == "del").count();
+        // Entry offsets with counts, ascending (a BTreeMap iterates sorted).
+        let mut entries: std::collections::BTreeMap<i64, usize> = Default::default();
+        for r in &here {
+            *entries.entry(r.host.entry_off).or_insert(0) += 1;
+        }
+        let entries: Vec<String> = entries.iter().map(|(e, n)| format!("{e} x{n}")).collect();
+        let lo = here.iter().map(|r| r.host.exact_births).min().unwrap_or(0);
+        let hi = here.iter().map(|r| r.host.exact_births).max().unwrap_or(0);
+        s += &format!(
+            "  pos {p}: {} rows ({dels} del); entry {}; exact before host {lo}-{hi}\n",
+            here.len(), entries.join(", ")
+        );
+    }
+    s
 }
 
 #[cfg(test)]

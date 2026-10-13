@@ -34,6 +34,10 @@ pub struct RunInfo {
     pub census_every: u64,
     pub ancestor_k: i8,
     pub ancestor_e: i8,
+    /// `--ancestor NAME` (T03): `std` (the 21-byte body, the default) or
+    /// `tierra` (`sim::ancestor_t`). What K and E apply to, and what is
+    /// seeded without `--founder`.
+    pub ancestor: String,
     /// Founders as (genome hex, copies), in seeding order (`--founder`,
     /// E009a); without the flag, the ancestor once.
     pub founders: Vec<(String, u32)>,
@@ -257,6 +261,7 @@ impl Recorder {
         writeln!(w, "  \"census_every\": {},", self.info.census_every)?;
         writeln!(w, "  \"ancestor_k\": {},", self.info.ancestor_k)?;
         writeln!(w, "  \"ancestor_e\": {},", self.info.ancestor_e)?;
+        writeln!(w, "  \"ancestor\": \"{}\",", self.info.ancestor)?;
         let founders: Vec<String> = self
             .info
             .founders

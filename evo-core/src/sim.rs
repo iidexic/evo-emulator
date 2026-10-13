@@ -246,6 +246,13 @@ pub struct Org {
     /// the rest carries over). 0 at birth. Part of the physics, so it is
     /// in `state_hash`.
     pub cycle_debt: i64,
+    /// Where this organism first ran another living organism's byte (T03):
+    /// set by `step` the first time it executes a byte owned by another
+    /// living organism (body or pending region), to the IP's offset from
+    /// that owner's `start`, wrapped around the ring; never changed after.
+    /// `None` until then. Harness-only state: nothing in the physics reads
+    /// it, no PRNG draw depends on it, and `state_hash` leaves it out.
+    pub first_foreign_off: Option<u32>,
 }
 
 #[derive(Clone, Debug)]
@@ -435,6 +442,7 @@ impl Sim {
             parent,
             stats: OrgStats::new(energy),
             cycle_debt: 0,
+            first_foreign_off: None,
         });
         id
     }
@@ -654,6 +662,11 @@ impl Sim {
                 // the owner here is always found.
                 if let Some(j) = self.org_index(own) {
                     self.orgs[j].stats.exec_by_others += 1;
+                    // T03: the entry point, once. Read by the harness only.
+                    if self.orgs[i].first_foreign_off.is_none() {
+                        let at = self.off(ip, -(self.orgs[j].start as i64));
+                        self.orgs[i].first_foreign_off = Some(at);
+                    }
                 }
             }
         } else {
@@ -1219,6 +1232,7 @@ impl Sim {
     /// PRNG state, world bytes and owners, pools, and each organism's VM and
     /// energy state. Two runs that agree on this agree on every later tick.
     /// Counters (`OrgStats`, patch totals) are left out: they never feed back.
+    /// So is `Org::first_foreign_off` (T03), which only the harness reads.
     pub fn state_hash(&self) -> u64 {
         let mut h = Fnv::new();
         h.u64(self.tick);
@@ -1361,6 +1375,152 @@ jmpa A
 "
     ))
     .unwrap()
+}
+
+/// Default absorb count of `ancestor_t` (`--ancestor tierra` without
+/// `--k`): the smallest K that pays for itself in the harness (T03 §1).
+/// K = 64, 80, 96 and 112 do not; 128 does not fit a `lit` byte, so 127.
+pub const ANCESTOR_T_K: i8 = 127;
+
+/// Template-addressed ancestor (T03, E015; synthesis-2026-10-13 §3.2 with
+/// four-nop labels). K = absorb count, E = endowment (energy units).
+///
+/// ```text
+/// nop0 nop0 nop1 nop1                ; L0, the start label (bytes 0-3)
+/// lit C -4
+/// lit A K                            ; K is byte 7
+/// absorb ; dec A ; skipz A ; jmpr C  ; absorb loop
+/// searchf nop0 nop1 nop0 nop1        ; template = complement of L1 (13-16)
+/// jmpa D                             ; D = address past L1
+/// nop1 nop0 nop1 nop0                ; L1, the procedure label (bytes 18-21)
+/// self 0 ; swap B ; swap C           ; B = start, C = len
+/// alloc C                            ; A = child start
+/// lit D -4
+/// copy ; dec C ; skipz C ; jmpr D    ; copy loop
+/// lit A E ; divide A                 ; E is byte 33
+/// searchb nop1 nop1 nop0 nop0        ; template = complement of L0 (36-39)
+/// jmpa D                             ; D = address past L0, `lit C -4`
+/// ```
+///
+/// 41 bytes, 16 of them label nops. `searchf` scans forward from byte 17
+/// and its first match is its own L1 (D = 22, `self 0`); `searchb` scans
+/// backward from byte 31 and its first match is L0 (D = 4). A substitution
+/// that changes the op of an L1 byte breaks the self-match, and the
+/// search runs on to the next intact L1 within locality, a neighbour's:
+/// its procedure copies the intruder (`self` = executor) and its `searchb`
+/// returns the intruder to the neighbour's L0, so the intruder stays.
+///
+/// The specified body had five-nop labels (45 bytes). It replicates
+/// exactly but pays for itself at no K a `lit` byte can hold: K = 64, 80
+/// and 96 die without a child in 3,000 harness ticks, 112 makes one, and
+/// 127 nets -12.8 units per 26-tick cycle and dies after 7 children. Per
+/// the T03 branch in docs/tasks/README.md the first listed fix, labels of
+/// four nops, was applied (4 bytes shorter); then K = 64 and 80 die
+/// without a child, 96 makes one, 112 makes 7 and dies (-16.1 per
+/// 23-tick cycle), and 127 pays (119 children, alive at the store cap).
+///
+/// Budget per cycle at K = 127, E = 16, measured in the harness (quiet
+/// default world, full pool, below the store cap; PLAN §5.3.3's table for
+/// the 21-byte body): 25 ticks per cycle at c0 = 32.
+///
+/// | item | energy |
+/// |---|---|
+/// | absorb income (127 absorbs; proportional ration, about 7.95 each) | +1,009.3 |
+/// | absorb loop (127 × 4, minus the skipped jump) | -507 |
+/// | alloc (2 + 41) and copy loop (41 × 6, minus the skipped jump) | -288 |
+/// | `searchf` (1; 2 candidates) and `searchb` (1 + 2; 32 candidates) | -4 |
+/// | `lit C`, `lit A K`, `jmpa D` × 2, `self 0`, `swap` × 2, `lit D`, `lit A E`, `divide` (8) | -17 |
+/// | endowment to child | -16 |
+/// | upkeep (41 bytes × 0.1 × 25 ticks, plus the pending child, 41 bytes × 9 ticks) | -139.4 |
+/// | net per child | +37.9 |
+///
+/// The 21-byte ancestor at K = 64 nets +35.9 per 13-tick cycle in the
+/// same harness, so this body has about half its margin per tick. The L0
+/// nops run only at a fresh start (the restart lands at byte 4); the
+/// templates are skipped by the searches and L1 by the `jmpa`.
+pub fn ancestor_t(k: i8, e: i8) -> Vec<u8> {
+    crate::isa::assemble(&format!(
+        "nop0
+nop0
+nop1
+nop1
+lit C -4
+lit A {k}
+absorb
+dec A
+skipz A
+jmpr C
+searchf
+nop0
+nop1
+nop0
+nop1
+jmpa D
+nop1
+nop0
+nop1
+nop0
+self 0
+swap B
+swap C
+alloc C
+lit D -4
+copy
+dec C
+skipz C
+jmpr D
+lit A {e}
+divide A
+searchb
+nop1
+nop1
+nop0
+nop0
+jmpa D
+"
+    ))
+    .unwrap()
+}
+
+/// The two seeded ancestors (`--ancestor NAME`, T03 §1.1).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AncestorKind {
+    /// `ancestor`, the 21-byte body (PLAN §5.3.3). The default.
+    Std,
+    /// `ancestor_t`, the template-addressed body.
+    Tierra,
+}
+
+impl AncestorKind {
+    pub fn parse(name: &str) -> Option<AncestorKind> {
+        match name {
+            "std" => Some(AncestorKind::Std),
+            "tierra" => Some(AncestorKind::Tierra),
+            _ => None,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            AncestorKind::Std => "std",
+            AncestorKind::Tierra => "tierra",
+        }
+    }
+
+    /// K when `--k` is not given.
+    pub fn default_k(self) -> i8 {
+        match self {
+            AncestorKind::Std => 64,
+            AncestorKind::Tierra => ANCESTOR_T_K,
+        }
+    }
+
+    pub fn body(self, k: i8, e: i8) -> Vec<u8> {
+        match self {
+            AncestorKind::Std => ancestor(k, e),
+            AncestorKind::Tierra => ancestor_t(k, e),
+        }
+    }
 }
 
 #[cfg(test)]
