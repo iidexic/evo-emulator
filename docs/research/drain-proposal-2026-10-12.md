@@ -144,3 +144,10 @@ to the victim's store, capped so it cannot kill; Symbulation's nutrient
 mode, Jha 2026's STEAL at α = 0.8). The opcode-placement argument in
 condition 2 and the target, amount and ledger questions carry over
 unchanged.
+
+Correction (2026-10-13, E007 reserve check): "holds 100–130 at any
+cap" is wrong for E007. Active hosts hold a median of about 600 units,
+a fifth of them sit at the cap, and the cap is 1.7 passes. Condition 1
+stands in its original form: on the current store, a drain that takes
+at absorb's rate still empties a host within a fraction of the
+drainer's passes. Whether a higher cap gives store depth is untested.

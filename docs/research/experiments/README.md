@@ -211,6 +211,15 @@ founder lineages share the world through it. Sixteen founders are fine
 for measures after tick 35,000 or against a matched control.
 Next: unchanged, the energy-location change (store depth) or the Phase
 4 BFF harness.
+E007 reserve check (2026-10-13, E007 record, `analysis/e007_reserve.py`,
+no new runs): the check the synthesis named in §2 B fails in every seed.
+Hosts are not held at zero margin. Active hosts (divided within 50
+ticks) hold a median of about 600 units, a fifth of them sit at the
+1,344 cap, and the 7–8% of reproducers that reach it make half the
+divides. The cap is 1.7 passes, so the store is still shallow at this
+cap, but "whatever the cap" is unsupported. About 42% of living
+replicator-class bodies are stalled: broken by bit rot,
+non-reproducing, at the cap.
 
 Ordering note 2026-10-09: E005–E010 were run as Phase 2 follow-ups
 while Phase 3 (richer physics) has not started, and the next step is a

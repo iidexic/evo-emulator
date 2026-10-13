@@ -806,6 +806,13 @@ organism a fixed income that neighbours cannot deplete. The next cost
 rule is therefore not an energy rule at all: H16. Status of H13, H14
 and H15 unchanged.
 
+Correction (2026-10-13, E007 record, "Follow-up: the reserve check"):
+the check named in §2 B failed. Active hosts hold a median of about 600
+units, not 100–130, and a fifth of them sit at the 1,344 cap. So the
+pool does not hold them at zero margin, and the cap binds. The store is
+still at most 1.7 passes at this cap, which keeps E008–E010's reading
+and H16's motivation. "Not reachable by a cap" is untested, not shown.
+
 ---
 
 ## H16. A cost in time grades an entered host and makes a short eject pay (2026-10-13)
