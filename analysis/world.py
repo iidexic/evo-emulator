@@ -141,7 +141,7 @@ def _(ROOT, mo):
     # Only runs that carry world snapshots.
     run_dirs = {
         p.parent.relative_to(ROOT / "runs").as_posix(): p.parent
-        for p in sorted((ROOT / "runs").rglob("world.bin"))
+        for p in sorted([*(ROOT / "runs").rglob("world.bin"), *(ROOT / "runs").rglob("world.bin.gz")])
     }
     mo.stop(not run_dirs, mo.md(
         "No run under `runs/` has a `world.bin`. Every run recorded with `evo-core --out DIR` "

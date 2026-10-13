@@ -8,18 +8,22 @@ in energy units without the suffix (e.g. `energy_m` -> `energy`).
     run = load("../runs/diag/control_s1")
     run.deaths.filter(pl.col("offspring") == 0)
 
-Each CSV may also be stored gzipped as NAME.csv.gz (the E014 runner
-compresses births, deaths, orgs and census after each run); `load` reads
-whichever is there, the plain file if both are. `csv_path(run_dir, name)`
-gives the path for scripts that scan a file themselves (polars' read_csv
-and scan_csv decompress gzip as of 1.44).
+Each file may also be stored gzipped as NAME.gz (the E014 runner
+compresses every CSV but patches.csv, and world.bin, after each run);
+`load` and `world` read whichever is there, the plain file if both are.
+`csv_path(run_dir, name)` gives the path for scripts that scan a file
+themselves (polars' read_csv and scan_csv decompress gzip as of 1.44).
+`evo-core --classify` needs a plain genomes.csv: `classify` here restores
+one from genomes.csv.gz first, and `gunzip_verified` undoes any file.
 """
 
 from __future__ import annotations
 
 import gzip
+import hashlib
 import io
 import json
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -77,8 +81,65 @@ def binary() -> Path:
     raise FileNotFoundError("evo-core binary not found after build")
 
 
+CHUNK = 1 << 20
+
+
+def gzip_verified(src: Path) -> tuple[int, int]:
+    """Replace `src` by `src`.gz: compress to a temporary file (level 6),
+    read it back and compare SHA-256 with the original, then rename it into
+    place and delete the original. A stale .gz is replaced. Returns (plain
+    bytes, gzip bytes)."""
+    src = Path(src)
+    dst, tmp = src.with_name(src.name + ".gz"), src.with_name(src.name + ".gz.tmp")
+    h_in, h_out = hashlib.sha256(), hashlib.sha256()
+    with open(src, "rb") as fi, gzip.open(tmp, "wb", compresslevel=6) as fo:
+        while chunk := fi.read(CHUNK):
+            h_in.update(chunk)
+            fo.write(chunk)
+    with gzip.open(tmp, "rb") as fi:
+        while chunk := fi.read(CHUNK):
+            h_out.update(chunk)
+    if h_in.digest() != h_out.digest():
+        tmp.unlink()
+        raise RuntimeError(f"{src}: gzip read-back differs; plain file kept")
+    plain = src.stat().st_size
+    os.replace(tmp, dst)
+    src.unlink()
+    return plain, dst.stat().st_size
+
+
+def gunzip_verified(gz: Path, keep_gz: bool = False) -> Path:
+    """Write NAME from NAME.gz (gzip checks its own CRC on the way), read the
+    written file back and compare SHA-256, then delete the .gz unless
+    `keep_gz`. Returns the plain path."""
+    gz = Path(gz)
+    dst = gz.with_suffix("")
+    tmp = dst.with_name(dst.name + ".tmp")
+    h_in, h_out = hashlib.sha256(), hashlib.sha256()
+    with gzip.open(gz, "rb") as fi, open(tmp, "wb") as fo:
+        while chunk := fi.read(CHUNK):
+            h_in.update(chunk)
+            fo.write(chunk)
+    with open(tmp, "rb") as fi:
+        while chunk := fi.read(CHUNK):
+            h_out.update(chunk)
+    if h_in.digest() != h_out.digest():
+        tmp.unlink()
+        raise RuntimeError(f"{gz}: decompressed file reads back differently; .gz kept")
+    os.replace(tmp, dst)
+    if not keep_gz:
+        gz.unlink()
+    return dst
+
+
 def classify(run_dir: str | Path, harness_ticks: int = 3000) -> None:
-    """Run the single-genome harness on every genome; writes classes.csv."""
+    """Run the single-genome harness on every genome; writes classes.csv.
+    The binary reads a plain genomes.csv: if the run has only
+    genomes.csv.gz, a plain copy is written next to it first (the .gz is
+    kept; the plain file is read in preference)."""
+    d = Path(run_dir)
+    if not (d / "genomes.csv").exists() and (d / "genomes.csv.gz").exists():
+        gunzip_verified(d / "genomes.csv.gz", keep_gz=True)
     subprocess.run(
         [str(binary()), "--classify", str(run_dir), "--harness-ticks", str(harness_ticks)],
         check=True,
@@ -102,12 +163,18 @@ class World:
 
 
 def world(run_dir: str | Path) -> dict[int, World]:
-    """Every world snapshot in RUN_DIR/world.bin, keyed by tick (written at
-    census ticks since 2026-10-07; older runs have no file and get {})."""
-    p = Path(run_dir) / "world.bin"
-    if not p.exists():
+    """Every world snapshot in RUN_DIR/world.bin (or world.bin.gz), keyed by
+    tick (written at census ticks since 2026-10-07; older runs have no file
+    and get {})."""
+    d = Path(run_dir)
+    p, pz = d / "world.bin", d / "world.bin.gz"
+    if p.exists():
+        raw = np.fromfile(p, dtype=np.uint8)
+    elif pz.exists():
+        with gzip.open(pz, "rb") as f:
+            raw = np.frombuffer(f.read(), dtype=np.uint8)
+    else:
         return {}
-    raw = np.fromfile(p, dtype=np.uint8)
     out: dict[int, World] = {}
     pos = 0
     while pos + 12 <= raw.size:

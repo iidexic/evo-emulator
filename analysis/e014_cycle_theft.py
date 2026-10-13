@@ -31,14 +31,25 @@ genome executes no foreign code, so the theft rules classify as N = 0,
 while the tax does act on a lone genome: the tax arm's classes are those
 of the taxed world).
 
-Disk. A 250,000-tick run is about 0.5 GB of CSV (E007), so after each run
-is classified its births.csv, deaths.csv, orgs.csv and census.csv are
-gzipped in place (level 6; each is read back and compared by SHA-256
-before the plain file is deleted). genomes.csv, patches.csv and world.bin
-stay as they are (`--classify` reads genomes.csv). evo_run.load reads
-NAME.csv.gz transparently. A run found finished with plain files left
-(an interrupted compression) is compressed on the next call.
-`--no-compress` keeps everything plain.
+Disk. A 250,000-tick run is about 1.2 GB plain (estimated from E009b's
+50,000-tick runs), 530 GB for the main stage. So after each run is
+classified, every file but patches.csv and meta.json is gzipped in place:
+births, deaths, orgs, census, genomes and classes CSVs and world.bin
+(level 6; each is read back and compared by SHA-256 before the plain
+file is deleted; evo_run.gzip_verified). evo_run's `load` and `world`
+read NAME.gz transparently, preferring a plain file if both exist. A run
+found finished with plain files left (an interrupted compression, or a
+decompressed run) is compressed on the next call. `--no-compress` keeps
+everything plain. The summary's Disk section gives the measured size per
+run and, for the pilot, the main stage projected from it, with the free
+space on the drive.
+
+Re-classifying a compressed run: `evo-core --classify DIR` reads a plain
+genomes.csv. Either call evo_run.classify(DIR), which writes a plain
+genomes.csv from the .gz first, or restore the whole directory with
+`uv run e014_cycle_theft.py --decompress DIR` (any directory; every
+compressed run file under it, verified, .gz removed). A new classes.csv
+is plain and is read in preference to a stale classes.csv.gz.
 
 Usage (from analysis/):
 
@@ -46,7 +57,8 @@ Usage (from analysis/):
     uv run e014_cycle_theft.py pilot --analyse-only        # runs exist; redo calibration and tables
     uv run e014_cycle_theft.py main --jobs 12              # the main stage, tax from the pilot
     uv run e014_cycle_theft.py main --dry-run              # print the command lines, run nothing
-    uv run e014_cycle_theft.py main --no-compress          # keep the run CSVs plain
+    uv run e014_cycle_theft.py main --no-compress          # keep the run files plain
+    uv run e014_cycle_theft.py --decompress ../runs/e014/t50_eject/s1   # plain files again
     uv run e014_cycle_theft.py pilot --rules n0 --genomes eject --seeds 1 --ticks 2000 \
         --inject-tick 1000 --bin 500 --out ../runs/e014-smoke  # smoke test only
 
@@ -163,11 +175,8 @@ deaths.csv (test-genome deaths), calib.json (pilot) and summary.md.
 from __future__ import annotations
 
 import argparse
-import gzip
-import hashlib
 import json
 import math
-import os
 import shutil
 import subprocess
 import time
@@ -177,7 +186,7 @@ from pathlib import Path
 import polars as pl
 
 import traits
-from evo_run import CORE, ROOT, binary, load
+from evo_run import CORE, ROOT, binary, gunzip_verified, gzip_verified, load
 
 STAGES = {
     "pilot": dict(out=ROOT / "runs" / "e014_pilot", seeds=3, ticks=50_000),
@@ -195,10 +204,10 @@ GONE = 0.01  # "lost" and "last > 1%"
 CAP_M = 32_000  # Config::default(): cap_c0 = 32 units, cap_c1 = 0
 RESIDENT_FRAC = 0.9  # tasks README, pilot branch: exec_foreign / executed
 RATIO_LO, RATIO_HI = 0.3, 0.8  # prediction 2 and the pilot branch
-# Gzipped in place after each run (evo_run.load reads NAME.csv.gz).
-# genomes.csv stays plain: `--classify` reads it.
-COMPRESS = ("births.csv", "deaths.csv", "orgs.csv", "census.csv")
-CHUNK = 1 << 20
+# Gzipped in place after each run is classified (evo_run reads NAME.gz).
+# classes.csv last, so a run is still seen as classified however far an
+# interrupted compression got. patches.csv is small and stays plain.
+COMPRESS = ("births.csv", "deaths.csv", "orgs.csv", "census.csv", "world.bin", "genomes.csv", "classes.csv")
 
 ANC120 = "13325271fc11781605086c5a1845486c11101c130d"  # sim::ancestor(120, 16)
 GENOMES = {
@@ -238,34 +247,17 @@ def commands(exe: Path, d: Path, genome: str, seed: int, ticks: int, inject: int
     return run, cls
 
 
-def gzip_verified(src: Path) -> tuple[int, int]:
-    """Replace `src` by `src`.gz: compress to a temporary file, read it
-    back and compare SHA-256 with the original, then rename it into place
-    and delete the original. Returns (plain bytes, gzip bytes)."""
-    dst = src.with_name(src.name + ".gz")
-    tmp = src.with_name(src.name + ".gz.tmp")
-    h_in, h_out = hashlib.sha256(), hashlib.sha256()
-    with open(src, "rb") as fi, gzip.open(tmp, "wb", compresslevel=6) as fo:
-        while chunk := fi.read(CHUNK):
-            h_in.update(chunk)
-            fo.write(chunk)
-    with gzip.open(tmp, "rb") as fi:
-        while chunk := fi.read(CHUNK):
-            h_out.update(chunk)
-    if h_in.digest() != h_out.digest():
-        tmp.unlink()
-        raise RuntimeError(f"{src}: gzip read-back differs; plain file kept")
-    plain = src.stat().st_size
-    os.replace(tmp, dst)
-    src.unlink()
-    return plain, dst.stat().st_size
+def has(d: Path, name: str) -> bool:
+    """NAME or NAME.gz exists in `d`."""
+    return (d / name).exists() or (d / f"{name}.gz").exists()
 
 
 def compress_run(d: Path) -> tuple[int, int]:
-    """Gzip the large CSVs of a finished run that are still plain (so an
-    interrupted compression is finished on the next call). A stale .gz
-    next to a plain file is replaced. Returns total (plain, gzip) bytes
-    of the files compressed now."""
+    """Gzip the files of a finished run that are still plain (so an
+    interrupted compression is finished on the next call, and a run
+    decompressed for a re-classify is compressed again). A stale .gz next
+    to a plain file is replaced. Returns total (plain, gzip) bytes of the
+    files compressed now."""
     plain = packed = 0
     for name in COMPRESS:
         src = d / name
@@ -280,19 +272,23 @@ def run_one(exe: Path, out: Path, rule: str, genome: str, seed: int, ticks: int,
             tax: Tax | None, force: bool, compress: bool) -> str:
     d = run_dir(out, rule, genome, seed)
     tag = f"{rule}_{genome}/s{seed}"
-    if not force and (d / "classes.csv").exists():
+    if not force and has(d, "classes.csv"):
         if compress and any((d / n).exists() for n in COMPRESS):
             a, b = compress_run(d)
             return f"{tag}: done; gzipped {a / 1e6:.1f} -> {b / 1e6:.1f} MB"
         return f"{tag}: done"
     run, cls = commands(exe, d, genome, seed, ticks, inject, rule_flags(rule, tax))
     t0 = time.time()
-    if force or not (d / "genomes.csv").exists():
+    if force or not has(d, "genomes.csv"):
         if d.exists():
             shutil.rmtree(d)
         d.parent.mkdir(parents=True, exist_ok=True)
         with open(d.parent / f"s{seed}.stdout", "w") as f:
             subprocess.run(run, stdout=f, stderr=subprocess.DEVNULL, check=True)
+    if not (d / "genomes.csv").exists():
+        # A compressed run that lost its classes: `--classify` reads the
+        # plain file.
+        gunzip_verified(d / "genomes.csv.gz")
     t1 = time.time()
     subprocess.run(cls, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
     msg = f"{tag}: run {t1 - t0:.0f} s, classify {time.time() - t1:.0f} s"
@@ -524,6 +520,84 @@ def analyse_run(out: Path, rule: str, genome: str, seed: int, ticks: int, inject
         "exact_children", "offspring")
 
 
+def run_bytes(d: Path) -> tuple[int, int]:
+    """(bytes on disk, bytes uncompressed) of a run directory and its stdout
+    file. The uncompressed size of a .gz is its trailer's ISIZE (the size
+    modulo 2^32; every run file is far below 4 GiB)."""
+    disk = plain = 0
+    files = [p for p in d.iterdir() if p.is_file()]
+    out = d.parent / f"{d.name}.stdout"
+    if out.exists():
+        files.append(out)
+    for p in files:
+        n = p.stat().st_size
+        disk += n
+        if p.suffix == ".gz" and n >= 4:
+            with open(p, "rb") as f:
+                f.seek(-4, 2)
+                plain += int.from_bytes(f.read(4), "little")
+        else:
+            plain += n
+    return disk, plain
+
+
+def disk_lines(out: Path, jobs: list[tuple[str, str, int]], stage: str, ticks: int) -> list[str]:
+    """Measured size per run, and for the pilot the main stage projected
+    from it: the mean over arms of each arm's mean run size, times the main
+    stage's runs, times its ticks over these (sizes grow about linearly in
+    ticks once the population is up; this overstates a little)."""
+    rows = []
+    for r, g, s in jobs:
+        d = run_dir(out, r, g, s)
+        if has(d, "classes.csv"):
+            disk, plain = run_bytes(d)
+            rows.append(dict(arm=f"{r}_{g}", seed=s, disk=disk, plain=plain))
+    lines = ["## Disk", ""]
+    if not rows:
+        return lines + ["No finished runs."]
+    df = pl.DataFrame(rows)
+    arms = df.group_by("arm").agg(disk=pl.col("disk").mean(), plain=pl.col("plain").mean(), n=pl.len()).sort("arm")
+    mb = lambda v: f"{v / 1e6:,.1f}"
+    lines += [f"Per run, mean over seeds (MB): on disk, and uncompressed. {df.height} runs, "
+              f"{mb(df['disk'].sum())} MB on disk in all ({mb(df['plain'].sum())} MB uncompressed).", "",
+              "| arm | runs | MB on disk | MB uncompressed | ratio |", "|---|---|---|---|---|"]
+    for a in arms.iter_rows(named=True):
+        lines.append(f"| {a['arm']} | {a['n']} | {mb(a['disk'])} | {mb(a['plain'])} | {a['disk'] / a['plain']:.3f} |")
+    free = shutil.disk_usage(out).free
+    if stage == "pilot":
+        m = STAGES["main"]
+        n_main = len(RULES) * len(GENOMES) * m["seeds"]
+        scale = m["ticks"] / ticks
+        per_run = float(arms["disk"].mean())
+        total = per_run * scale * n_main
+        lines += ["", f"Projected main stage: {mb(per_run)} MB per run here x {m['ticks']:,} / {ticks:,} ticks = "
+                  f"{mb(per_run * scale)} MB per run; x {n_main} runs = {total / 1e9:,.1f} GB "
+                  f"(uncompressed {float(arms['plain'].mean()) * scale * n_main / 1e9:,.1f} GB), from "
+                  f"{arms.height} of {len(RULES) * len(GENOMES)} arms. Free on this drive now: "
+                  f"{free / 1e9:,.1f} GB."]
+    else:
+        lines += ["", f"Free on this drive now: {free / 1e9:,.1f} GB."]
+    return lines
+
+
+def decompress(root: Path) -> None:
+    """`--decompress DIR`: restore every compressed run file under DIR (a
+    run directory or a stage directory) to plain, verified, removing the
+    .gz. The next runner call on that stage compresses them again."""
+    n = 0
+    for name in COMPRESS:
+        for gz in sorted(root.rglob(f"{name}.gz")):
+            if gz.with_suffix("").exists():
+                # The plain file is newer (a re-classify writes classes.csv)
+                # and is what every reader takes; the stale .gz is replaced
+                # at the next compression.
+                print(f"{gz}: plain file exists, left as is", flush=True)
+                continue
+            print(gunzip_verified(gz), flush=True)
+            n += 1
+    print(f"decompressed {n} files under {root}")
+
+
 def add_norms(bdf: pl.DataFrame, runs: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
     """`entered_rate_norm`: each run's `entered_rate_ratio` over the n0 run
     with the same injected genome and seed (per bin in bins.csv, after the
@@ -550,7 +624,7 @@ def calibrate(out: Path, seeds: list[int], inject: int) -> dict | None:
     parts = []
     for s in seeds:
         d = run_dir(out, "t50", "resident", s)
-        if not (d / "classes.csv").exists():
+        if not has(d, "classes.csv"):
             return None
         run = load(d)
         check_rule(run, "t50", None)
@@ -841,7 +915,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter,
                                  epilog="See the module docstring for the measures and predictions.")
-    ap.add_argument("stage", choices=list(STAGES), help="pilot (3 seeds, 50,000 ticks) or main (30, 250,000)")
+    ap.add_argument("stage", nargs="?", choices=list(STAGES),
+                    help="pilot (3 seeds, 50,000 ticks) or main (30, 250,000); not needed with --decompress")
     ap.add_argument("--seeds", type=int, help="seeds 1..N (default: the stage's)")
     ap.add_argument("--ticks", type=int, help="override for smoke tests only")
     ap.add_argument("--inject-tick", type=int, default=INJECT, help="override for smoke tests only")
@@ -855,10 +930,18 @@ def main() -> None:
     ap.add_argument("--jobs", type=int, default=12)
     ap.add_argument("--force", action="store_true", help="redo runs that exist")
     ap.add_argument("--no-compress", action="store_true",
-                    help="leave births, deaths, orgs and census CSVs plain (default: gzip each after its run)")
+                    help="leave run files plain (default: gzip all but patches.csv after each run)")
+    ap.add_argument("--decompress", type=Path, metavar="DIR",
+                    help="restore every compressed run file under DIR to plain (before `evo-core --classify` "
+                         "on it) and exit")
     ap.add_argument("--analyse-only", action="store_true")
     ap.add_argument("--dry-run", action="store_true", help="print the command lines and exit")
     a = ap.parse_args()
+    if a.decompress:
+        decompress(a.decompress)
+        return
+    if a.stage is None:
+        ap.error("a stage (pilot or main) is required unless --decompress is given")
 
     st = STAGES[a.stage]
     out = a.out or st["out"]
@@ -927,7 +1010,7 @@ def main() -> None:
 
     def one(j):
         d = run_dir(out, *j)
-        if not (d / "classes.csv").exists():
+        if not has(d, "classes.csv"):
             return None
         return analyse_run(out, *j, ticks, a.inject_tick, a.bin, tax)
 
@@ -945,6 +1028,7 @@ def main() -> None:
     living.write_csv(out / "living.csv")
     tdeaths.write_csv(out / "deaths.csv")
     text = summarize(a.stage, bdf, runs, living, tdeaths, seeds, ticks, a.inject_tick, a.bin, calib, tax)
+    text += "\n\n" + "\n".join(disk_lines(out, jobs, a.stage, ticks))
     (out / "summary.md").write_text(text + "\n", encoding="utf-8", newline="")
     print(text)
     print(f"total {time.time() - t_all:.0f} s")

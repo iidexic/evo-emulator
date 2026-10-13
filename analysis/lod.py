@@ -257,13 +257,22 @@ def window_of(tick: int, size: int = WINDOW) -> int:
 # --- loading -----------------------------------------------------------------
 
 
+def _path(run_dir: Path, name: str) -> Path:
+    """NAME.csv, or NAME.csv.gz (E014 on compresses run files; polars reads
+    either)."""
+    p = evo_run.csv_path(run_dir, name)
+    if p is None:
+        raise FileNotFoundError(f"{run_dir}: no {name}.csv (plain or .gz)")
+    return p
+
+
 def _read(run_dir: Path, name: str, cols: list[str]) -> pl.DataFrame:
     over = {c: pl.Utf8 for c in HASH_COLS[name] if c in cols}
-    return pl.read_csv(run_dir / f"{name}.csv", columns=cols, schema_overrides=over)
+    return pl.read_csv(_path(run_dir, name), columns=cols, schema_overrides=over)
 
 
 def _scan(run_dir: Path, name: str) -> pl.LazyFrame:
-    return pl.scan_csv(run_dir / f"{name}.csv", schema_overrides={c: pl.Utf8 for c in HASH_COLS[name]})
+    return pl.scan_csv(_path(run_dir, name), schema_overrides={c: pl.Utf8 for c in HASH_COLS[name]})
 
 
 @dataclass
@@ -292,10 +301,10 @@ def load_run(run_dir: str | Path) -> RunData:
         _scan(d, "orgs").filter(pl.col("parent") == 0)
         .select("id", "birth_tick", "birth_hash").unique("id").collect().sort("id")
     )
-    census_ticks = sorted(pl.read_csv(d / "patches.csv", columns=["tick"])["tick"].unique().to_list())
+    census_ticks = sorted(pl.read_csv(_path(d, "patches"), columns=["tick"])["tick"].unique().to_list())
     classes = None
-    if (d / "classes.csv").exists():
-        c = pl.read_csv(d / "classes.csv", columns=["raw_hash", "class"], schema_overrides={"raw_hash": pl.Utf8})
+    if (cp := evo_run.csv_path(d, "classes")) is not None:
+        c = pl.read_csv(cp, columns=["raw_hash", "class"], schema_overrides={"raw_hash": pl.Utf8})
         classes = dict(c.iter_rows())
     return RunData(d, births, genomes, founders, census_ticks, classes)
 
