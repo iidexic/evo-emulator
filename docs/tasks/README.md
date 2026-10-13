@@ -17,6 +17,7 @@ before the runs, as always.
 | [T05](T05-measures.md) | `measures.py`: QNN, phylometrics, MODES, sites; baselines on E007/E012/E013 | T03's `--neighbours-pad-only` for sites only | built 2026-10-13 (Codex, `0d0c36b`; Opus review: numbers match independent recomputation; Opus follow-up `d198fa3`…`6cad7ca`: fixes, `--group absorb_class`, `root_lines`, 15 tests); shakedown closed: criterion 1 "5 of 10, explained", criterion 2 a report, QNN a weak sweep detector here (spec §4); knockout loop not wired, E007 reruns need `--classify` |
 | [T06](T06-lenski-lod.md) | line of descent with fitness per step, on E007's absorb sweep | nothing | built 2026-10-13 (`2f27841`); E007 record follow-up; sweep step deleterious in the harness in 8 of 9 seeds, D-before-B in seed 3 |
 | [T07](T07-density.md) | replicator density by uniform sampling (B0) | nothing | not built |
+| [T08](T08-alloc-copy-edge.md) | `alloc`/`copy` range edge: writes into one's own pending region pass range; `--legacy-pending-range` keeps the old world; four gate arms rerun | T03 | specified 2026-10-13, building (Opus) |
 
 ## Order
 
@@ -29,7 +30,11 @@ decides line B's route and nothing in line A waits on it.
 Experiments: E014 pilot as soon as T02 passes its tests (done
 2026-10-13; it took the skip branch, so there is no E014 main). E015
 after T03. E016 after E015 and T05's baselines (so the measures are
-applied to E016 on their second use, not their first).
+applied to E016 on their second use, not their first). Added
+2026-10-13: T08 (the `alloc`/`copy` edge fix) before E015 stage 3
+and E016, since the edge makes parasites without mutation in every
+arm; stage 3 runs under the fixed physics with a same-sun std
+control.
 
 ## Expected path, and what changes at each gate
 
