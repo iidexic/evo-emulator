@@ -248,7 +248,7 @@ judgement and can be overturned.
 | [isal_a_00787](https://doi.org/10.1162/isal_a_00787) | Non-Spatial Hash Chemistry | Sayama | C | Sayama non-spatial hash chemistry; covered in recent-3 |
 | [isal_a_00788](https://doi.org/10.1162/isal_a_00788) | On All Fours: A 3D Framework to Study Closed-loop Control of Quadrupedal Mouse Locomotion | Ramalingasetty, Markin, Lockhart et al. |  |  |
 | [isal_a_00789](https://doi.org/10.1162/isal_a_00789) | On Creativity and Open-Endedness | Soros, Adams, Kalonaris et al. |  |  |
-| [isal_a_00790](https://doi.org/10.1162/isal_a_00790) | (title garbled in Crossref and OpenAlex; abstract 2026-10-12: mutation size and rate in the origin of mutualism, Symbulation) | Croft, Johnson, Vostinar et al. | R | Added 2026-10-12, missed by the title-only triage; Croft, Johnson, Vostinar & Dolson, see recent-6 §4 |
+| [isal_a_00790](https://doi.org/10.1162/isal_a_00790) | On the de novo Evolution of Mutualism in Symbulation (title garbled in Crossref and OpenAlex; taken from the PDF) | Croft, Johnson, Vostinar et al. | R | Added 2026-10-12, missed by the title-only triage; Croft, Johnson, Vostinar & Dolson, read in full, see recent-6 §4 |
 | [isal_a_00791](https://doi.org/10.1162/isal_a_00791) | On the Emergence of Enzymes in an Artificial Chemistry | Folena, Kruszewski | R | Folena & Kruszewski: enzymes in a function soup (one line expected) |
 | [isal_a_00792](https://doi.org/10.1162/isal_a_00792) | Only ad-hoc solutions can solve the shutdown problem | Platt |  |  |
 | [isal_a_00793](https://doi.org/10.1162/isal_a_00793) | Ouroborotic Swarm Control: Collective Dynamics as a Reservoir | Uehara, Inoue, Kuniyoshi et al. |  |  |

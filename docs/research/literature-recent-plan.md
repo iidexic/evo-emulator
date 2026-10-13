@@ -157,9 +157,11 @@ ALIFE 2026 volume is on GitHub
 papers are on fergusonaj.github.io, and several are on EcoEvoRxiv. One
 paper was added: Croft, Johnson, Vostinar & Dolson 2024
 (`isal_a_00790`), missed by the title triage because its Crossref title
-is "System.Xml.XmlElement". Not reached in full, to download by hand:
-Johnson et al. 2025 (`isal.a.885`), Croft et al. 2024 (`isal_a_00790`),
-Sayama 2024 (`isal_a_00762`, no abstract either); optional, Johnson et
+is "System.Xml.XmlElement". Three papers could not be reached by
+script: Johnson et al. 2025 (`isal.a.885`), Croft et al. 2024
+(`isal_a_00790`) and Sayama 2024 (`isal_a_00762`, no abstract either).
+They were supplied by hand the same day and read in full (recent-5 §6,
+recent-6 §3 and §4, literature §7). Still unread, optional: Johnson et
 al. 2023 (`isal_a_00661`).
 
 Round 1 reached the ISAL proceedings only through arXiv preprints and

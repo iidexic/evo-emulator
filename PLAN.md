@@ -863,7 +863,12 @@ resource types). Multi-day runs. Compare ISA variants for evolvability.
   control that kills random unentered hosts at the entered hosts' death
   rate, depth crossed with defence length (one-byte endowment starver
   against the five-byte self-scan or six-byte eject), 30 seeds per arm,
-  and per-lineage gain and loss of the defence logged at birth. The
+  and per-lineage gain and loss of the defence logged at birth. For the
+  first complete defence in each seed, classify its parent and
+  grandparent by how much of the defence they carry, over all births
+  (Croft 2024's look-back without its pruning): a one-birth jump of a
+  k-byte defence is of order (10^-5)^k, so the look-back shows which
+  intermediates the path went through. The
   same day's `drain` proposal (`docs/research/drain-proposal-2026-10-12.md`)
   pairs `drain` with store depth; the round-2 precedent for its "amount"
   choice is a take from income or proportional to the victim's store,
@@ -994,9 +999,9 @@ test them.
   2026-10-12): the ALIFE 2023–2026 proceedings, listed and triaged in
   `notes/isal-proceedings-2023-2026.md`, 35 papers in three clusters,
   notes in `recent-5` to `recent-7`, summary and answers in
-  `literature.md` §7. Still to read by hand: Johnson et al. 2025
-  (`isal.a.885`), Croft et al. 2024 (`isal_a_00790`), Sayama 2024
-  (`isal_a_00762`).
+  `literature.md` §7. The three papers no script could reach (Johnson
+  et al. 2025, Croft et al. 2024, Sayama 2024) were supplied by hand
+  and read the same day.
 - `docs/research-historic/`: the earlier Codex pass. Superseded by
   `literature.md`; kept for the reference list.
 - `docs/research/experiments/`: one file per experiment (E001 onward): seed, config hash,

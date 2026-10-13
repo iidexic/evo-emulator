@@ -537,23 +537,52 @@ https://github.com/NeoGendaijin/py-hash-chemistry (not cloned).
 
 ---
 
-## 6. Sayama 2024, "Hash Chemistry on a Cellular Grid" (not reached)
+## 6. Sayama 2024, "Hash Chemistry on a Cellular Grid: An Open-Ended Artificial Chemistry System with Computational Efficiency and Nontrivial Spatio-Temporal Dynamics"
 
-https://doi.org/10.1162/isal_a_00762, ALIFE 2024. No abstract in Crossref, OpenAlex or
-Semantic Scholar, and no open copy found (see §10). The only descriptions available
-come from the same author's later papers, so this section is **UNVERIFIED** as to
-the 2024 text itself:
+https://doi.org/10.1162/isal_a_00762, ALIFE 2024. **Read in full on 2026-10-12** from a
+PDF supplied by hand (`docs/downloaded-papers/isal_a_00762.pdf`). It is a two-page
+extended abstract with no abstract block, which is why Crossref, OpenAlex and Semantic
+Scholar had none.
 
-- arXiv 2412.12790 (Sayama, "Structural Cellular Hash Chemistry", IEEE ALIFE-CIS 2025)
-  abstract: "the cellular version explicitly represented multiscale spatial ecological
-  interactions among evolving patterns, yet it failed to show meaningful adaptive
-  evolution or complexity growth".
-- [HS-arXiv] §2.3 calls it "an unsuccessful prototype": "simplified four-way
-  competition rules, was computationally very cheap. However, in this prototype, the
-  entities lacked explicit individual identity, and the model failed to show
-  meaningful adaptive evolution or complexity growth".
+**Model.** An L × L grid (L = 100) whose cells are empty or hold one element of type
+1..k (k = 1,000). The run starts almost empty, with 10 random elements. One update:
 
-For evo: superseded by SCHC (§5). No soup-size or emergence result to extract.
+1. Pick four non-overlapping squares, two of side l1 and two of side l2, with l1 and
+   l2 drawn from {1, ..., L/2}.
+2. Cut out the four patterns and "shrink" them by removing blank rows and columns, so
+   that small shifts and gaps do not change a pattern's identity.
+3. Score each shrunk pattern by a hash: (h(array) mod M)/M with M = 100,000,000, using
+   Mathematica 14.0's `Hash` at its defaults.
+4. The best of the four copies itself over the other square of its own size. Each
+   copied cell is emptied with probability 0.2% or set to a random type with
+   probability 0.2%.
+
+**Cost.** "A simulation for 2 × 10^5 updates with L = 100 would complete in less than
+10 minutes in an ordinary laptop without any code optimization."
+
+**Evidence for open-endedness.** One run shown as twelve snapshots (t = 0 to 200,000).
+The claim is visual: the system "does not converge to dynamic equilibria" but "keeps
+dynamically changing indefinitely", in composition, density and small repeated spatial
+structures. No measure is computed. The paper says a systematic study "is currently
+underway".
+
+**What the same author said later.** The later papers call this model a failure on
+exactly the point the abstract claims:
+
+- arXiv 2412.12790 (Sayama, "Structural Cellular Hash Chemistry", IEEE ALIFE-CIS 2025):
+  the cellular version "failed to show meaningful adaptive evolution or complexity
+  growth".
+- [HS-arXiv] §2.3: "an unsuccessful prototype", in which "the entities lacked explicit
+  individual identity".
+
+**For evo.** (inference) No soup size, emergence rate or energy rule to extract.
+Fitness is an arbitrary hash in a tournament, with no metabolism and no cost of
+running. The transferable point is about evidence: "keeps changing and never settles",
+judged from snapshots of a single run, was withdrawn by its own author once the model
+was studied further. PLAN frames the open problem as escaping equilibrium (§2), so evo is
+exposed to the same mistake: a ring that "keeps changing" is not yet evidence. Judge it
+only through the planned measures (QNN over `func_hash`, MODES as a secondary readout),
+never from ring snapshots or a census that looks unsettled. Superseded by SCHC (§5).
 
 ---
 
@@ -767,7 +796,6 @@ conservation with per-site knockout effect, to find sites selected only in the w
 
 ## 12. UNVERIFIED items
 
-- Sayama 2024: content only from the author's later papers (§6).
 - Folena & Kruszewski 2024, Stenzel et al. 2024, Kocherovsky & Banzhaf 2024, JaxLife
   2024, Cotler et al. 2025: abstracts only.
 - Usui 2023: the description comes from a search summary only.
@@ -778,8 +806,8 @@ conservation with per-site knockout effect, to find sites selected only in the w
 
 ## 13. Not reached
 
-- Sayama 2024 full text (`isal_a_00762`): needs the hand download. It is the only
-  full-read paper of this cluster still missing.
+- Sayama 2024 (`isal_a_00762`) was supplied by hand on 2026-10-12 and is now read in
+  full (§6).
 - Usui 2023: no abstract anywhere reachable.
 - Hill Roy 2026 body (available in `docs/downloaded-papers/`; one line only was asked).
 - Horiguchi & Sayama code (NeoGendaijin/py-hash-chemistry), not cloned.

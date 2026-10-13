@@ -757,7 +757,12 @@ each insertion lengthens the body), arising during a sweep, on a ring.
 E007's absorb-phase sweep in the first 10,000 ticks is such a window.
 No ISAL 2023–2026 paper traces a path to a defence; every defence in
 the Symbulation and Avida line pays at each step by construction.
-Status unchanged.
+Croft et al. 2024, read in full later the same day, supplies the
+measurement that would show a path if one is walked: classify the
+parent and grandparent of the first complete defence in each seed by
+how much of it they carry, over all births in `births.csv`. A one-birth
+jump to the five-byte self-scan is of order (10^-5)^5, so any complete
+self-scan came by steps (inference). Status unchanged.
 
 ---
 

@@ -21,8 +21,8 @@ This file does not repeat `notes/recent-1-host-parasite.md` (Lenski 2003, Covert
 |---|---|---|---|
 | Kelley et al. 2026 | 10.1162/isal.a.1024 | full text + experiment code | EcoEvoRxiv preprint (CC BY camera-ready layout), https://ecoevorxiv.org/repository/object/12471/download/25539/ ; repo https://github.com/amlalejini/2026-alife-mutualism-constrains-evolution |
 | Johnson et al. 2026, "Saved by the Symbiont" | 10.1162/isal.a.1025 | full text + code + Symbulation source at the pinned commit | EcoEvoRxiv https://ecoevorxiv.org/repository/object/13555/download/23817/ ; Zenodo https://doi.org/10.5281/zenodo.19477499 |
-| Johnson, Croft, Vostinar, Lalejini & Dolson 2025 | 10.1162/isal.a.885 | abstract + code + the authors' erratum + supplement of the journal follow-up | Crossref abstract; https://github.com/john-k-903849031/ALIFE2025-TagPartnerChoice ; https://github.com/john-k-903849031/TagPartnerChoice_journal |
-| Croft, Johnson, Vostinar & Dolson 2024 | 10.1162/isal_a_00790 | abstract + analysis script | OpenAlex abstract; https://github.com/emilydolson/ALIFE-2024-DeNovoMutualism |
+| Johnson, Croft, Vostinar, Lalejini & Dolson 2025 | 10.1162/isal.a.885 | full text (2026-10-12) + code + the authors' erratum + supplement of the journal follow-up | PDF supplied by hand; https://github.com/john-k-903849031/ALIFE2025-TagPartnerChoice ; https://github.com/john-k-903849031/TagPartnerChoice_journal |
+| Croft, Johnson, Vostinar & Dolson 2024 | 10.1162/isal_a_00790 | full text (2026-10-12) + analysis script | PDF supplied by hand; https://github.com/emilydolson/ALIFE-2024-DeNovoMutualism |
 | Ferguson, Ofria & Bohm 2024 | 10.1162/isal_a_00801 | full text | proceedings PDF on Ferguson's site, https://fergusonaj.github.io/docs/pubs/ferguson_et_al_2024_replaying_adaptive_momentum.pdf |
 | Ferguson & Ofria 2023 | 10.1162/isal_a_00684 | full text | https://fergusonaj.github.io/docs/pubs/ferguson_ofria_2023_potentiating_mutations_facilitate_learning.pdf |
 | Ragusa & Bohm 2023 | 10.1162/isal_a_00660 | abstract only; the full study read as Bohm, Ragusa, Ofria, Lenski & Adami 2024 | bioRxiv https://doi.org/10.1101/2024.04.08.588357 (PDF https://www.biorxiv.org/content/biorxiv/early/2024/04/11/2024.04.08.588357.full.pdf) |
@@ -263,24 +263,52 @@ host's points are a reproduction threshold, and execution is free.
 
 ## 3. Johnson, Croft, Vostinar, Lalejini & Dolson 2025, "Keep Your Friends Close and Your Enemies Distant: Partner Choice Can Enable Parasite Exclusion in Endosymbiotic Coevolution"
 
-ALIFE 2025, https://doi.org/10.1162/isal.a.885. Paper text **not reached**: OpenAlex
-and Semantic Scholar list only the MIT Press PDF, and no preprint was found. Read
-instead: the abstract (Crossref), the experiment repository
+ALIFE 2025, https://doi.org/10.1162/isal.a.885. **Read in full on 2026-10-12** from a
+PDF supplied by hand (`docs/downloaded-papers/isal.a.885.pdf`; 8 pages with
+references). The paper's own data and code link is Zenodo
+https://doi.org/10.5281/zenodo.16891903. Read earlier, before the text was available:
+the experiment repository
 https://github.com/john-k-903849031/ALIFE2025-TagPartnerChoice, the Symbulation commit
 it pins (`7f368f6a`, branch `tag-matching` of `K-Johnson-Horrigan/SymbulationEmp`),
 and the repository of a journal follow-up,
 https://github.com/john-k-903849031/TagPartnerChoice_journal, "Let the Wrong One In:
 Partner Choice Evolution Can Select for Endosymbiotic Parasite–Mutualist Coexistence",
-with data at OSF https://osf.io/8fcux.
+with data at OSF https://osf.io/8fcux. The code facts below were written from those
+first; the paper text confirms them except where marked.
 
-**Abstract (UNVERIFIED beyond it).** Tag matching is implemented "as a mechanism for
-partner choice". The authors "measured the levels of endosymbiotic mutualism that
-evolved under a range of partner choice selectivity, tag mutation rates, and
-endosymbiont vertical transmission rates". The abstract also reports:
+**Model, from the paper text.**
 
-- "mutualists and hosts evolving to have more similar tags than parasites and hosts";
-- "ranges of partner selectivity and tag mutation rates that enabled the de novo
-  evolution of exclusive mutualism (i.e. parasites went completely extinct)".
+- 10,000 host cells, "well-mixed". The run starts with a full host population; 10,000
+  symbionts are injected at random, and those landing in an occupied host die
+  ("approximately 7,000 symbionts survive this initialization on average"). At most one
+  symbiont per host.
+- Genome: an interaction value in [−1, 1] and a 32-bit tag. Every tag starts as all 0s.
+- Each update a host receives 100 resources. A host with a negative value spends that
+  fraction of them on defence; a positive value, on donation to its symbiont.
+  "Crucially, hosts that engage in defensive or mutualistic behavior expend resources
+  regardless of whether they contain a symbiont; thus, in the absence of a symbiont
+  population, hosts are pressured towards neutrality."
+- Symbionts receive nothing from the world. A mutualist keeps a share of what its host
+  gives and returns the rest multiplied by the synergy factor (3 in this paper). A
+  parasite whose value is greater (less negative) than its host's steals nothing.
+  Otherwise it steals the proportion (host value, floored at 0) − (symbiont value) of
+  "the host's remaining resources (whatever the host didn't spend on donation or
+  defense)". The paper's example: a host at −0.2 given 10 spends 2 on defence; a
+  symbiont at −0.7 steals 50% of the remaining 8, leaving the host 4.
+- A host reproduces at 1,000 resources; its offspring goes to a random cell and
+  replaces the occupant. A symbiont reproduces horizontally at 500, into a random host;
+  a failed infection costs it nothing. Vertical transmission is free and happens with a
+  fixed probability per host birth, "assuming the tags match sufficiently well".
+- Mutation: the interaction value gets N(0, 0.02) added at rate 1.0 per birth; each tag
+  bit flips with the tag mutation probability.
+
+**Tag rule: paper against code.** The paper describes the distance as the proportion of
+mismatching bits, compared with a Poisson draw whose mean is the permissiveness; the
+infection fails if the distance exceeds the draw. The code multiplies both sides by 32:
+it compares the count of mismatching bits with a Poisson draw of mean 32 ×
+permissiveness. (inference) Read literally, the paper's version would reject almost any
+mismatch at low permissiveness, since a Poisson(0.125) draw is 0 with probability
+e^−0.125 ≈ 0.88. The code's version is what ran.
 
 **Encoding, from the code.** This is Symbulation default mode (`./symbulation_default`
 in every job script), so the interaction value is a scalar. Tags are `emp::BitSet<32>`
@@ -290,13 +318,73 @@ in every job script), so the interaction value is a scalar. Tags are `emp::BitSe
 infection fails if `tag_distance > cutoff`. So acceptance is the probability that a
 Poisson draw with mean 32 × permissiveness is at least the Hamming distance.
 (inference) Every single bit flip changes a parasite's infection probability, so the
-defence is graded by construction. Tags are checked only on horizontal infection.
-Tags mutate by `FlipRandom` at `TAG_MUTATION_SIZE` per bit.
+defence is graded by construction. Tags mutate by `FlipRandom` at `TAG_MUTATION_SIZE`
+per bit.
+
+*Correction (2026-10-12).* An earlier version of this note said tags are checked only
+on horizontal infection. That was wrong. `Symbiont::VerticalTransmission`
+(`source/default_mode/Symbiont.h`, line 697 of the pinned copy) runs the same check and
+deletes the offspring when it fails, and the paper says the same.
 
 **Lineage tracking, from the code.** `Host::Reproduce` adds to `towards_partner_count`
 and `from_partner_count` the number of tag bits that moved toward or away from the
 host's current symbiont's tag (`Host.h`). This is a per-lineage step count of the
-defence trait. Whether the paper reports it is unknown.
+defence trait. The paper does not report it.
+
+**Design, from the paper text.** 100,000 updates; 30 replicates per parameter
+combination; permissiveness from 0.125 to 0.625 in steps of 0.0625, plus a no-tag
+control. Four experiments:
+
+1. Maintenance: start values drawn from U(−1, 1), vertical transmission (VT) from 0 to 1
+   in steps of 0.1, tag mutation 0.01.
+2. De novo: hosts start at −0.1 ("mostly neutral"), symbionts at −0.5; VT 0.5; tag
+   mutation ∈ {0, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1}.
+3. and 4. Experiments 1 and 2 with behaviour fixed and tags still evolving: parasitic
+   (host −0.35, symbiont −0.9) or mutualistic (both 0.95).
+
+Statistics: Wilcoxon rank-sum tests with Bonferroni correction, and Cliff's delta with
+the Vargha & Delaney bounds.
+
+**Results, from the paper text.**
+
+- Experiment 1. "Parasites are excluded in the low tag-permissiveness condition when
+  the chance of vertical transmission was 40 and 50%", at permissiveness < 0.375 for
+  VT 0.4 and < 0.5625 for VT 0.5. They persist without tags and at higher
+  permissiveness. At VT 0.2 and 0.3, low permissiveness excludes weak mutualists
+  instead, replaced by parasites (VT 0.2, permissiveness 0.375) or by a mix of strong
+  mutualists and parasites (VT 0.3, permissiveness < 0.625). At low VT it can drive all
+  symbionts extinct.
+- Experiment 2 has four regions:
+  1. Low tag mutation or high permissiveness behaves like the no-tag control.
+  2. Permissiveness too low for the tag mutation rate: symbionts cannot infect and go
+     extinct.
+  3. High tag mutation with intermediate permissiveness: exclusively parasitic.
+  4. The two balanced: exclusively mutualistic.
+
+  In the paper's words, "selective and slowly evolving tags can exclude parasites,
+  while selective and quickly evolving tags can exclude mutualists."
+- Tag mismatch. Mutualist–host pairs (value ≥ 0.6) are more tag-similar than
+  parasite–host pairs (value < −0.6), p < 0.05 corrected. In experiment 1, Cliff's delta
+  is 0.114–0.227 at VT 0.2 and 0.181 at VT 0.3 with permissiveness 0.625, and 0.546–0.800
+  elsewhere. In experiment 2, 24 conditions ended with both types present.
+- Fixed behaviour (experiments 3 and 4). Fixed parasites are more mismatched than fixed
+  mutualists over most of the space. The exception is tag mutation 0.0001 with
+  permissiveness ≥ 0.5, where it reverses (δ ≈ 0.067, 0.231 and 0.340 at 0.5, 0.5625
+  and 0.625).
+- Discussion. Parasites follow a "brute force life history strategy": many horizontal
+  attempts that accept mediocre matches. That makes their offspring poor candidates for
+  vertical transmission. The authors point to Moreno, Lalejini & Ofria 2023
+  ("Matchmaker, matchmaker, make me a match", *GPEM* 24:4): "different matching metrics
+  produce wildly different mutational landscapes". This is the motive for the journal
+  follow-up's comparison of Hamming against Hash.
+
+**What the paper does not report.** Every result is an end-of-run distribution pooled
+over replicates: behaviour bins, and tag mismatch of living pairs. There are no time
+series, no lineage counts and no path.
+
+**A small inconsistency.** The paper says it took its "high interaction value mutation
+size (0.02) and rate (1.0)" from Croft et al. 2024. Croft's grid starts at size 0.05,
+and calls 0.002 the traditional default (§4), so 0.02 lies between the two.
 
 **Settings, from the code** (`data/tagmut_evolving/SymSettings.cfg` and job scripts).
 
@@ -311,7 +399,7 @@ defence trait. Whether the paper reports it is unknown.
   per cell (`--array=1001-1330`).
 
 **Erratum, quoting the paper.** The repository README (dated 05/06/2026) quotes two
-sentences of the paper. One: "Mutualists consistently have less tag mismatch than
+sentences of the paper (checked against the text; they are verbatim). One: "Mutualists consistently have less tag mismatch than
 parasites; this effect is medium or large in all cells other than permissiveness 0.125
 and mutation 0.0001 (δ ≈ 0.1, less than small effect) and permissiveness 0.5625 and
 mutation 0.1 (δ ≈ 0.15; small effect)". It then adds more small-effect cells
@@ -346,29 +434,120 @@ an encoding in which one mutation re-randomises compatibility. It is the nearest
 published analogue of E009's proposed 2 × 2 of cost against path length, though the
 "path" here is one bit at a time and never neutral.
 
-## 4. Croft, Johnson, Vostinar & Dolson 2024 (mutation size and rate in the origin of mutualism)
+(inference, from the full text) The host's defence costs a fixed fraction of its income
+every update, whether or not it carries a symbiont, and without symbionts hosts drift
+to neutral. E009a found the same for evo's five-byte self-scan: about 5% per generation
+on the K = 120 host, and lost at N = 0, 25 and 50. The difference is grain. In
+Symbulation the defence and its cost both scale continuously from zero, so a host can
+carry a little of each. evo's self-scan costs something for each byte inserted and
+protects only when all five bytes are present.
+
+## 4. Croft, Johnson, Vostinar & Dolson 2024, "On the de novo Evolution of Mutualism in Symbulation"
 
 ALIFE 2024, https://doi.org/10.1162/isal_a_00790. Crossref and OpenAlex give the title
-as "System.Xml.XmlElement". Abstract from OpenAlex
-(https://api.openalex.org/works/doi:10.1162/isal_a_00790). Full text **not reached**.
-The analysis script is at https://github.com/emilydolson/ALIFE-2024-DeNovoMutualism.
+as "System.Xml.XmlElement"; the title above is from the PDF. **Read in full on
+2026-10-12** from a PDF supplied by hand (`docs/downloaded-papers/isal_a_00790.pdf`).
+Code and data: Zenodo https://doi.org/10.5281/zenodo.11632609, mirrored at
+https://github.com/emilydolson/ALIFE-2024-DeNovoMutualism.
 
-**Abstract (UNVERIFIED beyond it).** Using Symbulation, "increasing mutation size and
-mutation rate both promote the evolution of mutualism, as does faster generational
-turnover within symbionts". A probabilistic model "suggests that large regions of the
-parameter space where mutualism evolves can be explained purely by mutation size and
-rate". But "mutualism evolves in a wider region of parameter space than we would
-expect under this simple probabilistic model", which the authors attribute to
-coevolution, "corroborated by phylogenetic data showing that partners in the first
-mutualism are often themselves descended from mutualists".
+**Setup.**
 
-**What the analysis script does** (`phylo_analysis.Rmd`). It finds "the first
-mutualistic partnerships" per seed. It then bins the immediate host and symbiont
-ancestors as antagonistic (phylogeny bin ≤ 7), neutral (8–11) or mutualistic (≥ 12).
-Mutation sizes 0.005, 0.01, 0.015, 0.05 and 0.1 appear in commented lines.
+- Default-mode Symbulation, with obligate endosymbionts (no free-living phase). Hosts
+  and symbionts both start at interaction value −0.5.
+- Vertical transmission: "symbionts automatically have a 30% chance of reproducing with
+  no cost when hosts reproduce".
+- Mutation: with probability *rate* per birth, add a draw from N(0, *size*) to the
+  interaction value. The "traditional" Symbulation regime is rate 1 and size 0.002;
+  under it, de novo mutualism never evolved (Vostinar & Ofria 2019).
+- A full factorial of rate ∈ {0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 1} and size ∈ {0.05,
+  0.1, 0.15, 0.5, 1}, 30 replicates each. Everything else is at Symbulation's defaults.
+  The text does not state the population size or the run length.
+- Follow-up: symbionts also mutate within their lifetime, with probability 1% or 10%,
+  as a stand-in for shorter symbiont generations. Rate is fixed at 0.1 there, over a
+  range of sizes.
+- Statistics: Kruskal–Wallis, then pairwise Wilcoxon rank-sum with Bonferroni
+  correction.
 
-(inference) This is a one-step look back at the parent's behaviour class, not a path
-with intermediate fitnesses.
+**Two hypotheses.**
+
+- *Instantaneous.* Mutualism appears when a host and its symbiont both mutate from
+  negative to positive at once. The paper's Equation 1 gives the chance of that over a
+  run:
+
+  P = 1 − (1 − Φσ(Vs) · Φσ(Vh))^(S·G·μ)
+
+  Here Φσ is the cumulative distribution of N(0, σ), σ is the mutation size, Vs and Vh
+  are the mean symbiont and host values, μ is the rate, S the population size and G the
+  number of generations. (The Greek letters are garbled in the extracted text; this
+  reading follows the definitions given beneath the equation.) It predicts an abrupt
+  switch from "never" to "always" (Fig. 2).
+- *Gradual de-escalation.* Host and symbiont become less antagonistic in small steps.
+  The authors argue this "cannot happen via drift, as any step away from antagonism will
+  be deleterious" to both partners, and that "simple valley crossing would be
+  insufficient" for a long run of steps. So it needs "a coevolutionary feedback loop,
+  perhaps one enabled by increased standing genetic variation at high mutation sizes
+  and rates".
+
+**Results.**
+
+- Three regimes (Fig. 3). With too little rate × size, no mutualism evolves. With
+  enough, it evolves "immediately". In between, it evolves stochastically, and there
+  "symbionts consistently evolve to be more parasitic before later becoming
+  mutualistic". Where mutualism fails, symbionts often go extinct.
+- Mutation size has "a much more dramatic effect" than rate, as Equation 1 predicts.
+- But mutualism evolved at sizes 0.05 and 0.1 under some rates, where Equation 1 says
+  it never should. By their sensitivity analysis, "even a many-order-of-magnitude error
+  in our generation count estimation would be insufficient" to explain this.
+- The maximum symbiont value over time (Fig. 5) shows a small subset of symbionts
+  rising at once in the successful runs of the stochastic regime.
+- Phylogeny (Fig. 6): "most 'first mutualists' are indeed descended from a neutral or
+  mutualistic hosts and symbionts". Descent straight from antagonists is commoner at
+  high mutation size. The Muller plots (Fig. 7; size 0.1, rate 0.01) show "the most
+  mutualistic taxa at each point in time keep giving rise to even more mutualistic
+  taxa".
+- Within-lifetime symbiont mutation raises the final symbiont values (Fig. 8).
+- Conclusion: an increase in mutation size is needed for de novo mutualism at all, but
+  "giant mutations that instantaneously change the sign of the interaction value are
+  unnecessary".
+
+**Method caveats, as the authors state them.**
+
+- A taxon is one of 20 equal bins of interaction value over [−1, 1]. A new taxon starts
+  whenever an offspring falls in a different bin from its parent. A few follow-up runs
+  used individual-level phylogenies.
+- Phylogenies are pruned to taxa with surviving descendants. The "first" mutualism is
+  therefore the first whose two partners both founded lineages that lasted to the end
+  of the run.
+- Host–symbiont associations carry no time stamps, which "would only lead us to
+  underestimate the importance of gradual deescalation".
+- "Each bar is 10 random samples from each condition through the first 10,000 updates"
+  (Fig. 6), for computational reasons.
+- (inference) The analysis script's classes (antagonistic bins ≤ 7, neutral 8–11,
+  mutualistic ≥ 12) put "neutral" at |value| < 0.2, given bins 0.1 wide.
+
+**For evo.** (inference)
+
+- This is the nearest the cluster comes to Q2, for a cooperative trait rather than a
+  defence. It tells a single jump from a stepwise path with two cheap tools:
+  - a jump-only probability model of the Equation 1 form, 1 − (1 − p_jump)^trials,
+    set against the observed rate, where more than predicted means a stepwise path is
+    being walked;
+  - a classification of the ancestors of the first successful instance.
+- Both run on evo's existing logs. `births.csv` has `parent_hash` and
+  `parent_now_hash`, and `genomes.csv` has a parent for each raw hash
+  (`docs/instrumentation.md`).
+- For E009's five-byte self-scan the jump model needs no fitting. Every mutation in evo
+  touches one byte (write bit flips, copy slips, bit rot; PLAN §5), and a specific byte
+  at a specific executed position arises at about 10^-5 per birth (literature.md §7.4
+  question 3). Five at once in one birth is then of order 10^-25. So any complete
+  self-scan in a run came by steps, and the look-back says which intermediates it came
+  through.
+- Mutation size moved Croft's outcome far more than rate. In evo, where every mutation
+  is one byte, a defence's length in bytes is the nearest analogue of their size axis,
+  read inversely: fewer bytes, fewer steps. Keeping defence length as a factor in the
+  store-depth design (one byte against five or six) is the evo version of that axis.
+- Their pruning caveat applies to any "first defended genome" in evo. Count first
+  appearances from `births.csv`, not from the survivors' tree.
 
 ## 5. Johnson, Dirkswager & Vostinar 2023, ectosymbiosis hastens endosymbiosis (background)
 
@@ -676,11 +855,15 @@ no defence. Peripheral for evo.
   - per-replicate time series of hosts gaining, losing and regaining XOR as kill rates
     rise and fall (Johnson, replicate 10).
 - Johnson 2025's code counts tag bit flips toward and away from each host's partner
-  per lineage, but the paper text was not reached. Its journal follow-up compares
-  encodings (graded Hamming against randomising Hash) rather than paths.
-- Croft 2024 (abstract and script) looks one step back, at the behaviour class of the
-  first mutualist pair's parents, and its abstract credits large-effect mutations and
-  "partners ... descended from mutualists".
+  per lineage, but the paper (read in full) does not report the counts; every result
+  is an end-of-run distribution. Its journal follow-up compares encodings (graded
+  Hamming against randomising Hash) rather than paths.
+- Croft 2024 (read in full) looks one step back, at the behaviour class of the first
+  mutualist pair's parents, on pruned phylogenies binned into 20 classes, 10 samples
+  per condition. Most first mutualists descend from neutral or mutualistic parents. It
+  also fits a jump-only probability model and finds mutualism where the model says it
+  should never appear. Its trait is cooperation, not a defence, so it does not answer
+  this question, but its two tools transfer (§4).
 - The only path-with-replay analysis in the cluster is Ferguson & Ofria 2023, for
   associative learning. Its single largest potentiating steps were twice neutral, once
   harmful and once beneficial, with learning 8–91 steps later.
@@ -749,6 +932,16 @@ in evo:
 
 evo's population of about 1,000 lies between Ferguson's 512 and Bohm's balanced 2,400.
 
+**Croft 2024** (read in full, §4) is the one paper here that tests a jump against a
+stepwise path with a supply model. Its jump-only Equation 1 explained the region where
+mutualism evolved at large mutation sizes, but not the cases at sizes 0.05 and 0.1,
+where most first mutualists descended from neutral or mutualistic parents. The authors
+argue each step there is harmful to both partners, and credit standing variation at
+high mutation size and rate. (inference) That is a mechanism for a run of mildly
+harmful steps, the same class as momentum, and again with every step a small change to
+a continuous value, a large mutational target. It does not touch the neutral,
+single-byte case. Its tools transfer to evo (§15 item 8).
+
 **Potentiating mutations** (Ferguson & Ofria 2023) are evidence that neutral steps
 carry most of the potentiation and are invisible when they occur. That is consistent
 with E009's framing, not a way around it.
@@ -762,7 +955,8 @@ with E009's framing, not a way around it.
 |---|---|---|---|
 | Kelley 2026 | 50 (text; `REPLICATES=50` in code) | 200,000 updates (code; Fig. 2 axes) | 10,000 hosts, well-mixed (text; 100 × 100 in code) |
 | Johnson 2026 | 30 (code; not stated in text) | 100,000 timesteps (text) | 10,000 hosts, well-mixed |
-| Johnson 2025 | 30 per cell over a 9 × 8 grid and a 9 × 11 grid (code) | 100,001 updates (code) | 10,000 hosts (code) |
+| Johnson 2025 | 30 per parameter combination (text); a 9 × 8 grid and a 9 × 11 grid (code) | 100,000 updates (text; 100,001 in code) | 10,000 hosts, well-mixed (text) |
+| Croft 2024 | 30 per condition, 8 × 5 grid (text) | not stated | not stated (Symbulation defaults) |
 | Journal follow-up | 5,130 per metric, pooled (README) | | |
 | Johnson 2023 | 30 (code) | 60,001 updates (code) | 10,000 (code) |
 | Ferguson & Ofria 2023 | 200 runs; 50 replays per lineage step | 250,000 updates, about 3,600 generations | 3,600 (Avida) |
@@ -797,6 +991,8 @@ host. What it takes:
   - A host with negative value h first spends |h| of the update's income on defence
     (`Host::DistribResToSym`). A symbiont with s < h then takes (h − s) of the rest
     (`Host::StealResources`), so theft comes from income, never from stored points.
+    The paper text (read 2026-10-12) says the same, with its own worked example, and
+    adds that hosts pay for defence "regardless of whether they contain a symbiont".
   - (inference) At the starting values (h = −0.1, s = −0.5) the host keeps 54 of 100
     per update, against 90 when uninfected.
 - *Johnson 2026 (stress mode).* No per-update take at all. A matched parasite sets the
@@ -863,6 +1059,13 @@ host. What it takes:
 7. **Ring effects.** On a 1D ring, expect both longer momentum windows (good for
    mildly harmful intermediates) and a bias toward short fast replicators (Gordon
    2025's 1 × 3600 Avida result). Read any change in body length against that.
+8. **Tell a jump from steps** (added 2026-10-12 from Croft 2024 in full). For the
+   first complete defence in each seed, classify its parent and grandparent genomes
+   by how much of the defence they carry, using `births.csv` (`parent_hash`,
+   `parent_now_hash`) and `genomes.csv`. Count first appearances among all births,
+   not on the survivors' tree, which Croft's pruned phylogenies could not do. For a
+   multi-byte defence a one-birth jump is of order (10^-5)^k for k bytes, so the
+   jump-only model is a formality; the look-back is the measurement.
 
 ## 16. Searches that found nothing
 
@@ -890,11 +1093,8 @@ host. What it takes:
 
 ## Not reached
 
-- **Johnson, Croft, Vostinar, Lalejini & Dolson 2025** (isal.a.885): full text. Only
-  the abstract, code, and two sentences quoted in the authors' erratum were read.
-  Download by hand.
-- **Croft, Johnson, Vostinar & Dolson 2024** (isal_a_00790): full text. Download by
-  hand.
+- Johnson 2025 (isal.a.885) and Croft 2024 (isal_a_00790) were supplied by hand on
+  2026-10-12 and are now read in full (§3, §4).
 - **Johnson, Dirkswager & Vostinar 2023** (isal_a_00661): text and abstract. Download
   by hand if needed; background only.
 - **Ragusa & Bohm 2023** (isal_a_00660): the two-page extended abstract itself. Its
