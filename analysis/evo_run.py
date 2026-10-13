@@ -7,10 +7,18 @@ in energy units without the suffix (e.g. `energy_m` -> `energy`).
     from evo_run import load
     run = load("../runs/diag/control_s1")
     run.deaths.filter(pl.col("offspring") == 0)
+
+Each CSV may also be stored gzipped as NAME.csv.gz (the E014 runner
+compresses births, deaths, orgs and census after each run); `load` reads
+whichever is there, the plain file if both are. `csv_path(run_dir, name)`
+gives the path for scripts that scan a file themselves (polars' read_csv
+and scan_csv decompress gzip as of 1.44).
 """
 
 from __future__ import annotations
 
+import gzip
+import io
 import json
 import subprocess
 from dataclasses import dataclass
@@ -115,8 +123,26 @@ def world(run_dir: str | Path) -> dict[int, World]:
 TEXT_COLS = {"cause", "op_at_ip", "origin", "disasm", "class", "alive"}
 
 
+def csv_path(run_dir: str | Path, name: str) -> Path | None:
+    """RUN_DIR/NAME.csv, or NAME.csv.gz if only that exists; None if neither."""
+    d = Path(run_dir)
+    for p in (d / f"{name}.csv", d / f"{name}.csv.gz"):
+        if p.exists():
+            return p
+    return None
+
+
 def _read(path: Path, name: str) -> pl.DataFrame:
-    df = pl.read_csv(path, schema_overrides={c: pl.Utf8 for c in HASH_COLS[name]})
+    over = {c: pl.Utf8 for c in HASH_COLS[name]}
+    if path.suffix == ".gz":
+        try:
+            df = pl.read_csv(path, schema_overrides=over)
+        except Exception:
+            # A polars build without gzip support: decompress here.
+            with gzip.open(path, "rb") as f:
+                df = pl.read_csv(io.BytesIO(f.read()), schema_overrides=over)
+    else:
+        df = pl.read_csv(path, schema_overrides=over)
     if df.height == 0:
         # A header-only file (no births yet, no deaths) infers every column
         # as text; give the numeric ones their real type.
@@ -134,6 +160,10 @@ def _read(path: Path, name: str) -> pl.DataFrame:
 def load(run_dir: str | Path) -> Run:
     d = Path(run_dir)
     meta = json.loads((d / "meta.json").read_text())
-    frames = {n: _read(d / f"{n}.csv", n) for n in HASH_COLS if n != "classes"}
-    classes = _read(d / "classes.csv", "classes") if (d / "classes.csv").exists() else None
+    paths = {n: csv_path(d, n) for n in HASH_COLS}
+    missing = [n for n, p in paths.items() if p is None and n != "classes"]
+    if missing:
+        raise FileNotFoundError(f"{d}: no {', '.join(f'{n}.csv' for n in missing)} (plain or .gz)")
+    frames = {n: _read(paths[n], n) for n in HASH_COLS if n != "classes"}
+    classes = _read(paths["classes"], "classes") if paths["classes"] else None
     return Run(dir=d, meta=meta, classes=classes, **frames)

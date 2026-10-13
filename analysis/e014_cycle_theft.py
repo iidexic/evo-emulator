@@ -31,12 +31,22 @@ genome executes no foreign code, so the theft rules classify as N = 0,
 while the tax does act on a lone genome: the tax arm's classes are those
 of the taxed world).
 
+Disk. A 250,000-tick run is about 0.5 GB of CSV (E007), so after each run
+is classified its births.csv, deaths.csv, orgs.csv and census.csv are
+gzipped in place (level 6; each is read back and compared by SHA-256
+before the plain file is deleted). genomes.csv, patches.csv and world.bin
+stay as they are (`--classify` reads genomes.csv). evo_run.load reads
+NAME.csv.gz transparently. A run found finished with plain files left
+(an interrupted compression) is compressed on the next call.
+`--no-compress` keeps everything plain.
+
 Usage (from analysis/):
 
     uv run e014_cycle_theft.py pilot --jobs 12             # build, run, calibrate, run tax, analyse
     uv run e014_cycle_theft.py pilot --analyse-only        # runs exist; redo calibration and tables
     uv run e014_cycle_theft.py main --jobs 12              # the main stage, tax from the pilot
     uv run e014_cycle_theft.py main --dry-run              # print the command lines, run nothing
+    uv run e014_cycle_theft.py main --no-compress          # keep the run CSVs plain
     uv run e014_cycle_theft.py pilot --rules n0 --genomes eject --seeds 1 --ticks 2000 \
         --inject-tick 1000 --bin 500 --out ../runs/e014-smoke  # smoke test only
 
@@ -79,17 +89,24 @@ per bin, over replicator-class deaths in the bin, with "entered" =
 - `entered_share`: share entered.
 - `cycles_lost_per_tick`: mean of `cycles_lost_m / age` (milli-units per
   tick; the cap is 32,000) over entered deaths with age > 0.
-- `entered_children_ratio`: mean exact children (births with the organism
-  as executor and child == executor's body at `divide`) of entered deaths
-  over that of unentered deaths.
-- `entered_age_ratio`: mean age of entered deaths over unentered.
-- `entered_rate_ratio` (not in T02's list; added by the builder): exact
-  children per tick of life of entered deaths over that of unentered
-  (sum of children over sum of age in each group). Entry is more likely
-  the longer an organism lives, so `entered_children_ratio` is well above
-  1 with no cost at all (the n0 smoke run, 2,000 ticks: 3.78, with an age
-  ratio of 3.18); the rate ratio takes the lifespan out of the comparison.
-  The predictions use `entered_children_ratio` as the spec says.
+- `entered_rate_ratio`: exact children (births with the organism as
+  executor and child == executor's body at `divide`) per tick of life of
+  entered deaths over that of unentered (sum of children over sum of age
+  in each group).
+- `entered_rate_norm`: `entered_rate_ratio` over the same bin's
+  `entered_rate_ratio` in the n0 run with the same injected genome and
+  seed (1 for n0 itself; empty without that n0 run). This is the
+  governing measure (decided 2026-10-13, replacing T02's
+  `entered_children_ratio`): entry is more likely the longer an organism
+  lives, so the raw children ratio is well above 1 with no cost at all
+  (the n0 smoke run, 2,000 ticks: 3.78, age ratio 3.18, rate ratio 1.19).
+  The rate takes the lifespan out; dividing by n0 takes out what entry
+  selects for without a cost. The pilot branch reads its mean over seeds
+  of `entered_rate_norm_post` (below), and prediction 2 its per-seed
+  values.
+- `entered_children_ratio`, `entered_age_ratio` (diagnostics, reported,
+  not tested): mean exact children, and mean age, of entered deaths over
+  those of unentered deaths.
 - `test_alive_entered_share`: at the bin's last census, share of living
   test bodies with `exec_by_others` > 0 (lifetime so far).
 
@@ -98,9 +115,10 @@ Per run (runs.csv), E009b's (`placed`, `last_share`, `last_prefix_share`,
 `last_alive_gt10`, `alive_end`, `final_tick`, `final_pop`, `test_deaths`,
 `test_entered`, `share_b<k>`), plus, over the ticks after the injection:
 `pop_mean_post` (mean living bodies over the censuses), `rep_entered_post`,
+`entered_rate_ratio_post`, `entered_rate_norm_post` (over the n0 run's
+`entered_rate_ratio_post`, same genome and seed),
 `entered_children_ratio_post`, `entered_age_ratio_post`,
-`entered_rate_ratio_post`, `cycles_lost_per_tick_post` (the per-bin
-measures pooled over all
+`cycles_lost_per_tick_post` (the per-bin measures pooled over all
 replicator-class deaths after the injection), `lost_per_age_post` and
 `taxed_per_age_post` (sum `cycles_lost_m` and sum `cycles_taxed_m` over
 sum `age`, the same deaths: the r of the calibration, so the tax arm can be
@@ -108,6 +126,12 @@ checked against t50), and `intruders_post` and `intruder_resident_share_post`
 (deaths of any class with `exec_foreign` > 0, and the share of those with
 `exec_foreign / executed` > 0.9: the README's resident-fraction check).
 living.csv gains `test_entered` and `test_entered_share` per census.
+
+Pilot branch (tasks README, E014 pilot; decided 2026-10-13): the mean over
+the pilot seeds of the `t50_resident` runs' `entered_rate_norm_post`. In
+[0.3, 0.8]: the expected branch (calibrate, main stage). Above 0.8: entries
+are too brief for the cost to bite; read `intruder_resident_share_post`.
+The summary prints which.
 
 Predictions (T02 §4.4, H16), read on the main stage; "k of 30" scales to
 other seed counts as ceil(k n / 30) for "at least" and floor(k n / 30) for
@@ -118,9 +142,10 @@ other seed counts as ceil(k n / 30) for "at least" and floor(k n / 30) for
    as the slow-starvation arm and dropped from 2-5.
 2. Entered hosts graded, not killed (on the `resident` runs, the world with
    nothing added but more of the ancestor): under `t50`,
-   `entered_children_ratio_post` between 0.3 and 0.8 in >= 20 of 30 seeds
-   (and in the pilot, printed with the pilot); under `n0` above 0.8 in
-   >= 20 of 30.
+   `entered_rate_norm_post` between 0.3 and 0.8 in >= 20 of 30 seeds (the
+   pilot's reading is the branch above). T02's n0 clause ("above 0.8") is 1
+   by construction in this currency; n0's raw `entered_rate_ratio_post`
+   and the two diagnostics are printed beside it.
 3. The eject pays: under `t50`, `eject` `last_share` >= 1% in >= 20 of 30
    seeds; `inert` >= 1% in <= 5 of 30. Also printed for t25 and t75.
 4. The control: under `tax`, the `eject` and `inert` counts of seeds with
@@ -138,8 +163,11 @@ deaths.csv (test-genome deaths), calib.json (pilot) and summary.md.
 from __future__ import annotations
 
 import argparse
+import gzip
+import hashlib
 import json
 import math
+import os
 import shutil
 import subprocess
 import time
@@ -166,7 +194,11 @@ ALIVE_MIN = 10
 GONE = 0.01  # "lost" and "last > 1%"
 CAP_M = 32_000  # Config::default(): cap_c0 = 32 units, cap_c1 = 0
 RESIDENT_FRAC = 0.9  # tasks README, pilot branch: exec_foreign / executed
-RATIO_LO, RATIO_HI = 0.3, 0.8  # prediction 2
+RATIO_LO, RATIO_HI = 0.3, 0.8  # prediction 2 and the pilot branch
+# Gzipped in place after each run (evo_run.load reads NAME.csv.gz).
+# genomes.csv stays plain: `--classify` reads it.
+COMPRESS = ("births.csv", "deaths.csv", "orgs.csv", "census.csv")
+CHUNK = 1 << 20
 
 ANC120 = "13325271fc11781605086c5a1845486c11101c130d"  # sim::ancestor(120, 16)
 GENOMES = {
@@ -206,11 +238,52 @@ def commands(exe: Path, d: Path, genome: str, seed: int, ticks: int, inject: int
     return run, cls
 
 
+def gzip_verified(src: Path) -> tuple[int, int]:
+    """Replace `src` by `src`.gz: compress to a temporary file, read it
+    back and compare SHA-256 with the original, then rename it into place
+    and delete the original. Returns (plain bytes, gzip bytes)."""
+    dst = src.with_name(src.name + ".gz")
+    tmp = src.with_name(src.name + ".gz.tmp")
+    h_in, h_out = hashlib.sha256(), hashlib.sha256()
+    with open(src, "rb") as fi, gzip.open(tmp, "wb", compresslevel=6) as fo:
+        while chunk := fi.read(CHUNK):
+            h_in.update(chunk)
+            fo.write(chunk)
+    with gzip.open(tmp, "rb") as fi:
+        while chunk := fi.read(CHUNK):
+            h_out.update(chunk)
+    if h_in.digest() != h_out.digest():
+        tmp.unlink()
+        raise RuntimeError(f"{src}: gzip read-back differs; plain file kept")
+    plain = src.stat().st_size
+    os.replace(tmp, dst)
+    src.unlink()
+    return plain, dst.stat().st_size
+
+
+def compress_run(d: Path) -> tuple[int, int]:
+    """Gzip the large CSVs of a finished run that are still plain (so an
+    interrupted compression is finished on the next call). A stale .gz
+    next to a plain file is replaced. Returns total (plain, gzip) bytes
+    of the files compressed now."""
+    plain = packed = 0
+    for name in COMPRESS:
+        src = d / name
+        if src.exists():
+            a, b = gzip_verified(src)
+            plain += a
+            packed += b
+    return plain, packed
+
+
 def run_one(exe: Path, out: Path, rule: str, genome: str, seed: int, ticks: int, inject: int,
-            tax: Tax | None, force: bool) -> str:
+            tax: Tax | None, force: bool, compress: bool) -> str:
     d = run_dir(out, rule, genome, seed)
     tag = f"{rule}_{genome}/s{seed}"
     if not force and (d / "classes.csv").exists():
+        if compress and any((d / n).exists() for n in COMPRESS):
+            a, b = compress_run(d)
+            return f"{tag}: done; gzipped {a / 1e6:.1f} -> {b / 1e6:.1f} MB"
         return f"{tag}: done"
     run, cls = commands(exe, d, genome, seed, ticks, inject, rule_flags(rule, tax))
     t0 = time.time()
@@ -222,7 +295,12 @@ def run_one(exe: Path, out: Path, rule: str, genome: str, seed: int, ticks: int,
             subprocess.run(run, stdout=f, stderr=subprocess.DEVNULL, check=True)
     t1 = time.time()
     subprocess.run(cls, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-    return f"{tag}: run {t1 - t0:.0f} s, classify {time.time() - t1:.0f} s"
+    msg = f"{tag}: run {t1 - t0:.0f} s, classify {time.time() - t1:.0f} s"
+    if compress:
+        t2 = time.time()
+        a, b = compress_run(d)
+        msg += f", gzip {a / 1e6:.1f} -> {b / 1e6:.1f} MB in {time.time() - t2:.0f} s"
+    return msg
 
 
 def canon(bytes_hex: str) -> tuple:
@@ -446,6 +524,25 @@ def analyse_run(out: Path, rule: str, genome: str, seed: int, ticks: int, inject
         "exact_children", "offspring")
 
 
+def add_norms(bdf: pl.DataFrame, runs: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """`entered_rate_norm`: each run's `entered_rate_ratio` over the n0 run
+    with the same injected genome and seed (per bin in bins.csv, after the
+    injection in runs.csv). Null where the n0 run or either ratio is missing,
+    or the n0 ratio is 0; 1 for the n0 runs themselves."""
+    def norm(df, key, col, out_col):
+        base = df.filter(pl.col("rule") == "n0").select(*key, pl.col(col).alias("_n0"))
+        return (df.join(base, on=key, how="left", maintain_order="left")
+                .with_columns(pl.when(pl.col("_n0") > 0).then(pl.col(col) / pl.col("_n0")).alias(out_col))
+                .drop("_n0"))
+    return (norm(bdf, ["genome", "seed", "bin"], "entered_rate_ratio", "entered_rate_norm"),
+            norm(runs, ["genome", "seed"], "entered_rate_ratio_post", "entered_rate_norm_post"))
+
+
+def mean_of(x: pl.DataFrame, c: str):
+    v = x[c].drop_nulls()
+    return v.mean() if v.len() else None
+
+
 # ---- tax calibration -----------------------------------------------------------
 
 def calibrate(out: Path, seeds: list[int], inject: int) -> dict | None:
@@ -504,31 +601,41 @@ def pilot_table(runs: pl.DataFrame, calib: dict | None, tax: Tax | None) -> list
     """What T02 §6 asks for before the main stage: population and
     `entered_children_ratio` per rule, with the README's other readings."""
     lines = ["## Pilot readings (not evidence)", "",
-             "Medians over seeds, after the injection: population (mean over censuses, and at the end), "
-             "replicator-class deaths entered (`exec_by_others` > 0), entered/unentered mean exact children "
-             "and age, and exact children per tick of life (rate; not in the spec, see the docstring), mean "
-             "debit per tick of entered deaths (milli-units; cap 32,000), intruder deaths "
-             f"resident (`exec_foreign / executed` > {RESIDENT_FRAC}), and the test genome's last-bin share.", "",
-             "| rule | genome | pop mean | pop end | entered | children ratio | age ratio | rate ratio | lost/tick | "
-             "resident intruders | last share | per seed children ratio |",
-             "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+             "After the injection: population (median over seeds of the mean over censuses, and at the end), "
+             "replicator-class deaths entered (`exec_by_others` > 0, median), `entered_rate_ratio` (median) and "
+             "`entered_rate_norm` (that over the n0 run of the same genome and seed; mean over seeds, which "
+             "governs the branch), the diagnostics `entered_children_ratio` and `entered_age_ratio` (medians), "
+             "mean debit per tick of entered deaths (milli-units; cap 32,000), intruder deaths resident "
+             f"(`exec_foreign / executed` > {RESIDENT_FRAC}), and the test genome's last-bin share.", "",
+             "| rule | genome | pop mean | pop end | entered | rate ratio | rate norm (mean) | children ratio "
+             "| age ratio | lost/tick | resident intruders | last share | per seed rate norm |",
+             "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for rule in RULES:
         for g in GENOMES:
             x = runs.filter((pl.col("rule") == rule) & (pl.col("genome") == g)).sort("seed")
             if not x.height:
                 continue
-            per = ", ".join(f"s{s} {f2(v)}" for s, v in zip(x["seed"], x["entered_children_ratio_post"]))
+            per = ", ".join(f"s{s} {f2(v)}" for s, v in zip(x["seed"], x["entered_rate_norm_post"]))
             lines.append(f"| {rule} | {g} | {f0(med(x, 'pop_mean_post'))} | {f0(med(x, 'final_pop'))} "
-                         f"| {pct(med(x, 'rep_entered_post'))} | {f2(med(x, 'entered_children_ratio_post'))} "
-                         f"| {f2(med(x, 'entered_age_ratio_post'))} | {f2(med(x, 'entered_rate_ratio_post'))} "
+                         f"| {pct(med(x, 'rep_entered_post'))} | {f2(med(x, 'entered_rate_ratio_post'))} "
+                         f"| {f2(mean_of(x, 'entered_rate_norm_post'))} "
+                         f"| {f2(med(x, 'entered_children_ratio_post'))} | {f2(med(x, 'entered_age_ratio_post'))} "
                          f"| {f0(med(x, 'cycles_lost_per_tick_post'))} "
                          f"| {pct(med(x, 'intruder_resident_share_post'))} | {pct(med(x, 'last_share'))} | {per} |")
     x = runs.filter((pl.col("rule") == "t50") & (pl.col("genome") == "resident"))
     if x.height:
-        inside = sum(1 for v in x["entered_children_ratio_post"] if v is not None and RATIO_LO <= v <= RATIO_HI)
-        lines += ["", f"t50_resident `entered_children_ratio_post` in [{RATIO_LO}, {RATIO_HI}]: {inside} of "
-                  f"{x.height} seeds (prediction 2's pilot clause; README: above {RATIO_HI} sends E014 to the "
-                  "resident-fraction check)."]
+        m = mean_of(x, "entered_rate_norm_post")
+        if m is None:
+            branch = "not computable (no n0 pair, or no entered or unentered deaths)"
+        elif m > RATIO_HI:
+            branch = (f"above {RATIO_HI}: entries too brief for the cost to bite; read the resident-intruder "
+                      "column (tasks README, E014 pilot)")
+        elif m < RATIO_LO:
+            branch = f"below {RATIO_LO}: outside the window, no branch written for it"
+        else:
+            branch = f"in [{RATIO_LO}, {RATIO_HI}]: the expected branch"
+        lines += ["", f"Pilot branch (decided 2026-10-13): mean over seeds of t50_resident "
+                  f"`entered_rate_norm_post` = {f2(m)}, {branch}."]
     lines += ["", "## Tax calibration", ""]
     if calib:
         lines.append(f"From {calib['source']}, seeds {calib['seeds']}, replicator-class deaths after tick "
@@ -581,18 +688,21 @@ def predictions(runs: pl.DataFrame, seeds: list[int]) -> list[str]:
     lines.append(f"1. Every rule: {yn(not fail1)}."
                  + (" t75 is the slow-starvation arm and is dropped from 2-5." if dropped else ""))
 
-    # 2. Entered hosts graded, on the resident runs.
+    # 2. Entered hosts graded, on the resident runs, in the normalised
+    # rate (decided 2026-10-13; n0's norm is 1 by construction).
     need2 = at_least(20)
-    r50 = col("t50", "resident", "entered_children_ratio_post")
-    r0 = col("n0", "resident", "entered_children_ratio_post")
+    r50 = col("t50", "resident", "entered_rate_norm_post")
     in50 = sum(1 for s in seeds if r50.get(s) is not None and RATIO_LO <= r50[s] <= RATIO_HI)
-    above0 = sum(1 for s in seeds if r0.get(s) is not None and r0[s] > RATIO_HI)
-    ok2 = in50 >= need2 and above0 >= need2
-    lines.append(f"2. `entered_children_ratio_post` (resident runs): t50 in [{RATIO_LO}, {RATIO_HI}] in {in50} of "
-                 f"{n} [>= {need2}]; n0 above {RATIO_HI} in {above0} of {n} [>= {need2}]. "
-                 f"Medians t50 {f2(med(runs.filter((pl.col('rule') == 't50') & (pl.col('genome') == 'resident')), 'entered_children_ratio_post'))}, "
-                 f"n0 {f2(med(runs.filter((pl.col('rule') == 'n0') & (pl.col('genome') == 'resident')), 'entered_children_ratio_post'))}. "
-                 f"{yn(ok2)}.")
+    ok2 = in50 >= need2
+    res = lambda rule: runs.filter((pl.col("rule") == rule) & (pl.col("genome") == "resident"))
+    lines.append(f"2. `entered_rate_norm_post` (resident runs): t50 in [{RATIO_LO}, {RATIO_HI}] in {in50} of {n} "
+                 f"[>= {need2}], mean {f2(mean_of(res('t50'), 'entered_rate_norm_post'))}. {yn(ok2)}. The n0 clause "
+                 f"is 1 by construction in this currency; n0's raw `entered_rate_ratio_post` median "
+                 f"{f2(med(res('n0'), 'entered_rate_ratio_post'))} (t50 "
+                 f"{f2(med(res('t50'), 'entered_rate_ratio_post'))}). Diagnostics, medians n0 / t50: "
+                 f"`entered_children_ratio_post` {f2(med(res('n0'), 'entered_children_ratio_post'))} / "
+                 f"{f2(med(res('t50'), 'entered_children_ratio_post'))}, `entered_age_ratio_post` "
+                 f"{f2(med(res('n0'), 'entered_age_ratio_post'))} / {f2(med(res('t50'), 'entered_age_ratio_post'))}.")
 
     # 3. The eject pays.
     need3, most3 = at_least(20), at_most(5)
@@ -673,11 +783,12 @@ def summarize(stage: str, bdf: pl.DataFrame, runs: pl.DataFrame, living: pl.Data
         lines.append(f"| {r['rule']} | {r['genome']} | {r['seed']} | " + " | ".join(cell(t) for t in ticks_l) + " |")
     lines += [
         "", "Per bin, medians across seeds: test share / prefix share / bodies >= 26 bytes / living test / population / "
-        "replicator-class alive / foreign exec share / replicator deaths entered / entered children ratio / "
-        "entered age ratio / debit per tick of entered deaths (milli-units).", "",
+        "replicator-class alive / foreign exec share / replicator deaths entered / entered rate ratio / "
+        "entered rate norm (mean across seeds) / entered children ratio / entered age ratio / debit per tick of "
+        "entered deaths (milli-units).", "",
         "| rule | genome | bin | test | prefix | >= 26 bytes | test alive | pop | rep alive | foreign | entered "
-        "| children ratio | age ratio | lost/tick |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+        "| rate ratio | rate norm | children ratio | age ratio | lost/tick |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for rule in rules:
         for g in genomes:
@@ -688,7 +799,8 @@ def summarize(stage: str, bdf: pl.DataFrame, runs: pl.DataFrame, living: pl.Data
                 lines.append(f"| {rule} | {g} | {k} | {pct(med(x, 'test_share'))} | {pct(med(x, 'prefix_share'))} "
                              f"| {pct(med(x, 'long_share'))} | {f0(med(x, 'test_alive'))} | {f0(med(x, 'pop'))} "
                              f"| {f0(med(x, 'rep_alive'))} | {pct(med(x, 'foreign_exec_share'))} "
-                             f"| {pct(med(x, 'entered_share'))} | {f2(med(x, 'entered_children_ratio'))} "
+                             f"| {pct(med(x, 'entered_share'))} | {f2(med(x, 'entered_rate_ratio'))} "
+                             f"| {f2(mean_of(x, 'entered_rate_norm'))} | {f2(med(x, 'entered_children_ratio'))} "
                              f"| {f2(med(x, 'entered_age_ratio'))} | {f0(med(x, 'cycles_lost_per_tick'))} |")
     lines += [
         "", "Deaths of test-genome organisms (birth genome is the test genome), seeds pooled: count, share entered "
@@ -742,6 +854,8 @@ def main() -> None:
     ap.add_argument("--calib", type=Path, help="calib.json to take the tax from (main; default the pilot's)")
     ap.add_argument("--jobs", type=int, default=12)
     ap.add_argument("--force", action="store_true", help="redo runs that exist")
+    ap.add_argument("--no-compress", action="store_true",
+                    help="leave births, deaths, orgs and census CSVs plain (default: gzip each after its run)")
     ap.add_argument("--analyse-only", action="store_true")
     ap.add_argument("--dry-run", action="store_true", help="print the command lines and exit")
     a = ap.parse_args()
@@ -788,7 +902,8 @@ def main() -> None:
 
     def run_all(jobs, tax_):
         with ThreadPoolExecutor(a.jobs) as ex:
-            for msg in ex.map(lambda j: run_one(exe, out, *j, ticks, a.inject_tick, tax_, a.force), jobs):
+            for msg in ex.map(lambda j: run_one(exe, out, *j, ticks, a.inject_tick, tax_, a.force,
+                                                not a.no_compress), jobs):
                 print(msg, flush=True)
 
     if exe is not None:
@@ -822,6 +937,7 @@ def main() -> None:
         raise SystemExit("no finished runs to analyse")
     bdf = pl.DataFrame([b for bins, _, _, _ in results for b in bins], infer_schema_length=None)
     runs = pl.DataFrame([s for _, s, _, _ in results], infer_schema_length=None)
+    bdf, runs = add_norms(bdf, runs)
     living = pl.DataFrame([x for _, _, lv, _ in results for x in lv], infer_schema_length=None)
     tdeaths = pl.concat([td for _, _, _, td in results], how="vertical_relaxed")
     bdf.write_csv(out / "bins.csv")
