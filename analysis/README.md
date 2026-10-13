@@ -26,12 +26,21 @@ decodes a slice through `evo-core --disasm`.
 
 ## Standing measures (T05)
 
-`measures.py RUN_DIR [--every K] [--depths 187,1870] [--out DIR]`
-writes QNN, tree measures, and MODES by census; its `compute(run)` entry
-point is also available to experiment runners. `measures_baseline.py`
-applies it to E007, E012 and E013 and writes the per-seed table under
-`runs/measures/`. `--knockout` also needs the `--neighbours` support from
-T03.
+`measures.py RUN_DIR [--every K] [--depths 187,1870] [--group COL] [--knockout] [--out DIR]`
+writes QNN, tree measures, and MODES by census (`series.csv`,
+`summary.json`); its `compute(run, group=...)` entry point is also
+available to experiment runners. The module docstring states every
+column's definition. `--group` picks the QNN components: `func_hash`
+(default; genotype turnover, blind to a trait that sweeps across many
+genotypes), any other `genomes.csv` column, or `absorb_class` (`lt96` /
+`ge96` by `traits.py`'s absorb-count read of the body, `unmatched` where
+the read does not apply), which is the trait-level sweep detector.
+`--knockout` adds `sites_<window>.csv` (entropy per site; the knockout
+columns stay empty until the `--neighbours` loop is wired in).
+`measures_baseline.py` applies it to E007, E012 and E013 with both
+groupings and writes the per-seed table and the shakedown criteria to
+`runs/measures/summary.md`. Tests, from the repo root:
+`uv run --project analysis --with pytest pytest analysis/tests/test_measures.py`.
 
 To see what one genome does, tick by tick, without reading its
 disassembly: `cargo run --release --example trace -- HEX [ticks]
