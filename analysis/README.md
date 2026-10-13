@@ -58,6 +58,12 @@ is `--evo-bin`, else `$EVO_BIN`, else the cargo build.
 is incomplete is rerun into `runs/lod/e007/` and checked against the
 partial run. Tests: `uv run --with pytest pytest tests/test_lod.py`.
 
+Data note. On the desktop, `runs/e007/std/s1`–`s9` are the first Windows
+launch, killed at ticks 141,543–145,451 and without `genomes.csv`.
+Complete reruns are at `runs/lod/e007/s<seed>/` (`lod_e007.py` makes them
+when a seed is incomplete), and other analyses on this machine should read
+E007 from there.
+
 ## Looking at a run
 
 Record a run directory with the CLI, then report on it:
