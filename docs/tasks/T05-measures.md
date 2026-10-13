@@ -7,8 +7,10 @@ at 501 censuses on E007 seed 1: every value matched) and accepted by
 Fable with fixes. Shakedown: criterion 1's nominal pass was a
 founder-phase artefact and criterion 2's failure was a correct
 result, so §4's criteria are rewritten below (amendment 2026-10-13)
-and the README's "shakedown fails" branch is not taken. Open fixes
-(§4.1) go to a follow-up build. Argument: synthesis finding
+and the README's "shakedown fails" branch is not taken. The §4.1
+fixes went to two follow-up builds, both done (the knockout loop and
+the class columns in the second; sites on E007 in §3.1); criterion 3
+waits for E012/E013 data. Argument: synthesis finding
 9 and §3.5, PLAN §8.5, `literature.md` §3.3, §3.4, §7 ("Measures").
 Line C; built and run on E007, E012 and E013 before E014 is run, so
 the first use of the measures is on known runs. Python only, except
@@ -118,6 +120,33 @@ below half of the unmutated body's or the class changed. Output
 meaningful`. The record reads whether low-entropy sites are the
 meaningful ones (Willkens 2023's warning: single knockouts mishandle
 interacting sites, so this is a diagnostic).
+
+### 3.1 Sites, E007 seeds 1, 3, 5 (2026-10-13)
+
+`measures.py --knockout` with the t03 binary (pre-T08 physics, no
+flags, 3,000 harness ticks) on `runs/lod/e007/s1`, `s3`, `s5`: ten
+windows each, 21 sites per window, entropy over 112,000–158,000
+same-length exact births per window; the top bodies make 142–176
+exact births alone. AUC is the chance that a meaningful site has
+lower entropy than a non-meaningful one; Spearman is bounded near
+−0.37 when one site of 21 is not meaningful, so AUC is the one to
+read.
+
+| seed | meaningful of 21, windows 1–10 | not meaningful | AUC | Spearman |
+|---:|---|---|---:|---:|
+| 1 | 20 in every window | pos 17 | 0.95–1.00 | −0.38 to −0.34 |
+| 3 | 19 19 20 20 20 20 20 20 20 20 | pos 17; pos 16 in w1–2 | 0.92–1.00 | −0.51 to −0.34 |
+| 5 | 19 19 19 20 20 20 20 19 20 20 | pos 17; pos 16 in w1–3, w8 | 0.95–1.00 | −0.51 to −0.35 |
+
+Low-entropy sites are the meaningful ones: of the 15–19 sites per
+window under 0.5 bits all are meaningful except pos 16 in four
+windows, and the one site meaningful in no window is pos 17, the
+endowment operand (`lit` at 16; 2.3–4.6 bits), where a `pad` leaves
+an exact replicator in the harness alone. The converse fails at pos
+6, the absorb-count operand: 3.1–4.2 bits yet meaningful in all 30
+windows (`pad` sets the count to 0, a loafer), because a knockout
+tests one value, not the range a variable operand takes; pos 6 is
+what keeps AUC below 1 (with pos 8 in seed 3's windows 1–2).
 
 ## 4. Baselines: `analysis/measures_baseline.py`
 
@@ -229,12 +258,24 @@ three seeds coalesced anyway at generations 347–419), `root_lines`
 = 2 is the common state. Criterion 3 waits for E012/E013 data (not
 on the desktop).
 
-Still open from §4.1 after the follow-up: `--knockout` writes its
-files but the knockout columns are empty, since the `--neighbours
---neighbours-pad-only` loop (T03, now built) is not wired in; and
-`parasite_share`, `entered_share`, `rep_alive` are empty on the E007
-reruns because `runs/lod/e007/s*/` has no `classes.csv` (run
-`evo-core --classify` on them before E016 reads those columns).
+Closed from §4.1 in the second follow-up (2026-10-13, `90a9887`,
+`747b7e4`). `--knockout` runs the `--neighbours HEX
+--neighbours-pad-only` loop and fills `exact_pad`, `class_pad` and
+`meaningful`; the unmutated body's exact births alone come from
+`--classify` on that one body, at the same harness ticks and physics,
+since the neighbours CSV has no unmutated row (`--evo-bin`,
+`--harness-ticks`, `--evo-flags`; results in §3.1). The class columns
+are filled on the E007 reruns: `classes.csv` is present in
+`runs/lod/e007/s1`–`s9`, and `classes_world.csv` is a copy of it, as
+`e007_long_run.py` makes it, since the harness physics is the world's
+(4,002 sampled genomes reclassified with the t03 binary matched in
+class and exact births). The baseline rerun (seeds 1–9 from
+`runs/lod/e007`, seed 10 from `runs/e007/std/s10`, extinct at tick
+1,179) leaves the shakedown table unchanged; `summary.md` gains
+stationary means `rep alive` 443–458 of about 931 bodies (48–49%) and
+`parasite` 1.9 × 10⁻⁵–2.3 × 10⁻⁴. `entered_share` stays empty on E007:
+its `orgs.csv` (binary `bf865e7`) predates the `exec_by_others`
+column, so it is readable only on runs recorded since E014.
 
 ### 4.1 Fixes from the review, for the follow-up build
 
