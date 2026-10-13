@@ -416,8 +416,10 @@ def parasite_run(d: Path, world_class: str | None) -> Run:
 def test_parasite_share_applies_e005_world_class_and_entered_share_is_over_replicators(tmp_path):
     rows = {}
     for wc in ("one_shot", "replicator", None):
-        series, _ = compute(parasite_run(tmp_path / str(wc), wc), depths=(1,))
+        series, summary = compute(parasite_run(tmp_path / str(wc), wc), depths=(1,))
         rows[wc] = series.row(0, named=True)
+        # The one census is at tick 10, before the stationary phase.
+        assert summary["mean_parasite_share"] is None and summary["mean_rep_alive"] is None
     # p passes E005's test only when its world class is not replicator.
     assert np.isclose(rows["one_shot"]["parasite_share"], 2 / 3)
     assert rows["replicator"]["parasite_share"] == 0.0
@@ -554,5 +556,9 @@ def test_measures_baseline_on_a_tiny_synthetic_run(tmp_path):
     row = pl.read_csv(out / "runs.csv").row(0, named=True)
     assert (row["root_lines"], row["mrca_changes"], row["mrca_tick_max"]) == (2, 1, 1)
     assert row["c2_early"] and not row["c1"]  # no census after tick 2,500
+    # Class columns: stationary means, none here (no census at or after
+    # 25,000), and in the table.
+    assert {"rep_alive", "parasite_share", "entered_share"} <= set(row) and row["rep_alive"] is None
+    assert "| rep alive | parasite | entered |" in text
     assert pl.read_csv(out / "e007_series.csv").height == 3
     assert pl.read_csv(out / "e007_absorb_class_series.csv")["absorb_ge96_share"].to_list()[1] == 0.4

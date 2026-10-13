@@ -34,8 +34,8 @@ from measures import STATIONARY, compute, last_value, qnn_series
 
 RUNS = ROOT / "runs"
 OUT = RUNS / "measures"
-METRICS = ("mpd", "mean_ed", "change_187", "novelty_187", "ecology_187",
-           "change_1870", "novelty_1870", "ecology_1870")
+METRICS = ("mpd", "mean_ed", "rep_alive", "parasite_share", "entered_share",
+           "change_187", "novelty_187", "ecology_187", "change_1870", "novelty_1870", "ecology_1870")
 FOUNDER_PHASE = 2_500   # criterion 1 looks for the peak after this tick
 SWEEP_LO, SWEEP_HI = 0.25, 0.75
 MRCA_EARLY = 1_000      # criterion 2
@@ -194,15 +194,20 @@ def run_baseline(runs: Path = RUNS, out: Path = OUT, seeds: int = 10) -> list[st
              "tick 25,000 (MODES: uncensored ones only). QNN here is over `func_hash`, the headline for "
              "genotype turnover; it is blind to a trait sweeping across many genotypes (spec §4 "
              "amendment), so the sweep is read from the `absorb_class` grouping below. Δ1870 is "
-             "`censored` where the run's deepest generation (`max gen`) is below 1,870.",
+             "`censored` where the run's deepest generation (`max gen`) is below 1,870. `rep alive` (living "
+             "replicator-class bodies), `parasite` (E005's parasite-lineage share) and `entered` (share of "
+             "replicator-class bodies run by another organism, T02 §4.3) are stationary means; – without "
+             "classes.csv and classes_world.csv.",
              "", "| experiment | arm | seed | QNN cumulative at 25k | QNN cumulative end | max QNN window "
              "| MRCA changes | MRCA tick | MRCA gen | root lines | max gen | MPD | mean ED "
+             "| rep alive | parasite | entered "
              "| change/novelty/ecology Δ187 | change/novelty/ecology Δ1870 | seconds/run |",
-             "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---:|"]
+             "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---:|"]
     for r in rows:
         lines.append(f"| {r['exp']} | {r['arm']} | {r['seed']} | {_f(r['qnn_cum_25k'])} | {_f(r['qnn_cum_end'])} "
                      f"| {r['qnn_max_window']} | {r['mrca_changes']} | {_f(r['mrca_tick'])} | {_f(r['mrca_gen'])} "
                      f"| {_f(r['root_lines'])} | {r['max_gen']} | {_f(r['mpd'])} | {_f(r['mean_ed'])} "
+                     f"| {_f(r['rep_alive'])} | {_f(r['parasite_share'])} | {_f(r['entered_share'])} "
                      f"| {_f(r['change_187'])}/{_f(r['novelty_187'])}/{_f(r['ecology_187'])} "
                      f"| {_f(r['change_1870'])}/{_f(r['novelty_1870'])}/{_f(r['ecology_1870'])} "
                      f"| {r['runtime_s']:.1f} |")

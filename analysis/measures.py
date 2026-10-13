@@ -66,8 +66,12 @@ Definitions, as computed (spec §2, with the §4 amendment and §4.1):
   registered parasite-lineage test (`_parasite_genomes`), world-class
   condition included; empty without classes.csv and classes_world.csv.
   `foreign_share`: sum of `exec_foreign` over sum of `executed`, living.
-- Summary means (`mean_mpd`, `mean_mean_ed`, `mean_<modes>_D`) are over
-  censuses at or after tick 25,000 (MODES: uncensored ones only).
+- Summary means (`mean_mpd`, `mean_mean_ed`, `mean_rep_alive`,
+  `mean_parasite_share`, `mean_entered_share`, `mean_<modes>_D`) are over
+  censuses at or after tick 25,000 (MODES: uncensored ones only); a class
+  column's mean is null when the run lacks the classes files. For E007-like
+  runs, whose harness physics is the world's, classes_world.csv is a copy
+  of classes.csv (as `e007_long_run.py` makes it).
 
 Sites (`--knockout`, spec §3), per 25,000-tick window `w` (ticks
 25,000(w-1)+1 .. 25,000w), `sites_<w>.csv` with `pos, op, entropy,
@@ -125,6 +129,8 @@ from evo_run import ROOT, Run, load
 
 STATIONARY = 25_000  # the stationary phase starts here (summary means)
 FIRST_ID = 2  # evo-core's first organism id (sim.rs FIRST_ID)
+# Columns read from classes.csv (and classes_world.csv); empty without them.
+CLASS_COLUMNS = ("rep_alive", "parasite_share", "entered_share")
 
 
 def _tree(run: Run):
@@ -595,7 +601,7 @@ def compute(run: Run | str | Path, every: int = 1, depths: tuple[int, ...] = (18
             "max_gen": max_gen,
         }
         stationary_tree = series.filter(pl.col("tick") >= STATIONARY)
-        for col in ("mpd", "mean_ed"):
+        for col in ("mpd", "mean_ed", *CLASS_COLUMNS):
             summary[f"mean_{col}"] = _mean(stationary_tree[col])
         for d in depths:
             if max_gen < d:
