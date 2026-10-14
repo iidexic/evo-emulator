@@ -108,18 +108,26 @@ deaths after 25,000: F = entered share, r = Σ `cycles_lost_m` / Σ
 P here before `tierra_tax` is launched. The tax arm is the bottleneck
 control: the population pays the same time, not for being entered.
 
-**Calibrated 2026-10-13** (`e016_defence.py calibrate`, `runs/e016/tax.json`;
+**Calibrated 2026-10-14** (`e016_defence.py calibrate`, `runs/e016/tax.json`;
 seeds 1–30 pooled, replicator-class deaths after tick 25,000): F =
-2,517,939 / 10,467,188 = 0.2406 entered in `tierra_n0`; r =
-20,585,602,719,500 / 3,111,947,132 = 6,615.0 milli-units per
-organism-tick in `tierra_t50` (7,978,799 deaths, their own entered
-share 0.4344); P = 100 r / (F × 32,000) = 85.93, rounded to 86.
-`tierra_tax` runs with `--cycle-tax-pct 86 --cycle-tax-frac
-0.24055543857624417`. Seed 14 of the tierra arms went extinct at tick
-252 in both `tierra_n0` and `tierra_t50` (the founder died after one
-birth, before any theft could differ between the arms); it stays in
-the pooled sums (it contributes nothing after 25,000) and counts as a
-seed with no defence in §3's per-seed reading.
+2,690,185 / 11,219,977 = 0.2398 entered in `tierra_n0`; r =
+31,718,765,563,000 / 4,705,804,390 = 6,740.3 milli-units per
+organism-tick in `tierra_t50` (12,371,784 deaths, their own entered
+share 0.4299); P = 100 r / (F × 32,000) = 87.85, rounded to 88.
+`tierra_tax` runs with `--cycle-tax-pct 88 --cycle-tax-frac
+0.23976742554819855`. A first calibration on 2026-10-13 gave P = 86
+(F = 0.2406, r = 6,615.0 over 7,978,799 `tierra_t50` deaths) and the
+tax arm ran at it; it was wrong because a reboot during the world
+stage had cut 24 runs' `--classify` part-way (`tierra_n0` s26–s30,
+`tierra_t50` s1–s13 and s15–s20) and the runner's resume took the
+short class lists as finished, so the replicator-class death sets
+were incomplete (commit `ca7e436` makes the resume check them). Those
+P = 86 runs are kept aside as `runs/e016/tierra_tax_p86/` and read in
+§8 only as a second tax level. Seed 14 of the tierra arms went extinct
+at tick 252 in both `tierra_n0` and `tierra_t50` (the founder died
+after one birth, before any theft could differ between the arms); it
+stays in the pooled sums (it contributes nothing after 25,000) and
+counts as a seed with no defence in §3's per-seed reading.
 
 Run order: `tierra_n0`, `tierra_t50`, `std_n0`, `std_t50` together
 (120 runs; about 2 minutes each at 250,000 ticks, 9 at a time on the
