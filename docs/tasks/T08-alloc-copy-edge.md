@@ -1,7 +1,15 @@
 # T08. The `alloc`/`copy` range edge: writes into one's own pending region
 
 Status: specified 2026-10-13 (decision taken the same day: fix it,
-keep the old behaviour behind a flag). Argument: PLAN §9 ("`alloc`/
+keep the old behaviour behind a flag); built the same day (Opus,
+commits `2260b62` engine and tests, `a000687` runner; results in the
+E015 record, stage 2c). Two corrections from the build: the 21-byte
+ancestor's `copy` is 1 byte after its `alloc` (bytes 11 and 12), not
+3, so the edge costs it byte 0 only (test 1 checks both bodies); and
+the edge signature of §4 is 21–47% of births in every arm, fixed or
+legacy, mostly deterministic inexact copiers, so the runner also
+prints its part confined to bytes 0–2, which is the edge's (0.2–0.4%
+fixed, 3–11% legacy). Argument: PLAN §9 ("`alloc`/
 `copy` range edge"), E015 record (stage 2 arms), E005 (the
 fall-through lineages). Depends on T03 (the tierra body and the
 E015 runner's gate stage, which this re-runs).

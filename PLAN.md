@@ -958,7 +958,16 @@ than reopening it.
   making return-parasites with no mutation). It is physics every
   recorded run shares and a mutation-free source of new genomes; whether
   range should hold for the whole pending region from `alloc` on, or
-  bodies should be laid out around it, is open.
+  bodies should be laid out around it, is open. Decided 2026-10-13
+  (T08, `2260b62`): fixed as the default, a write into the executor's
+  own pending region passes range (`alloc` already checked it); the old
+  behaviour is `--legacy-pending-range`, bit-identical to the engine
+  before, and every run recorded before this date is the legacy world.
+  Baseline under the fix (E015 stage 2c, 10 seeds × 50,000 ticks): std
+  persists 10 of 10 at sun 1 and 2 with 0.6% and 1.8% parasite share,
+  while the template body still needs `--sun 2` (1 of 10 at sun 1, 10 of
+  10 at sun 2, parasite share 20.4%), so the edge was neither its margin
+  problem nor the source of its parasites.
 - Locality from IP (Phase 1 decision) vs from body start. IP-relative lets
   an IP wander far from its body at a per-byte energy cost; whether that
   gets abused (organisms executing free space to reach distant debris) is a

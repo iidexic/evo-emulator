@@ -34,7 +34,7 @@ says nothing the notes do not.
 | H14 | a graded cost selects the one-byte defence, not the five-byte | self-scan half settled against; endowment half untested | 2026-10-12 | E009, E009a, E009b |
 | H15 | profitable intrusion makes a short eject pay | refuted on its premise | 2026-10-09 | E010 |
 | H16 | a cost in time grades an entered host and makes a short eject pay | open | none | E014, designed |
-| H17 | a template-addressed ancestor has a one-hop parasite and parasitism becomes common | one-hop parasite confirmed by construction (1,028 search-addressed rows for the template body, 0 for the 21-byte one, which has 25 `parasite_jump` rows by fixed offsets); "common" pending: gate failed 0 of 10 at K = 127, passes at `--sun 2` (declared arm), where parasites are 8–27% of exact births and 25% of replicator-class deaths are entered, no same-sun control yet | 2026-10-13 | E015 |
+| H17 | a template-addressed ancestor has a one-hop parasite and parasitism becomes common | one-hop parasite confirmed by construction (1,028 search-addressed rows for the template body, 0 for the 21-byte one, which has 25 `parasite_jump` rows by fixed offsets); "common" pending: gate failed 0 of 10 at K = 127, passes at `--sun 2` (declared arm), where parasites are 8–27% of exact births and 25% of replicator-class deaths are entered; under T08's fixed `alloc`/`copy` edge (E015 stage 2c) still 1 of 10 at sun 1 and 10 of 10 at sun 2, parasite share 20.4% and 24.8% entered against std's 1.8% and 7.2% at the same sun (10 seeds each; the registered 30-seed test is folded into E016) | 2026-10-13 | E015 |
 
 ---
 

@@ -17,7 +17,7 @@ before the runs, as always.
 | [T05](T05-measures.md) | `measures.py`: QNN, phylometrics, MODES, sites; baselines on E007/E012/E013 | T03's `--neighbours-pad-only` for sites only | built 2026-10-13 (Codex, `0d0c36b`; Opus review: numbers match independent recomputation; Opus follow-up `d198fa3`…`6cad7ca`: fixes, `--group absorb_class`, `root_lines`, 15 tests); shakedown closed: criterion 1 "5 of 10, explained", criterion 2 a report, QNN a weak sweep detector here (spec §4); second follow-up `90a9887`…`111fc5c`: knockout loop wired (`--neighbours-pad-only`, base from `--classify`), class columns filled on E007 (`entered_share` not recorded there), 20 tests; sites on E007 s1/s3/s5: low-entropy sites are meaningful, AUC 0.92–1.00, the absorb-count operand the exception (spec §3.1); criterion 3 waits for E012/E013 |
 | [T06](T06-lenski-lod.md) | line of descent with fitness per step, on E007's absorb sweep | nothing | built 2026-10-13 (`2f27841`); E007 record follow-up; sweep step deleterious in the harness in 8 of 9 seeds, D-before-B in seed 3 |
 | [T07](T07-density.md) | replicator density by uniform sampling (B0) | nothing | not built |
-| [T08](T08-alloc-copy-edge.md) | `alloc`/`copy` range edge: writes into one's own pending region pass range; `--legacy-pending-range` keeps the old world; four gate arms rerun | T03 | specified 2026-10-13, building (Opus) |
+| [T08](T08-alloc-copy-edge.md) | `alloc`/`copy` range edge: writes into one's own pending region pass range; `--legacy-pending-range` keeps the old world; four gate arms rerun | T03 | built 2026-10-13 (Opus; `2260b62` engine and tests, `a000687` runner; runs in `runs/e015/world/`); legacy flag reproduces three pinned hashes; under the fixed edge std persists 10 of 10 at sun 1 and 2 (parasite share 0.6%, 1.8%), tierra 1 of 10 at sun 1 and 10 of 10 at sun 2 (20.4%), so E016's S = 2 |
 
 ## Order
 
@@ -201,11 +201,22 @@ left for then.
   (above 5% in 10 of 10), entered share of replicator-class deaths
   23.5–26.4% after 25,000 (above 25% in 6 of 10), intruders resident
   in 23–30% of intruder deaths. No same-sun std control yet, so this
-  is H17's tierra side only. Decision pending before stage 3 and
-  E016: whether to fix the `alloc`/`copy` edge first (it makes
-  parasites for free in every arm and would change every run's bytes,
-  so it would be a flag with the old behaviour kept reproducible, and
-  a new std baseline).
+  is H17's tierra side only. Decided the same day: fix the
+  `alloc`/`copy` edge first, with the old behaviour kept as
+  `--legacy-pending-range` (T08). **Outcome 2026-10-13** (E015 record,
+  stage 2c; `2260b62`, `a000687`): under the fixed edge the template
+  body still fails at sun 1 (**1 of 10**; replicator-class bodies last
+  to 3,000–26,000 instead of 1,500–8,000, half as many worlds die, mean
+  ration 86% against a 95.6% break-even) and passes **10 of 10** at
+  `--sun 2`, with parasite-lineage share 20.4% (7.6–37.4%) in the last
+  bin, above 5% in every seed, and 24.8% of replicator-class deaths
+  entered: the edge was neither the margin problem nor the source of
+  the parasites. Std, the same-sun control, persists 10 of 10 at sun 1
+  and 2 with parasite share 0.6% and 1.8% (at most 2% in 9 and 6 of 10
+  seeds) and 4.4% and 7.2% entered. What this changes: E016 runs at
+  S = 2 (its §2 rule); stage 3 is not run separately (folded into
+  E016's cost-off arms); std's "at most 2%" clause at sun 2 is marginal
+  (6 of 10 against the scaled 7), which E016's reading should expect.
 - Persists, parasites stay near 1%: placement, not addressing, limits
   entries (H17's second refutation). E016 still runs; its entered
   fraction is then the std ancestor's, and the design's expectation is

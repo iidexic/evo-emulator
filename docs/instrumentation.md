@@ -125,6 +125,28 @@ tick in the shuffled order (organisms killed by upkeep that tick draw
 nothing); with P = 0 the stream is unchanged. The three flags combine
 with each other and with any energy rule.
 
+`--legacy-pending-range` (`Config.legacy_pending_range`, T08,
+2026-10-13, default off) restores the `alloc`/`copy` range edge every
+run before that date was made with. Since T08 a write (`store` or
+`copy`) whose target lies inside the executor's own pending region
+passes the locality check, because `alloc` already checked the whole
+region against locality from its own IP when it claimed it; every other
+write still checks range from the IP, and reads (including `copy`'s
+source) are unchanged, as are write protection, write noise,
+`copy_errors`, `slips` and `source`. Under the flag every write checks
+range from the IP, so a child that the far `alloc` placed at the
+backward edge of the radius (byte 0 exactly `locality` behind the
+`alloc`) loses the bytes the `copy` loop cannot reach from its own IP a
+few bytes on (byte 0 for the 21-byte ancestor, whose `copy` is one byte
+after `alloc`; bytes 0–2 for the template ancestor, three bytes on):
+those writes are `range_faults` and the child keeps whatever stale bytes
+were there. The flag is bit-identical to the engine before T08 (tested
+against three pinned state hashes); the default draws one more write-
+noise `chance` per write that used to fault, so the PRNG streams part at
+the first such write. `meta.json`'s config has the key since T08; runs
+before it have none and are the legacy world. `--classify` and the
+harness modes take the flag like any physics flag.
+
 `Patch` gains two cumulative counters: `absorbed` (energy taken by
 absorbs) and `overflow` (income lost to the cap).
 

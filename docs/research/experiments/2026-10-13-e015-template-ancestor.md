@@ -6,7 +6,12 @@ Status: record written 2026-10-13 before stages 1 and 2 were run into
 registered branch in `docs/tasks/README.md` ("E015 persistence and
 world"): `--sun 2`, the branch's declared next knob, which **passes 10
 of 10**; and a noise-off arm as a diagnostic of why the gate failed (not
-in the branch). Stage 3 (the 30-seed world comparison) is **not run**. The
+in the branch). Then, the same day, T08 fixed the `alloc`/`copy` range
+edge those runs share and four gate arms were run under the fixed edge
+(stage 2c, at the end): the template body still needs `--sun 2`
+(**1 of 10** at sun 1, **10 of 10** at sun 2). Stage 3 (the 30-seed
+world comparison) is **not run**; under the fixed edge it is folded into
+E016's cost-off arms. The
 protocol and predictions are T03 §4 (`docs/tasks/T03-template-ancestor.md`,
 written before the build) and H17 (`docs/research/hypotheses.md`); the
 body and K are what the T03 build found (below). Runner:
@@ -474,3 +479,82 @@ replicator-class bodies at sun 2 still die young (median 26 ticks, 64%
 childless in the first 5,000) at a mean ration of 84%: the body
 persists because enough of them pay, not because most do. Stage 3 is
 not run.
+
+## Stage 2c: the four gate arms under the fixed edge
+
+Added 2026-10-13 by T08 (`docs/tasks/T08-alloc-copy-edge.md` §4), after
+the edge above was fixed: a write into the executor's own pending region
+now passes the locality check, and `--legacy-pending-range` keeps the
+old rule bit for bit (engine commit `2260b62`; the stage 1-2 arms above
+are that legacy world, and the runner now gives them the flag). Same
+gate protocol (10 seeds, 50,000 ticks, one founder, `--census 500`,
+classified under the arm's own flags, pass at replicator-class bodies
+alive at 50,000 in at least 8 of 10). Runner `e015_template.py gate
+--arm <arm>` (commit `a000687`), binary `2260b62`, 9.5 minutes for the
+40 runs; data in `runs/e015/world/<arm>/`, tables in `gate_<arm>.md`.
+The legacy rows are the stage 2 runs above, re-analysed only (their
+earlier summaries are kept in `runs/e015/world/pre_t08/`); every
+legacy number already in this record is unchanged by the re-analysis.
+
+| arm | flags | pass | replicator-class at 50,000 (living) | parasite share, last bin | entered after 25,000 | resident after 25,000 (ran / intruders) | edge signature (no slip; bytes 0–2 only) |
+|---|---|---|---|---|---|---|---|
+| `std_fix` | `--ancestor std` | 10 of 10 | 197–258 (910–971) | 0.6% (0.0–2.3%); ≤ 2% in 9 | 4.4% (4.0–4.6%) | 0.3% / 8.2% | 21.19% (19.41%; 0.20%) |
+| `std_fix_sun2` | `--ancestor std --sun 2` | 10 of 10 | 324–432 (1,893–1,934) | 1.8% (1.1–3.3%); ≤ 2% in 6 | 7.2% (6.7–7.9%) | 0.8% / 12.0% | 24.58% (22.89%; 0.20%) |
+| `tierra_fix` | `--ancestor tierra` | **1 of 10** | 0–14 (0–628) | 2.2% and 0.6% (seeds 3 and 5, the only two with exact births then) | 10.9% in seed 3 (19,619 deaths); the rest from 0–280 deaths | seed 3: 1.4% / 8.3% | 39.09% (37.18%; 0.33%) |
+| `tierra_fix_sun2` | `--ancestor tierra --sun 2` | **10 of 10** | 180–273 (1,373–1,474) | 20.4% (7.6–37.4%); > 5% in 10 | 24.8% (21.5–25.6%); > 25% in 2 | 10.8% / 25.0% | 40.54% (38.91%; 0.37%) |
+| `tierra` (legacy) | `--ancestor tierra` | 0 of 10 | 0 (0–4) | – | – | – | 47.16% (45.29%; 8.22%) |
+| `tierra_sun2` (legacy) | `--sun 2` | 10 of 10 | 210–274 (1,179–1,506) | 16.7% (8.0–27.0%); > 5% in 10 | 25.0% (23.5–26.4%); > 25% in 6 | 10.5% / 25.7% | 44.97% (43.31%; 3.07%) |
+| `tierra_quiet` (legacy) | `--p 0 --rot 0` | 0 of 10 | 0 (134–545) | – | – | – | 30.61% (30.61%; 10.62%) |
+
+Shares are medians over seeds (min–max); "parasite share" is E007's
+`parasite_2` lineages' share of exact births in ticks 47,500–50,000;
+"entered" is the share of replicator-class deaths with a non-zero
+`exec_by_others`; "resident" is `exec_foreign / executed` above 0.9,
+over deaths that ran and over intruder deaths. The edge signature (T08 §4) is the share of
+all births, pooled over seeds, with `copy_errors` 0 and `raw_hash` ≠
+`parent_now_hash`; in brackets the part with no slip either, and the
+part of that differing from the parent's body only in bytes 0–2 (same
+length, longer than 3 bytes; per seed 0.18–0.59% in the fixed arms,
+2.6–3.8% for `tierra_sun2`, 3.9–20.7% for `tierra_quiet`).
+
+`tierra_fix` per seed: replicator-class bodies last seen at 17,500,
+6,000, 50,000, 3,000, 5,000, 23,500, 26,000, 16,500, 9,000 and 4,500
+(seeds 1–10; legacy 1,500–8,000); seed 3 is the one pass (14 of 628
+living); seeds 2, 8, 9, 10 go extinct (36,500–47,000), against eight
+legacy seeds. Its replicator-class deaths in the first 5,000 ticks:
+median age 26, 56.6% childless, mean ration 86.1% of a full one (legacy
+27, 51.1%, 85.5%; break-even 95.6%). Parasite share of exact births in
+its first bin 22.1% (3.3–38.3%; legacy 15.7%); `tierra_fix_sun2`'s
+54.8% (45.1–59.1%; legacy 45.4%).
+
+### Reading
+
+The edge was not what kept the template body from persisting, and not
+where its parasitism came from. With the free parasites gone the body
+still fails at sun 1 (1 of 10, against 0 of 10): its replicator-class
+bodies last longer (to 3,000–26,000 outside seed 3, instead of
+1,500–8,000) and half as
+many worlds die, but they still die in their first cycle at a mean
+ration of 86% against a break-even of 95.6%, so the margin binds and the
+body needs `--sun 2`, where it passes 10 of 10 as before. At sun 2 its
+parasitism is as common as in the legacy world (20.4% of exact births
+by parasite lineages in the last bin, above 5% in every seed; a quarter
+of replicator-class deaths entered), so the tierra side of H17 stands
+under the fixed physics. The std ancestor's parasite share does fall to
+H17's range at sun 1 (median 0.6%, at most 2% in 9 of 10 seeds, entered
+4.4%, below the 7–14% the record quotes for std), but at sun 2, the
+level E016 will use, it is 1.8% with 6 of 10 seeds at or under 2%
+(entered 7.2%): one seed short of the scaled 20-of-30 bar, so std's
+clause at E016's sun is marginal, not met. Same-sun, the two ancestors
+differ elevenfold in parasite share (20.4% against 1.8%) and 3.4-fold
+in entered share (24.8% against 7.2%). The edge signature as specified
+is not the edge's signature in these worlds: 21–47% of births in every
+arm, fixed or legacy, are children that differ from the parent with no
+copy error, mostly (in the runs inspected) bodies that copy a rotated
+or partial image of themselves, or blank memory, every time, plus
+single-byte somatic changes to the parent during the copy. The part
+confined to bytes 0–2 is the edge's: 0.20–0.37% under the fix (std's
+come at the forward and the backward placement alike, so bit rot on the
+parent's first bytes after they were copied, not the edge) against
+3–11% in the legacy arms. By E016's rule (§2) `tierra_fix` failing at
+sun 1 sets S = 2.
