@@ -127,7 +127,9 @@ Stages (subcommands):
   mechanism), `not` (screened, neither), `unmatched` (not in defence.csv))
   and `qnn_series` over `func_hash` as turnover context; the series, with
   `structural_share` and `parameter_share` of census bodies, goes to
-  RUN_DIR/measures/. Writes runs/e016/bins.csv, runs.csv, summary.md: §4's
+  RUN_DIR/measures/. Each run's bins and summary are cached in
+  RUN_DIR/analyse.json (keyed on defence.csv's mtime) so a killed stage
+  resumes; `--force` redoes them. Writes runs/e016/bins.csv, runs.csv, summary.md: §4's
   counts (H16 gate 2 maintained structural seeds per arm against >= 10 /
   <= 2 / <= 2; H17 seeds with parasite share > 5% (tierra_n0, >= 20 of 30)
   and <= 2% (std_n0), entered-share medians against > 25% and 7-14%), and
@@ -936,11 +938,17 @@ def defence_class(sets: dict) -> pl.Expr:
             .when(f.is_in(sorted(sets["screened"]))).then(pl.lit("not")).otherwise(pl.lit("unmatched")))
 
 
+DEATH_COLS = ["tick", "birth_hash", "age", "offspring", "executed", "exec_foreign", "exec_by_others", "cycles_lost_m"]
+
+
 def analyse_run(out: Path, arm: str, seed: int, ticks: int, bin_size: int, tax: Tax | None, snapshots: bool,
                 do_measures: bool) -> tuple[list[dict], dict]:
     d = run_dir(out, arm, seed)
     check_meta(d, arm, ticks, tax, snapshots)
-    run = load(d)
+    # deaths.csv is read narrow (the columns this function, E015's
+    # parasite_genomes and T05's measures use): whole, it is 2 GB and the peak
+    # of the whole analysis was 13.7 GB on a std run; narrow, about 5 GB.
+    run = load(d, columns=dict(deaths=DEATH_COLS))
     ddf = read_defence(d)
     sets = defence_sets(ddf)
     funcs = run.genomes.select("raw_hash", "func_hash")
@@ -950,12 +958,15 @@ def analyse_run(out: Path, arm: str, seed: int, ticks: int, bin_size: int, tax: 
     par, _ = parasite_genomes(run)
     binx = lambda c: ((pl.col(c) + bin_size - 1) // bin_size).cast(pl.Int64)
     winx = lambda c: pl.max_horizontal(pl.lit(1), (pl.col(c) + WINDOW - 1) // WINDOW).cast(pl.Int64)
-    ex = run.class_of(run.births.filter(pl.col("raw_hash") == pl.col("parent_now_hash")), "raw_hash").with_columns(
+    # Narrow the frames before the joins and filters below: deaths.csv has 45
+    # columns and 2-4 M rows, and each derived frame is a copy (memory, not time).
+    ex = run.class_of(run.births.filter(pl.col("raw_hash") == pl.col("parent_now_hash"))
+                      .select("tick", "child", "raw_hash"), "raw_hash").with_columns(
         bin=binx("tick"), win=winx("tick"), par=pl.col("raw_hash").is_in(list(par)),
         comp=pl.col("raw_hash").is_in(comp_r), imm=pl.col("raw_hash").is_in(imm_r),
         tol=pl.col("raw_hash").is_in(tol_r), st=pl.col("raw_hash").is_in(st_r), pa=pl.col("raw_hash").is_in(pa_r))
     rex = ex.filter(pl.col("class") == "replicator")
-    deaths = run.class_of(run.deaths, "birth_hash").with_columns(
+    deaths = run.class_of(run.deaths.select(DEATH_COLS), "birth_hash").with_columns(
         bin=binx("tick"), entered=pl.col("exec_by_others") > 0,
         resident=(pl.col("executed") > 0) & (pl.col("exec_foreign") > RESIDENT * pl.col("executed")))
     rep = deaths.filter(pl.col("class") == "replicator")
@@ -963,7 +974,7 @@ def analyse_run(out: Path, arm: str, seed: int, ticks: int, bin_size: int, tax: 
         cpt=pl.col("offspring") / pl.col("age"))
     ran = deaths.filter(pl.col("executed") > 0)
     intr = deaths.filter(pl.col("exec_foreign") > 0)
-    orgs = run.orgs.with_columns(off=pl.col("ip_off") >= pl.col("len"))
+    orgs = run.orgs.select("tick", "len", off=pl.col("ip_off") >= pl.col("len"))
     w = world(d)
     by = lambda df, key: {r[key]: r for r in df.iter_rows(named=True)}
     has_def = ddf is not None
@@ -1076,7 +1087,24 @@ def analyse_run(out: Path, arm: str, seed: int, ticks: int, bin_size: int, tax: 
 
 
 def _analyse_job(args: tuple) -> tuple[list[dict], dict]:
-    return analyse_run(*args)
+    """One run's analysis, cached in `<run>/analyse.json` (bins and the
+    per-run summary) so that a killed `analyse` stage resumes; `--force`
+    (the last tuple element) redoes it. The cache is keyed on the
+    `defence.csv` it read: a re-screened run is re-analysed."""
+    *rest, force = args
+    d = run_dir(rest[0], rest[1], rest[2])
+    cache, ddf = d / "analyse.json", d / "defence.csv"
+    stamp = ddf.stat().st_mtime_ns if ddf.exists() else None
+    if not force and cache.exists():
+        c = json.loads(cache.read_text(encoding="utf-8"))
+        if c.get("defence_mtime_ns") == stamp:
+            print(f"{rest[1]}/s{rest[2]}: analyse cached", flush=True)
+            return c["bins"], c["summary"]
+    bins, s = analyse_run(*rest)
+    cache.write_text(json.dumps(dict(defence_mtime_ns=stamp, bins=bins, summary=s)) + "\n",
+                     encoding="utf-8", newline="")
+    print(f"{rest[1]}/s{rest[2]}: analysed", flush=True)
+    return bins, s
 
 
 def add_cpt_norm(bdf: pl.DataFrame, runs: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
@@ -1720,7 +1748,7 @@ def main() -> None:
         return
 
     if a.stage == "analyse":
-        jobs = [(out, x, s, a.ticks, a.bin, tax, snapshots, not a.no_measures) for x in arms for s in seeds
+        jobs = [(out, x, s, a.ticks, a.bin, tax, snapshots, not a.no_measures, a.force) for x in arms for s in seeds
                 if has(run_dir(out, x, s), "classes.csv")]
         if not jobs:
             raise SystemExit(f"no finished runs under {out}")

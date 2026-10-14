@@ -201,17 +201,21 @@ def csv_path(run_dir: str | Path, name: str) -> Path | None:
     return None
 
 
-def _read(path: Path, name: str) -> pl.DataFrame:
-    over = {c: pl.Utf8 for c in HASH_COLS[name]}
+def _read(path: Path, name: str, columns: list[str] | None = None) -> pl.DataFrame:
+    """Read one CSV (plain or .gz); `columns` restricts the read to those
+    columns (deaths.csv has 45 and 2-4 M rows in a 250,000-tick run, about
+    2 GB in memory, so a reader that needs a few columns says which)."""
+    over = {c: pl.Utf8 for c in HASH_COLS[name] if columns is None or c in columns}
+    kw = dict(schema_overrides=over, columns=columns)
     if path.suffix == ".gz":
         try:
-            df = pl.read_csv(path, schema_overrides=over)
+            df = pl.read_csv(path, **kw)
         except Exception:
             # A polars build without gzip support: decompress here.
             with gzip.open(path, "rb") as f:
-                df = pl.read_csv(io.BytesIO(f.read()), schema_overrides=over)
+                df = pl.read_csv(io.BytesIO(f.read()), **kw)
     else:
-        df = pl.read_csv(path, schema_overrides=over)
+        df = pl.read_csv(path, **kw)
     if df.height == 0:
         # A header-only file (no births yet, no deaths) infers every column
         # as text; give the numeric ones their real type.
@@ -276,13 +280,16 @@ def run_sets(need_world: bool = False) -> dict[str, dict[str, Path]]:
     return out
 
 
-def load(run_dir: str | Path) -> Run:
+def load(run_dir: str | Path, columns: dict[str, list[str]] | None = None) -> Run:
+    """Read a run's frames. `columns`: per file name (`deaths`, `orgs`, ...),
+    the columns to read; files not listed are read whole."""
+    columns = columns or {}
     d = Path(run_dir)
     meta = json.loads((d / "meta.json").read_text())
     paths = {n: csv_path(d, n) for n in HASH_COLS}
     missing = [n for n, p in paths.items() if p is None and n != "classes"]
     if missing:
         raise FileNotFoundError(f"{d}: no {', '.join(f'{n}.csv' for n in missing)} (plain or .gz)")
-    frames = {n: _read(paths[n], n) for n in HASH_COLS if n != "classes"}
-    classes = _read(paths["classes"], "classes") if paths["classes"] else None
+    frames = {n: _read(paths[n], n, columns.get(n)) for n in HASH_COLS if n != "classes"}
+    classes = _read(paths["classes"], "classes", columns.get("classes")) if paths["classes"] else None
     return Run(dir=d, meta=meta, classes=classes, **frames)
