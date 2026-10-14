@@ -224,6 +224,17 @@ left for then.
   revised down in the record before the main stage.
 
 **E016, the defence search** (cost × ancestor, 30 seeds).
+**Outcome 2026-10-14** (record §8): the first branch, with a twist. A
+defence appears and is maintained in 29 of 30 seeds, but in the
+cost-off arm as much as the cost-on one: it is Tierra's relabelling
+(two coordinated bytes), immune to the registered probe, arising by
+tick 2,500 by mutation supply; the cost raises its share by about a
+third (23 of 29 pairs, p = 0.002). lod and look-back done (harness-
+neutral steps, world column above 1, the parent's body at the division
+already carries every edit in 34 of 47 lines); replays pending (arising
+rate 100%, so potentiation is not informative). The tax control at
+P = 88 is not survivable (25 of 30 extinct). Next: the write-up and the
+`drain` decision; a survivable control if H16 stays open.
 - A defence appears and is maintained: T06's line of descent on it,
   Croft's look-back on the first complete one per seed, T04 replays
   from the snapshot before its first appearance with new seeds
