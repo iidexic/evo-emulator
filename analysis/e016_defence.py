@@ -493,6 +493,10 @@ def inflate_to(gz: Path, dst: Path) -> Path:
     return dst
 
 
+def has_snapshot(d: Path, tick: int) -> bool:
+    return (d / "state" / f"{tick}.bin").exists() or (d / "state" / f"{tick}.bin.gz").exists()
+
+
 @contextmanager
 def snapshot_file(d: Path, tick: int):
     """A plain path to the run's snapshot at `tick` for the length of the
@@ -1591,7 +1595,16 @@ def replay_plan(runs: pl.DataFrame, arm: str, n: int = len(REPLAY_SEEDS),
             plan += [("founder", seed, 0, k, FOUNDER_TO) for k in new_seeds]
         else:
             plan += [("potentiation", seed, s, k, t + REPLAY_AFTER) for k in new_seeds]
-    bg = x.filter(pl.col("first_structural_tick").is_null() & pl.col("screened"))["seed"].to_list()
+    bg = x.filter(pl.col("first_structural_tick").is_null() & pl.col("screened"))
+    if "has_background" in bg.columns:
+        # A run that died before BACKGROUND_FROM (E016 tierra_n0/s14, 252
+        # ticks) has no snapshot there and cannot be a background source.
+        short = bg.filter(~pl.col("has_background"))["seed"].to_list()
+        if short:
+            notes.append(f"{arm}: seeds {short} have no {BACKGROUND_FROM:,} snapshot (extinct before it); "
+                         f"left out of the background replays")
+        bg = bg.filter(pl.col("has_background"))
+    bg = bg["seed"].to_list()
     if ticks < BACKGROUND_FROM:
         notes.append(f"{arm}: runs of {ticks:,} ticks have no {BACKGROUND_FROM:,} snapshot; no background replays")
     elif bg:
@@ -1605,9 +1618,11 @@ def screened_runs(out: Path, arms: list[str], seeds: list[int]) -> pl.DataFrame:
     rows = []
     for a in arms:
         for s in seeds:
-            df = read_defence(run_dir(out, a, s))
+            d = run_dir(out, a, s)
+            df = read_defence(d)
             if df is not None:
-                rows.append(dict(arm=a, seed=s, screened=True, **screen_counts(df)))
+                rows.append(dict(arm=a, seed=s, screened=True, has_background=has_snapshot(d, BACKGROUND_FROM),
+                                 **screen_counts(df)))
     schema = {"arm": pl.Utf8, "seed": pl.Int64, "screened": pl.Boolean, "first_structural_tick": pl.Int64}
     return pl.DataFrame(rows, infer_schema_length=None) if rows else pl.DataFrame(schema=schema)
 

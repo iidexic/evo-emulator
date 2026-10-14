@@ -435,3 +435,8 @@ def test_replay_plan_snapshots_founder_and_background(tmp_path):
     assert len(e.replay_plan(runs, "tierra_t50", 2)[0]) == 8  # smoke: two per source
     short, notes = e.replay_plan(runs, "tierra_t50", 10, ticks=3_000)
     assert not [p for p in short if p[0] == "background"] and any("no 25,000 snapshot" in n for n in notes)
+    # A seed extinct before 25,000 has no snapshot there: not a background source.
+    plan, notes = e.replay_plan(runs.with_columns(has_background=pl.Series([True, True, False, True, True])),
+                                "tierra_t50")
+    assert [p[1] for p in plan if p[0] == "background"] == [4] * 10
+    assert any("seeds [3] have no 25,000 snapshot" in n for n in notes)
