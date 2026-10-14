@@ -33,8 +33,8 @@ says nothing the notes do not.
 | H13 | a cost alone gives no defence on the E007 timescale | supported | 2026-10-09 | E008 |
 | H14 | a graded cost selects the one-byte defence, not the five-byte | self-scan half settled against; endowment half untested | 2026-10-12 | E009, E009a, E009b |
 | H15 | profitable intrusion makes a short eject pay | refuted on its premise | 2026-10-09 | E010 |
-| H16 | a cost in time grades an entered host and makes a short eject pay | open | none | E014, designed |
-| H17 | a template-addressed ancestor has a one-hop parasite and parasitism becomes common | one-hop parasite confirmed by construction (1,028 search-addressed rows for the template body, 0 for the 21-byte one, which has 25 `parasite_jump` rows by fixed offsets); "common" pending: gate failed 0 of 10 at K = 127, passes at `--sun 2` (declared arm), where parasites are 8–27% of exact births and 25% of replicator-class deaths are entered; under T08's fixed `alloc`/`copy` edge (E015 stage 2c) still 1 of 10 at sun 1 and 10 of 10 at sun 2, parasite share 20.4% and 24.8% entered against std's 1.8% and 7.2% at the same sun (10 seeds each; the registered 30-seed test is folded into E016) | 2026-10-13 | E015 |
+| H16 | a cost in time grades an entered host and makes a short eject pay | gate 1 confirmed (E014: 0.90 at N = 50 on reproducing std hosts); gate 2 fails as registered (E016: the only defence, Tierra's relabelling, is maintained in 29 of 30 tierra_t50 seeds **and** 29 of 30 tierra_n0 seeds, arising by mutation supply by tick 2,500; the cost raises its share by about a third, 23 of 29 pairs, p = 0.002; no eject or other tolerant defence in 150 runs; the tax control at P = 88 is not survivable) | 2026-10-14 | E014, E016 |
+| H17 | a template-addressed ancestor has a one-hop parasite and parasitism becomes common | one-hop parasite confirmed by construction (1,028 search-addressed rows for the template body, 0 for the 21-byte one, which has 25 `parasite_jump` rows by fixed offsets); "common" pending: gate failed 0 of 10 at K = 127, passes at `--sun 2` (declared arm), where parasites are 8–27% of exact births and 25% of replicator-class deaths are entered; under T08's fixed `alloc`/`copy` edge (E015 stage 2c) still 1 of 10 at sun 1 and 10 of 10 at sun 2, parasite share 20.4% and 24.8% entered against std's 1.8% and 7.2% at the same sun (10 seeds each); the registered 30-seed test (E016, sun 2, fixed edge): parasite share above 5% in 29 of 30 tierra_n0 seeds (median 22.2%) against at or under 2% in 24 of 30 std_n0 seeds (median 1.36%), **holds**; entered share median 23.6% against the registered > 25%, misses by 1.4 points, std 7.2% inside 7–14% | 2026-10-14 | E015, E016 |
 
 ---
 
@@ -861,6 +861,26 @@ pre-registered.
 
 **Status.** Open. E014, designed, not built.
 
+**Status 2026-10-14** (E016 record §8). Gate 2 fails as registered: the
+only defence that arose in 150 runs is Tierra's relabelling (one
+`searchf` template byte and one L1 byte changed together), immune to
+the registered probe, arising by tick 2,500 in 22 of 29 cost-off and 21
+of 29 cost-on tierra seeds and maintained in 29 of 30 seeds of both
+arms; mutation supply, not the cost, makes it common (the record's
+§7.4 said so in advance). The cost raises the relabelled class's share
+by about a third (tierra_t50 above tierra_n0 in 23 of 29 seed pairs on
+the end share, sign test p = 0.0023; 20.6% against 14.9%). No tolerant
+defence (eject, reset, self-check) arose. In the harness the entered
+template ancestor makes 1 exact child in 3,000 ticks under the 50%
+theft against 119 alone (the std ancestor 116 of 230): "graded" holds
+for std, the searching parasite is near-lethal for its host, and the
+world persists under it anyway with 43% of replicator-class deaths
+entered. The tax control at the calibrated P = 88 kills 25 of 30 seeds
+and cannot be read. The prediction's eject is not reachable here by
+one change (0 complete single mutants of 10,496 for the template body);
+whether to keep H16 open on a redesigned cost or control is the
+`drain` decision (PLAN §8.3).
+
 ---
 
 ## H17. A template-addressed ancestor has a one-hop parasite, and parasitism becomes common (2026-10-13)
@@ -905,6 +925,16 @@ the 21-byte one, so persistence in the standard world is itself a
 gate, run before the world comparison.
 
 **Status.** Open. E015, designed, not built.
+
+**Status 2026-10-14** (E016 record §8.5, the registered 30-seed test at
+sun 2 under the fixed edge). Parasite share above 5% in 29 of 30
+tierra_n0 seeds (median 22.2%, 7.6–40.0%) against at or under 2% in 24
+of 30 std_n0 seeds (median 1.36%): holds. Entered share of
+replicator-class deaths in (25,000, 50,000] median 23.6% against the
+registered > 25%: misses by 1.4 points; std 7.2%, inside 7–14%. The
+fixed edge changed neither number from E015's legacy-world figures.
+"Common" is confirmed on the share clause; the entered clause was set a
+little high.
 
 **Status 2026-10-13** (E015, stages 1 and 2 and two arms added after the
 gate failed; `docs/research/experiments/2026-10-13-e015-template-ancestor.md`).
