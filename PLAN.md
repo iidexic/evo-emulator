@@ -779,6 +779,16 @@ the harness fitness of every intermediate is the result nobody has
 (`literature.md` §6.4 Q1, §7.4 Q2). No defence under a graded,
 survivable, lifelong cost with a one-hop parasite is a clean negative
 against the Tierra-with-energy premise, also reportable.
+**Outcome 2026-10-14** (E016 record §8): the only defence in 150 runs is
+Tierra's relabelling (a template byte and an L1 byte changed together),
+maintained in 29 of 30 seeds with the cost and 29 of 30 without, so
+gate 2 fails as registered and the paired reading holds (the cost
+raises the relabelled share by about a third, 23 of 29 pairs,
+p = 0.002); no eject or other tolerant defence; the random-tax control
+at the calibrated rate is not survivable (25 of 30 extinct). H17's
+share clause holds (29 of 30 above 5%), its entered clause misses by
+1.4 points. The relabelling is immune to the registered probe only;
+every new label has its own one-hop parasite.
 
 `drain` (`docs/research/drain-proposal-2026-10-12.md`) follows E016 if
 a consumer mode is still wanted, in the form with precedent: a take
