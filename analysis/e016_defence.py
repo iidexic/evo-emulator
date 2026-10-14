@@ -62,8 +62,9 @@ Stages (subcommands):
   os.cpu_count()). Each run is classified with the arm's flags and gzipped
   (every file but patches.csv and meta.json, and every state/<tick>.bin to
   <tick>.bin.gz; evo_run reads .gz, `replay` inflates the snapshot it
-  needs). Resumable: a seed with classes.csv is skipped (its snapshots and
-  meta are checked). Refuses to start unless a one-tick dry run of the
+  needs). Resumable: a seed with a whole classes.csv (one row per genome)
+  is skipped (its snapshots and meta are checked); one cut by a kill during
+  `--classify` is re-classified and its screen outputs dropped. Refuses to start unless a one-tick dry run of the
   binary accepts `--state-every` (T04), since the snapshots cannot be added
   afterwards (§2). `--no-snapshots` drops the flag for a smoke run only
   (refused without `--smoke`, which also needs `--out` away from
@@ -318,6 +319,26 @@ def has(d: Path, name: str) -> bool:
     return (d / name).exists() or (d / f"{name}.gz").exists()
 
 
+def classes_complete(d: Path) -> bool:
+    """Whether classes.csv (plain or .gz) holds one whole row per genome.
+    `--classify` writes through a buffer, so a kill part-way (a reboot
+    during the world stage) leaves a file `has` accepts that stops short,
+    its last row cut; the resume must re-classify such a run."""
+    cp, gp = csv_path(d, "classes"), csv_path(d, "genomes")
+    if cp is None or gp is None:
+        return False
+
+    def rows(p: Path) -> tuple[int, bytes]:
+        n, last = 0, b""
+        with (gzip.open if p.suffix == ".gz" else open)(p, "rb") as f:
+            for line in f:
+                n, last = n + 1, line
+        return n, last
+
+    nc, last = rows(cp)
+    return nc == rows(gp)[0] and last.endswith(b"\n") and last.count(b",") == 8
+
+
 def after(ticks: int) -> int:
     """The "after 25,000" tick; half the run for smoke runs under 50,000."""
     return min(SECOND_HALF, ticks // 2)
@@ -510,6 +531,12 @@ def run_world(exe: Path, out: Path, arm: str, seed: int, ticks: int, tax: Tax | 
     d = run_dir(out, arm, seed)
     tag = f"{arm}/s{seed}"
     meta = d / "meta.json"
+    if not force and has(d, "classes.csv") and not classes_complete(d):
+        # Cut by a kill during --classify, then taken as finished by an
+        # earlier resume (and gzipped); its screen outputs are stale too.
+        for n in ("classes.csv", "classes.csv.gz", "defence.csv", "defence_ref.json"):
+            (d / n).unlink(missing_ok=True)
+        print(f"{tag}: classes.csv incomplete; re-classifying", flush=True)
     if not force and has(d, "classes.csv"):
         check_meta(d, arm, ticks, tax, snapshots)
         if snapshots and (miss := missing_snapshots(d, ticks)):
