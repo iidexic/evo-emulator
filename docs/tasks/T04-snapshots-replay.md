@@ -1,6 +1,17 @@
 # T04. Full-state snapshots and replay from a tick
 
-Status: specified 2026-10-13. Not built. PLAN §7 has listed this as
+Status: specified 2026-10-13; built the same day (Opus, `63cae21`;
+docs/instrumentation.md, "Snapshots and replay"). §2's list needed no
+addition: it already had every `Sim` and `Org` field T02, T03 and T08
+added (`exec_by_others` and the cycle counters are `OrgStats` words,
+`legacy_pending_range` is in the config text); `meta.json`'s
+`replay_from` is `{path, tick, file_seed, reseed}` and a `state_every`
+key was added. §6: `cargo test` 77 passed; 680–700 KB per snapshot in
+the default world, 886 KB in E016's `tierra_t50` world; save 0.3 ms,
+load 0.4 ms (release); `--state-every 500` over 50,000 ticks cost 0.12 s
+of 15 s (under 1%). Test 2 replays 5,000 from 2,500 (not 10,000 from
+5,000), in the default world and in `tierra_t50`; both continuations
+are bit-identical. PLAN §7 had listed this as
 "not yet" since 2026-10-03; E016 needs it for replay-based
 potentiation (Escondo & Ferguson 2026 seed replays from full
 snapshots, not from lineages). Independent of T02 and T03, but every

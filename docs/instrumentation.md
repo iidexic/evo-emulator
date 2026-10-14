@@ -9,6 +9,8 @@ replicators while broken-loop absorbers survive?
 Out of scope for this cut: snapshots and replay from a mid-run tick, the
 standard ALife phylogeny export, Bedau–Packard and MODES statistics, and an
 interactive viewer. The files below are the raw input all of those need.
+(Snapshots and replay were added on 2026-10-13 by T04; see "Snapshots
+and replay" below.)
 
 ## Ground rules
 
@@ -214,6 +216,11 @@ All CSV with a header row. Written by `record.rs` (`Recorder`).
   `--e` apply to and what is seeded without `--founder`; `ancestor_k`
   is the K actually used (`--k` defaults to 64 for `std`, 127 for
   `tierra`). Runs before 2026-10-13 have no key; they are all `std`.
+  Since T04 (2026-10-13) also `state_every` (`--state-every N`, or
+  `null`) and `replay_from` (`null`, or for a `--replay-from` run
+  `{"path": FILE, "tick": T, "file_seed": F, "reseed": S}`, with `reseed`
+  `null` when the stream continued); see "Snapshots and replay". Runs
+  before have neither key.
 - `births.csv`: `tick,child,executor,source,start,len,copy_errors,slips,endowment_m,raw_hash,parent_hash,parent_now_hash,source_hash`
 - `deaths.csv`: `tick,id,cause,age,offspring,len,start,pending_len,ip_off,op_at_ip,energy_m,pool_m,birth_hash,now_hash,` then every `OrgStats` field.
 - `census.csv` (every census tick): `tick,now_hash,count`. Hash of current body bytes.
@@ -228,11 +235,107 @@ All CSV with a header row. Written by `record.rs` (`Recorder`).
   E005 found genomes running dead code left in free memory and could not
   read it. `analysis/evo_run.world(run_dir)` loads it; `evo-core --disasm
   HEX` and `evo_run.disasm(bytes)` decode a slice.
-- `genomes.csv` (written at the end): `raw_hash,func_hash,len,first_tick,first_id,origin,parent_hash,bytes_hex,disasm`. One row per raw hash ever seen. `origin` is `seed`, `birth`, or `somatic`. For `birth`, `parent_hash` is the executor's body at `divide` (`parent_now_hash`), so a lineage runs birth genome, then somatic variant, then child. A `somatic` row is a body that changed after birth, seen at a census or at a `divide`; its `parent_hash` is that body's birth hash. Under parasitism (copy source not the executor) the lineage parent is still the executor; `births.csv` has `source_hash` for other rules. A body's state at death is not stored (its bytes can be reused within the tick), so `deaths.now_hash` may be missing from this file.
+- `genomes.csv` (written at the end): `raw_hash,func_hash,len,first_tick,first_id,origin,parent_hash,bytes_hex,disasm`. One row per raw hash ever seen. `origin` is `seed`, `birth`, `somatic`, or (since T04, in a `--replay-from` run only) `replay`: a body alive at the snapshot tick, `first_tick` that tick, `parent_hash` 0. For `birth`, `parent_hash` is the executor's body at `divide` (`parent_now_hash`), so a lineage runs birth genome, then somatic variant, then child. A `somatic` row is a body that changed after birth, seen at a census or at a `divide`; its `parent_hash` is that body's birth hash. Under parasitism (copy source not the executor) the lineage parent is still the executor; `births.csv` has `source_hash` for other rules. A body's state at death is not stored (its bytes can be reused within the tick), so `deaths.now_hash` may be missing from this file.
 
 `--census N` sets the census interval (default: the `--report` interval).
 Event rows are written as they happen; the in-memory event list is drained
 after each tick so long runs do not grow memory.
+
+## Snapshots and replay (`--state-every`, `--replay-from`)
+
+Added 2026-10-13 (T04, `docs/tasks/T04-snapshots-replay.md`), for
+E016's replays from the snapshot before a defence first appears.
+
+`--state-every N` (needs `--out DIR`) writes `DIR/state/<tick>.bin`
+(plain decimal tick, e.g. `state/25000.bin`) every N ticks and at the
+final tick (the last tick run, `--ticks` or extinction). A snapshot is
+taken after the tick's events are written, before the next tick's
+injections. Each file holds everything `Sim` needs to continue bit for
+bit (`Sim::save_state`, `Sim::load_state`); it is written under a
+temporary name and renamed, so a killed run leaves no half-written
+`.bin`. Not in it: the event list (empty at that point) and the
+recorder's genome store (output). Size: 680–700 KB in the default world
+(about 950 bodies), 886 KB in E016's `tierra_t50` world at 25,000 ticks
+(1,405 bodies). Writing one takes about 1.2 ms in the release build
+(0.3 ms to serialise, 0.4 ms to load); 100 snapshots over a 50,000-tick
+run cost 0.12 s of 15 s. The loader reads the plain file only: gunzip a
+compressed snapshot before replaying from it.
+
+Format (`STATE_VERSION` 1), little-endian:
+
+```
+magic      8 bytes  "EVOSTATE"
+version    u32      1
+cfg_len    u32      then cfg_len bytes: Config::fields() as UTF-8
+                    "name=value\n" lines, in order (sim::config_text)
+tick       u64
+rng        4 × u64  (Rng::state(); Rng::from_state)
+next_id    u32
+energy_in, energy_out, energy_overflow   3 × i64
+retired_executed  u64
+retired_absorb_gain_m  i64
+n          u32      world size, then n bytes, then n × u32 owner ids
+np         u32      patches, then per patch pool, absorbed, overflow (3 × i64)
+norgs      u32      then per organism, in `orgs` order (the dead since
+                    the last retire included):
+  id u32; regs 4 × u32; ip u32; flag u8; energy i64; start u32; len u32;
+  pending: u8 present, u32 start, u32 len;
+  pending_source: u8 present, u32 owner, u64 owner's birth hash;
+  pending_errors u32; pending_slips u32; alive u8; birth_tick u64;
+  offspring u32; genome_hash u64; parent u32; cycle_debt i64;
+  first_foreign_off: u8 present, u32;
+  glen u32 then glen genome bytes (the birth genome);
+  stats: the 31 OrgStats fields in CSV_HEADER order, 8 bytes each
+  (i64 or u64 as declared; OrgStats::to_words)
+```
+
+An absent option is written as present 0 and zero values. A new field in
+`Sim`, `Org`, `Patch` or `OrgStats` is a new version (`save_state`
+destructures each without `..`, so it fails to compile until handled).
+The loader refuses another magic or version, a config whose fields differ
+from the loading run's (every field but `seed`, compared as text in
+order; the error names the first that differs, e.g. `snapshot config
+differs at cycle_theft_pct: the file has 50, this run 0`), a world or
+patch count that does not match, a truncated file and trailing bytes. It
+rebuilds the id index from the organism list.
+
+`--replay-from FILE [--seed S]` starts the run from FILE instead of
+seeding tick 0. Give the original run's physics flags: the config they
+make must match the file's, `seed` aside, or the run exits with status 2
+and the message above. `--ticks` is absolute and must be above the
+snapshot's tick. Without `--seed` the file's PRNG stream continues and
+the run is the original's continuation, bit for bit (tested: the same
+state file at the end, and the same `births.csv`, `deaths.csv`,
+`census.csv`, `orgs.csv`, `patches.csv` rows and `world.bin` records
+after the snapshot tick, in the default world and in `tierra_t50`).
+With `--seed S` the PRNG is re-seeded with `Rng::new(S)` at the snapshot
+tick (`Sim::reseed`), which is not the continuation even when S is the
+original seed; the same S from the same file gives the same run.
+`meta.json`'s config `seed` is the seed the stream from the snapshot tick
+on comes from (S, or the file's), and `replay_from` records the path as
+given, the tick, the file's seed and S (`reseed`, `null` without
+`--seed`).
+
+With `--out`, the recorder starts at the snapshot tick: `census.csv`,
+`orgs.csv`, `patches.csv` and `world.bin` get a record at that tick (the
+same as the original's census there; `patches.csv`'s `absorbed_m` and
+`overflow_m` are 0 in it, being totals since the recorder started), and
+every living body's birth genome goes into `genomes.csv` with origin
+`replay`, first seen at the snapshot tick, `parent_hash` 0. A body whose
+bytes changed since birth also gets its `somatic` row at that census, as
+in any run. Genomes first seen after the snapshot have the same rows as in
+the original, unless the original had seen them before the snapshot and
+they were extinct at it (a re-arisal is then a `birth` row in the
+replay). `patches.csv` matches the original only when the snapshot tick
+is a census tick (E016: 25,000 and 500). `ticks_requested` and
+`ticks_run` are absolute ticks. stdout's census line counts births and
+deaths from the snapshot tick, and the speed line counts only the
+replay's instructions. `--founder` is refused (it seeds tick 0), and so
+is `--inject` at or before the snapshot tick; later injections work as
+usual. `--ancestor`, `--k` and `--e` seed nothing in a replay and only
+go into `meta.json`, so pass the original's to keep it readable.
+`--state-every` in a replay writes snapshots at its multiples above the
+start tick and at the end, never the start tick itself.
 
 ## Classifier (`--classify DIR`)
 
