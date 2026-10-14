@@ -37,6 +37,8 @@ fn run(seed: u64, record: Option<&std::path::Path>) -> (Vec<Event>, u64) {
             founders: Vec::new(),
             founder_starts: Vec::new(),
             injections: Vec::new(),
+            state_every: None,
+            replay_from: None,
         };
         Recorder::create(d, &sim, info).unwrap()
     });

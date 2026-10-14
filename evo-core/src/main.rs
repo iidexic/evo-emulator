@@ -9,6 +9,7 @@
 //!          [--self-owner] [--charge-owner] [--charge-owner-pct N] [--transfer-pct N]
 //!          [--cycle-theft-pct N] [--cycle-tax-pct P] [--cycle-tax-frac F]
 //!          [--world-e001] [--founder HEX:COUNT]... [--inject TICK:HEX:COUNT]...
+//!          [--state-every N] [--replay-from FILE]
 //! evo-core --classify DIR [--harness-ticks N] [--classes-out NAME] [physics flags]
 //! evo-core --host HEX [--host-body HEX] [--host-pad] [--harness-ticks N] [physics flags]
 //! evo-core --neighbours HEX [--host-body HEX] [--harness-ticks N] [--neighbours-out FILE]
@@ -112,6 +113,27 @@
 //! census/organism/patch snapshots every --census ticks (default: the
 //! --report interval), genomes.csv, and meta.json.
 //!
+//! --state-every N (T04; needs --out) also writes a full-state snapshot
+//! `DIR/state/<tick>.bin` every N ticks and at the final tick
+//! (`Sim::save_state`; about 0.7 MB at the default world size). Without
+//! the flag nothing changes. meta.json records `state_every`.
+//!
+//! --replay-from FILE [--seed S] (T04) starts the run from that snapshot
+//! instead of seeding tick 0. The physics flags on the command line must
+//! give the file's config exactly, `seed` aside, or the run is refused
+//! with an error naming the first field that differs. --ticks is then an
+//! absolute tick and must be above the snapshot's. Without --seed the
+//! file's PRNG stream continues and the run is bit-identical to the
+//! original's from that tick on; with --seed S the PRNG is re-seeded with
+//! `Rng::new(S)` at the snapshot tick (`Sim::reseed`). --out works as
+//! usual from the snapshot tick: the census, organism and patch rows and a
+//! world.bin record are written for it, every living body's genome goes
+//! into genomes.csv with origin `replay`, and meta.json records
+//! `replay_from` (path, tick, the file's seed, and S or null). --founder
+//! is refused, and so is --inject at or before the snapshot's tick; later
+//! injections work. --ancestor, --k and --e seed nothing in a replay and
+//! are only recorded in meta.json, so pass the original run's.
+//!
 //! --classify DIR reads DIR/genomes.csv, runs each genome alone in the
 //! single-genome harness, and writes DIR/classes.csv (or DIR/NAME with
 //! --classes-out). The harness uses the physics given on the command line
@@ -155,7 +177,7 @@
 
 use evo_core::config::{Config, MILLI};
 use evo_core::harness;
-use evo_core::record::{Recorder, RunInfo};
+use evo_core::record::{Recorder, ReplayFrom, RunInfo};
 use evo_core::sim::{AncestorKind, Event, Injection, Sim};
 use std::io::Write;
 use std::path::Path;
@@ -190,12 +212,24 @@ fn main() {
     let mut founders: Vec<(Vec<u8>, u32)> = Vec::new();
     // --inject flags, in the order given.
     let mut injections: Vec<Injection> = Vec::new();
+    // T04: snapshot interval, snapshot to start from, and whether --seed
+    // was given at all (a replay re-seeds only then).
+    let mut state_every: Option<u64> = None;
+    let mut replay_from: Option<String> = None;
+    let mut seed_given: Option<u64> = None;
     let mut i = 0;
     while i < args.len() {
         let next = || args.get(i + 1).expect("missing value").clone();
         match args[i].as_str() {
             "--ticks" => { ticks = next().parse().unwrap(); i += 1; }
-            "--seed" => { cfg.seed = next().parse().unwrap(); i += 1; }
+            "--seed" => { cfg.seed = next().parse().unwrap(); seed_given = Some(cfg.seed); i += 1; }
+            "--state-every" => {
+                let n: u64 = next().parse().expect("--state-every N must be a whole number");
+                assert!(n > 0, "--state-every must be at least 1");
+                state_every = Some(n);
+                i += 1;
+            }
+            "--replay-from" => { replay_from = Some(next()); i += 1; }
             "--report" => { report = next().parse().unwrap(); i += 1; }
             "--census" => { census = Some(next().parse().unwrap()); i += 1; }
             "--log" => { log = Some(next()); i += 1; }
@@ -351,14 +385,46 @@ fn main() {
     }
     let census = census.unwrap_or(report);
     assert!(census > 0 && report > 0, "--census and --report must be positive");
-
-    let mut sim = Sim::new(cfg.clone());
-    // No --founder: the ancestor once, which `seed_founders` puts at
-    // world_size / 2, where the single founder has always been.
-    if founders.is_empty() {
-        founders.push((kind.body(k, e), 1));
+    if state_every.is_some() && out.is_none() {
+        eprintln!("error: --state-every needs --out DIR (snapshots go to DIR/state/)");
+        std::process::exit(2);
     }
-    let founder_starts = sim.seed_founders(&founders, 100 * MILLI);
+
+    let (mut sim, founder_starts, replay) = match &replay_from {
+        None => {
+            let mut sim = Sim::new(cfg.clone());
+            // No --founder: the ancestor once, which `seed_founders` puts at
+            // world_size / 2, where the single founder has always been.
+            if founders.is_empty() {
+                founders.push((kind.body(k, e), 1));
+            }
+            let starts = sim.seed_founders(&founders, 100 * MILLI);
+            (sim, starts, None)
+        }
+        // T04: continue from a snapshot. Every refusal exits before a tick runs.
+        Some(path) => {
+            if !founders.is_empty() {
+                refuse(path, "--founder seeds tick 0, which a replay does not run");
+            }
+            let f = std::fs::File::open(path).unwrap_or_else(|e| refuse(path, &e.to_string()));
+            let mut sim = Sim::load_state(&mut std::io::BufReader::new(f), cfg.clone())
+                .unwrap_or_else(|e| refuse(path, &e.to_string()));
+            let t = sim.tick;
+            if ticks <= t {
+                refuse(path, &format!("--ticks {ticks} is not above the snapshot's tick {t} (in a replay --ticks is absolute)"));
+            }
+            if let Some(j) = injections.iter().find(|j| j.tick <= t) {
+                refuse(path, &format!("--inject at tick {} is at or before the snapshot's tick {t}", j.tick));
+            }
+            let file_seed = sim.cfg.seed;
+            if let Some(s) = seed_given {
+                sim.reseed(s);
+            }
+            let how = seed_given.map_or(format!("seed {file_seed}, stream continued"), |s| format!("re-seeded with {s}"));
+            eprintln!("# replay from {path} at tick {t} ({how})");
+            (sim, Vec::new(), Some(ReplayFrom { path: path.clone(), tick: t, file_seed, reseed: seed_given }))
+        }
+    };
     let mut logf = log.map(|p| std::io::BufWriter::new(std::fs::File::create(p).unwrap()));
     let mut rec = out.map(|d| {
         let info = RunInfo {
@@ -370,12 +436,15 @@ fn main() {
             founders: founders.iter().map(|(g, n)| (to_hex(g), *n)).collect(),
             founder_starts: founder_starts.clone(),
             injections: injections.iter().map(|j| (j.tick, to_hex(&j.genome), j.count)).collect(),
+            state_every,
+            replay_from: replay,
         };
         let mut r = Recorder::create(Path::new(&d), &sim, info).expect("create run directory");
         r.snapshot(&sim).unwrap();
         r
     });
     let t0 = std::time::Instant::now();
+    let executed_before = sim.executed_total();
 
     println!("tick,alive,genotypes,top_count,top_len,mean_len,max_len,births,deaths,energy_org,energy_patch,patches_occ,active");
     let mut births = 0u64;
@@ -383,7 +452,11 @@ fn main() {
     // Organisms that ran `divide` since the last report line; the `active`
     // column counts those still alive at the report.
     let mut dividers: std::collections::HashSet<u32> = Default::default();
-    for _ in 0..ticks {
+    // Snapshots written (--state-every) and the time spent writing them.
+    let (mut states, mut state_secs) = (0u32, 0.0f64);
+    // `ticks` is absolute: a run from tick 0 runs `ticks` ticks, a replay
+    // from the snapshot tick up to `ticks`.
+    while sim.tick < ticks {
         // Injections due this tick, before any organism steps (no-op
         // without --inject).
         for done in sim.inject_due(&injections, 100 * MILLI) {
@@ -411,6 +484,15 @@ fn main() {
             r.events(&sim, &events).unwrap();
             if sim.tick % census == 0 || extinct || sim.tick == ticks {
                 r.snapshot(&sim).unwrap();
+            }
+            // After the tick's events are drained, as `save_state` wants.
+            if let Some(n) = state_every {
+                if sim.tick % n == 0 || extinct || sim.tick == ticks {
+                    let ts = std::time::Instant::now();
+                    r.save_state(&sim).expect("write state snapshot");
+                    state_secs += ts.elapsed().as_secs_f64();
+                    states += 1;
+                }
             }
         }
         // Also report on extinction so short-lived runs leave a final row.
@@ -445,13 +527,27 @@ fn main() {
     if let Some(r) = rec {
         r.finish(&sim).unwrap();
     }
-    let executed = sim.executed_total();
+    // Instructions run in this run: a replay's snapshot carries the count
+    // since tick 0.
+    let executed = sim.executed_total() - executed_before;
     eprintln!("# {:.2}s, {} instructions, {:.1} M instr/s", dt, executed, executed as f64 / dt / 1e6);
+    if states > 0 {
+        eprintln!("# {states} state snapshots in {:.3}s ({:.1} ms each)", state_secs, 1e3 * state_secs / states as f64);
+    }
     // Top genotypes with disassembly.
     for (h, count, len) in sim.census().into_iter().take(5) {
         let o = sim.orgs.iter().find(|o| o.alive && o.genome_hash == h).unwrap();
         eprintln!("# {count:6} x len {len:3} [{h:016x}] {}", evo_core::record::disasm(&o.genome));
     }
+}
+
+/// Refuse a `--replay-from` run (T04): print why and exit with status 2.
+///
+/// Rust note: `-> !` means the function never returns (Zig `noreturn`), so
+/// it can stand where any value is expected, as in `unwrap_or_else`.
+fn refuse(path: &str, why: &str) -> ! {
+    eprintln!("error: --replay-from {path}: {why}");
+    std::process::exit(2);
 }
 
 /// Genome bytes from the `bytes_hex` form (two lowercase hex digits per byte).

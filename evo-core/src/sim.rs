@@ -12,6 +12,7 @@
 use crate::config::{Config, MILLI};
 use crate::isa::{decode, reg_of, Op};
 use crate::rng::Rng;
+use std::io::{self, Read, Write};
 
 pub const FREE: u32 = 0;
 pub const DEBRIS: u32 = 1;
@@ -162,6 +163,70 @@ impl OrgStats {
             self.overwritten, self.cycles_lost_m, self.cycles_taken_m, self.cycles_taxed_m,
             self.exec_by_others,
         )
+    }
+
+    /// Number of fields, the length of `to_words`.
+    pub const WORDS: usize = 31;
+
+    /// Every field in `CSV_HEADER` order as 64 bits (an `i64` as its two's
+    /// complement), for snapshots (T04). The destructuring has no `..`, so
+    /// a new field fails to compile until it is listed here and in
+    /// `from_words`; that is also a new snapshot format (`STATE_VERSION`).
+    pub fn to_words(&self) -> [u64; OrgStats::WORDS] {
+        let OrgStats {
+            born_with_m, executed, absorbs, absorb_gain_m, absorb_short, absorb_capped, copies,
+            reads_foreign, exec_foreign, exec_unowned, writes_blocked, range_faults, allocs_ok,
+            allocs_fail, divides_ok, divides_fail, endowed_m, spent_m, upkeep_m, starved_ticks,
+            last_divide_tick, max_energy_m, paid_for_others_m, paid_by_others_m,
+            gained_from_others_m, writes_foreign, overwritten, cycles_lost_m, cycles_taken_m,
+            cycles_taxed_m, exec_by_others,
+        } = *self;
+        [
+            born_with_m as u64, executed, absorbs, absorb_gain_m as u64, absorb_short, absorb_capped,
+            copies, reads_foreign, exec_foreign, exec_unowned, writes_blocked, range_faults,
+            allocs_ok, allocs_fail, divides_ok, divides_fail, endowed_m as u64, spent_m as u64,
+            upkeep_m as u64, starved_ticks, last_divide_tick as u64, max_energy_m as u64,
+            paid_for_others_m as u64, paid_by_others_m as u64, gained_from_others_m as u64,
+            writes_foreign, overwritten, cycles_lost_m as u64, cycles_taken_m as u64,
+            cycles_taxed_m as u64, exec_by_others,
+        ]
+    }
+
+    /// Inverse of `to_words`.
+    pub fn from_words(w: [u64; OrgStats::WORDS]) -> OrgStats {
+        OrgStats {
+            born_with_m: w[0] as i64,
+            executed: w[1],
+            absorbs: w[2],
+            absorb_gain_m: w[3] as i64,
+            absorb_short: w[4],
+            absorb_capped: w[5],
+            copies: w[6],
+            reads_foreign: w[7],
+            exec_foreign: w[8],
+            exec_unowned: w[9],
+            writes_blocked: w[10],
+            range_faults: w[11],
+            allocs_ok: w[12],
+            allocs_fail: w[13],
+            divides_ok: w[14],
+            divides_fail: w[15],
+            endowed_m: w[16] as i64,
+            spent_m: w[17] as i64,
+            upkeep_m: w[18] as i64,
+            starved_ticks: w[19],
+            last_divide_tick: w[20] as i64,
+            max_energy_m: w[21] as i64,
+            paid_for_others_m: w[22] as i64,
+            paid_by_others_m: w[23] as i64,
+            gained_from_others_m: w[24] as i64,
+            writes_foreign: w[25],
+            overwritten: w[26],
+            cycles_lost_m: w[27] as i64,
+            cycles_taken_m: w[28] as i64,
+            cycles_taxed_m: w[29] as i64,
+            exec_by_others: w[30],
+        }
     }
 }
 
@@ -1378,6 +1443,333 @@ impl Sim {
     }
 }
 
+// ---- snapshots (T04) --------------------------------------------------------
+
+/// First 8 bytes of a snapshot file (docs/tasks/T04-snapshots-replay.md).
+pub const STATE_MAGIC: &[u8; 8] = b"EVOSTATE";
+
+/// Snapshot format version. A new field in `Sim`, `Org`, `Patch` or
+/// `OrgStats`, or any change to the layout `save_state` writes, is a new
+/// version; the loader refuses every version but its own. `save_state`
+/// destructures each of those types without `..`, so adding a field there
+/// fails to compile until it is written (and this number raised).
+pub const STATE_VERSION: u32 = 1;
+
+/// `Config::fields()` as the snapshot's config text: one `name=value\n`
+/// line per field, in order.
+pub fn config_text(cfg: &Config) -> String {
+    cfg.fields().iter().map(|(k, v)| format!("{k}={v}\n")).collect()
+}
+
+fn bad(msg: impl Into<String>) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, msg.into())
+}
+
+/// Compare a snapshot's config text with `cfg` field by field, in order,
+/// skipping `seed` (a replay may run under another seed). Returns the
+/// file's seed, or an error naming the first field that differs.
+fn check_config(text: &str, cfg: &Config) -> io::Result<u64> {
+    let mut lines = text.lines();
+    let mut seed = None;
+    for (name, given) in cfg.fields() {
+        let line = lines.next().ok_or_else(|| bad(format!("snapshot config differs at {name}: not in the file")))?;
+        let (fname, fv) = line.split_once('=').ok_or_else(|| bad(format!("snapshot config line {line:?} has no '='")))?;
+        if fname != name {
+            return Err(bad(format!("snapshot config differs at {name}: the file has {fname} in its place")));
+        }
+        if name == "seed" {
+            seed = Some(fv.parse::<u64>().map_err(|_| bad(format!("snapshot seed {fv:?} is not a number")))?);
+        } else if fv != given {
+            return Err(bad(format!("snapshot config differs at {name}: the file has {fv}, this run {given}")));
+        }
+    }
+    if let Some(line) = lines.next() {
+        let fname = line.split_once('=').map_or(line, |(k, _)| k);
+        return Err(bad(format!("snapshot config differs at {fname}: in the file, not in this build")));
+    }
+    seed.ok_or_else(|| bad("snapshot config has no seed"))
+}
+
+/// Little-endian writer into a byte buffer.
+struct Out(Vec<u8>);
+
+impl Out {
+    fn u8(&mut self, v: u8) {
+        self.0.push(v);
+    }
+    fn u32(&mut self, v: u32) {
+        self.0.extend_from_slice(&v.to_le_bytes());
+    }
+    fn u64(&mut self, v: u64) {
+        self.0.extend_from_slice(&v.to_le_bytes());
+    }
+    fn i64(&mut self, v: i64) {
+        self.u64(v as u64);
+    }
+}
+
+/// Little-endian reader over a byte buffer; a short buffer is an error,
+/// never a panic.
+struct In<'a> {
+    b: &'a [u8],
+    at: usize,
+}
+
+impl<'a> In<'a> {
+    fn take(&mut self, n: usize) -> io::Result<&'a [u8]> {
+        if self.b.len() - self.at < n {
+            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "snapshot file is truncated"));
+        }
+        let s = &self.b[self.at..self.at + n];
+        self.at += n;
+        Ok(s)
+    }
+    fn u8(&mut self) -> io::Result<u8> {
+        Ok(self.take(1)?[0])
+    }
+    fn bool(&mut self) -> io::Result<bool> {
+        match self.u8()? {
+            0 => Ok(false),
+            1 => Ok(true),
+            v => Err(bad(format!("snapshot flag byte is {v}, not 0 or 1"))),
+        }
+    }
+    fn u32(&mut self) -> io::Result<u32> {
+        Ok(u32::from_le_bytes(self.take(4)?.try_into().unwrap()))
+    }
+    fn u64(&mut self) -> io::Result<u64> {
+        Ok(u64::from_le_bytes(self.take(8)?.try_into().unwrap()))
+    }
+    fn i64(&mut self) -> io::Result<i64> {
+        Ok(self.u64()? as i64)
+    }
+}
+
+impl Sim {
+    /// Write everything `Sim` needs to continue bit for bit (T04): tick,
+    /// PRNG state, world bytes and owner ids, patches, every organism in
+    /// `orgs` order (including those dead since the last `retire`), the id
+    /// counter, the conservation totals and the retired counters. Not
+    /// written: `events` (output; drain them first, as the CLI does after
+    /// every tick) and `index` (rebuilt by `load_state`). Layout in
+    /// docs/instrumentation.md ("Snapshots and replay").
+    ///
+    /// Rust note: `impl Write` accepts any writer (a `File`, a `Vec<u8>`),
+    /// like a Go `io.Writer` parameter, but resolved at compile time.
+    pub fn save_state(&self, w: &mut impl Write) -> io::Result<()> {
+        // No `..` in these patterns: a new field must be handled here.
+        let Sim {
+            cfg, rng, bytes, owner, patches, orgs, index: _, retired_executed, retired_absorb_gain_m,
+            tick, events: _, next_id, energy_in, energy_out, energy_overflow,
+        } = self;
+        let mut o = Out(Vec::with_capacity(bytes.len() * 5 + orgs.len() * 420 + 4096));
+        o.0.extend_from_slice(STATE_MAGIC);
+        o.u32(STATE_VERSION);
+        let text = config_text(cfg);
+        o.u32(text.len() as u32);
+        o.0.extend_from_slice(text.as_bytes());
+        o.u64(*tick);
+        for s in rng.state() {
+            o.u64(s);
+        }
+        o.u32(*next_id);
+        o.i64(*energy_in);
+        o.i64(*energy_out);
+        o.i64(*energy_overflow);
+        o.u64(*retired_executed);
+        o.i64(*retired_absorb_gain_m);
+        o.u32(bytes.len() as u32);
+        o.0.extend_from_slice(bytes);
+        for &id in owner {
+            o.u32(id);
+        }
+        o.u32(patches.len() as u32);
+        for p in patches {
+            let Patch { pool, absorbed, overflow } = *p;
+            o.i64(pool);
+            o.i64(absorbed);
+            o.i64(overflow);
+        }
+        o.u32(orgs.len() as u32);
+        for org in orgs {
+            let Org {
+                id, regs, ip, flag, energy, start, len, pending, pending_source, pending_errors,
+                pending_slips, alive, birth_tick, offspring, genome_hash, genome, parent, stats,
+                cycle_debt, first_foreign_off,
+            } = org;
+            o.u32(*id);
+            for &r in regs {
+                o.u32(r);
+            }
+            o.u32(*ip);
+            o.u8(*flag as u8);
+            o.i64(*energy);
+            o.u32(*start);
+            o.u32(*len);
+            let (ps, pl) = pending.unwrap_or((0, 0));
+            o.u8(pending.is_some() as u8);
+            o.u32(ps);
+            o.u32(pl);
+            let (ss, sh) = pending_source.unwrap_or((0, 0));
+            o.u8(pending_source.is_some() as u8);
+            o.u32(ss);
+            o.u64(sh);
+            o.u32(*pending_errors);
+            o.u32(*pending_slips);
+            o.u8(*alive as u8);
+            o.u64(*birth_tick);
+            o.u32(*offspring);
+            o.u64(*genome_hash);
+            o.u32(*parent);
+            o.i64(*cycle_debt);
+            o.u8(first_foreign_off.is_some() as u8);
+            o.u32(first_foreign_off.unwrap_or(0));
+            o.u32(genome.len() as u32);
+            o.0.extend_from_slice(genome);
+            for word in stats.to_words() {
+                o.u64(word);
+            }
+        }
+        w.write_all(&o.0)
+    }
+
+    /// Read a snapshot written by `save_state` and return the `Sim` it
+    /// holds, ready to run its next tick (T04). `cfg` is the physics of the
+    /// run that loads it: its `Config::fields()` must equal the file's,
+    /// field for field, except `seed`, or the load is refused with an
+    /// `InvalidData` error naming the first field that differs. The loaded
+    /// `Sim` carries the file's seed in `cfg.seed` (its stream continues;
+    /// `reseed` starts a new one). Also refused: another magic or version,
+    /// a world or patch count that does not match `cfg`, a truncated file
+    /// or trailing bytes. `index` is rebuilt from the organism list.
+    pub fn load_state(r: &mut impl Read, cfg: Config) -> io::Result<Sim> {
+        let mut buf = Vec::new();
+        r.read_to_end(&mut buf)?;
+        let mut p = In { b: &buf, at: 0 };
+        if p.take(8)? != STATE_MAGIC {
+            return Err(bad("not a snapshot file (no EVOSTATE magic)"));
+        }
+        let version = p.u32()?;
+        if version != STATE_VERSION {
+            return Err(bad(format!("snapshot format version {version}; this build reads {STATE_VERSION}")));
+        }
+        let cfg_len = p.u32()? as usize;
+        let text = std::str::from_utf8(p.take(cfg_len)?).map_err(|_| bad("snapshot config text is not UTF-8"))?;
+        let mut cfg = cfg;
+        cfg.seed = check_config(text, &cfg)?;
+        let mut sim = Sim::new(cfg);
+        sim.tick = p.u64()?;
+        sim.rng = Rng::from_state([p.u64()?, p.u64()?, p.u64()?, p.u64()?]);
+        sim.next_id = p.u32()?;
+        if sim.next_id < FIRST_ID {
+            return Err(bad(format!("snapshot next_id {} is below {FIRST_ID}", sim.next_id)));
+        }
+        sim.energy_in = p.i64()?;
+        sim.energy_out = p.i64()?;
+        sim.energy_overflow = p.i64()?;
+        sim.retired_executed = p.u64()?;
+        sim.retired_absorb_gain_m = p.i64()?;
+        let n = p.u32()?;
+        if n != sim.cfg.world_size {
+            return Err(bad(format!("snapshot world is {n} bytes, the config says {}", sim.cfg.world_size)));
+        }
+        sim.bytes = p.take(n as usize)?.to_vec();
+        for a in 0..n as usize {
+            sim.owner[a] = p.u32()?;
+        }
+        let np = p.u32()? as usize;
+        if np != sim.patches.len() {
+            return Err(bad(format!("snapshot has {np} patches, the config gives {}", sim.patches.len())));
+        }
+        for k in 0..np {
+            sim.patches[k] = Patch { pool: p.i64()?, absorbed: p.i64()?, overflow: p.i64()? };
+        }
+        let norgs = p.u32()? as usize;
+        let issued = (sim.next_id - FIRST_ID) as usize;
+        if norgs > issued {
+            return Err(bad(format!("snapshot has {norgs} organisms but issued only {issued} ids")));
+        }
+        sim.index = vec![u32::MAX; issued];
+        sim.orgs = Vec::with_capacity(norgs);
+        for i in 0..norgs {
+            let id = p.u32()?;
+            let regs = [p.u32()?, p.u32()?, p.u32()?, p.u32()?];
+            let ip = p.u32()?;
+            let flag = p.bool()?;
+            let energy = p.i64()?;
+            let start = p.u32()?;
+            let len = p.u32()?;
+            let has_pending = p.bool()?;
+            let pending = (p.u32()?, p.u32()?);
+            let has_source = p.bool()?;
+            let pending_source = (p.u32()?, p.u64()?);
+            let pending_errors = p.u32()?;
+            let pending_slips = p.u32()?;
+            let alive = p.bool()?;
+            let birth_tick = p.u64()?;
+            let offspring = p.u32()?;
+            let genome_hash = p.u64()?;
+            let parent = p.u32()?;
+            let cycle_debt = p.i64()?;
+            let has_off = p.bool()?;
+            let off = p.u32()?;
+            let glen = p.u32()?;
+            if glen > n {
+                return Err(bad(format!("snapshot organism {id} has a {glen}-byte genome in a {n}-byte world")));
+            }
+            let genome = p.take(glen as usize)?.to_vec();
+            let mut words = [0u64; OrgStats::WORDS];
+            for word in words.iter_mut() {
+                *word = p.u64()?;
+            }
+            let slot = id.checked_sub(FIRST_ID).map(|s| s as usize).filter(|&s| s < issued);
+            let slot = slot.ok_or_else(|| bad(format!("snapshot organism id {id} was never issued")))?;
+            if sim.index[slot] != u32::MAX {
+                return Err(bad(format!("snapshot lists organism {id} twice")));
+            }
+            if ip >= n || start >= n || len > n || (has_pending && (pending.0 >= n || pending.1 > n)) {
+                return Err(bad(format!("snapshot organism {id} lies outside the world")));
+            }
+            sim.index[slot] = i as u32;
+            sim.orgs.push(Org {
+                id,
+                regs,
+                ip,
+                flag,
+                energy,
+                start,
+                len,
+                pending: has_pending.then_some(pending),
+                pending_source: has_source.then_some(pending_source),
+                pending_errors,
+                pending_slips,
+                alive,
+                birth_tick,
+                offspring,
+                genome_hash,
+                genome,
+                parent,
+                stats: OrgStats::from_words(words),
+                cycle_debt,
+                first_foreign_off: has_off.then_some(off),
+            });
+        }
+        if p.at != buf.len() {
+            return Err(bad(format!("snapshot has {} bytes after the last organism", buf.len() - p.at)));
+        }
+        Ok(sim)
+    }
+
+    /// Replace the PRNG with `Rng::new(seed)` and record `seed` as the
+    /// config's (`--replay-from FILE --seed S`, T04). From here on the run
+    /// is not the original's continuation, even if `seed` is the original
+    /// seed: that stream had moved on by the snapshot tick.
+    pub fn reseed(&mut self, seed: u64) {
+        self.rng = Rng::new(seed);
+        self.cfg.seed = seed;
+    }
+}
+
 // ---- the ancestor ---------------------------------------------------------
 
 /// PLAN.md §5.3.3 ancestor. K = absorb count, E = endowment (energy units).
@@ -2257,5 +2649,138 @@ alloc C
         assert_eq!(sim.alive_count(), 0);
         assert!(sim.genome_of(FIRST_ID).is_none());
         assert_eq!(sim.owner[100], DEBRIS);
+    }
+
+    // ---- snapshots (T04) ----------------------------------------------------
+
+    fn snapshot(sim: &Sim) -> Vec<u8> {
+        let mut buf = Vec::new();
+        sim.save_state(&mut buf).unwrap();
+        buf
+    }
+
+    fn ticks(sim: &mut Sim, n: u64) {
+        for _ in 0..n {
+            sim.run_tick();
+            sim.events.clear();
+        }
+    }
+
+    #[test]
+    fn org_stats_words_are_in_csv_order() {
+        // Distinct positive values, so the CSV row (signed) and the words
+        // (unsigned) print alike: the words follow `CSV_HEADER`.
+        let mut w = [0u64; OrgStats::WORDS];
+        for (k, x) in w.iter_mut().enumerate() {
+            *x = 1000 + k as u64;
+        }
+        let s = OrgStats::from_words(w);
+        assert_eq!(s.to_words(), w);
+        let row: Vec<String> = w.iter().map(|x| x.to_string()).collect();
+        assert_eq!(s.csv_row(), row.join(","));
+        assert_eq!(OrgStats::CSV_HEADER.split(',').count(), OrgStats::WORDS);
+        // Negative values survive the round trip.
+        let mut n = OrgStats::new(-5);
+        n.last_divide_tick = -1;
+        assert_eq!(OrgStats::from_words(n.to_words()), n);
+    }
+
+    #[test]
+    fn snapshot_round_trips() {
+        // T04 §4 test 1: a seeded standard world (the CLI's seeding), 5,000
+        // ticks, saved and loaded into a new `Sim` under a config with
+        // another seed (the file's is kept). Equal state hash at once, an
+        // identical file when saved again (so every field, counters
+        // included, came back), and equal hashes and files after both run
+        // 5,000 more ticks.
+        let mut cfg = Config::default();
+        cfg.seed = 3;
+        let mut a = Sim::new(cfg.clone());
+        a.seed_founders(&[(ancestor(64, 16), 1)], 100 * MILLI);
+        ticks(&mut a, 5000);
+        assert!(a.alive_count() > 500, "only {} alive", a.alive_count());
+        assert!(a.orgs.iter().any(|o| !o.alive), "no dead-but-unretired organism: the test is weak");
+        assert!(a.orgs.iter().any(|o| o.pending.is_some() && o.pending_source.is_some()));
+        let t0 = std::time::Instant::now();
+        let file = snapshot(&a);
+        let save = t0.elapsed();
+        let mut other = cfg.clone();
+        other.seed = 99;
+        let t0 = std::time::Instant::now();
+        let mut b = Sim::load_state(&mut file.as_slice(), other).unwrap();
+        let load = t0.elapsed();
+        assert_eq!(b.cfg.seed, 3);
+        assert_eq!(b.tick, 5000);
+        assert_eq!(b.state_hash(), a.state_hash());
+        assert!(snapshot(&b) == file, "a loaded state saves to a different file");
+        assert!(b.events.is_empty());
+        eprintln!("snapshot at tick 5000: {} bytes, {} organisms; save {:.2} ms, load {:.2} ms",
+                  file.len(), a.orgs.len(), save.as_secs_f64() * 1e3, load.as_secs_f64() * 1e3);
+        std::thread::scope(|sc| {
+            sc.spawn(|| ticks(&mut a, 5000));
+            sc.spawn(|| ticks(&mut b, 5000));
+        });
+        assert_eq!(a.tick, 10_000);
+        assert_eq!(b.state_hash(), a.state_hash());
+        assert!(snapshot(&b) == snapshot(&a), "the continued run's state differs at tick 10,000");
+        assert_eq!(b.executed_total(), a.executed_total());
+    }
+
+    #[test]
+    fn reseed_starts_a_new_stream() {
+        let mut cfg = Config::default();
+        cfg.seed = 4;
+        let mut a = Sim::new(cfg.clone());
+        a.seed_founders(&[(ancestor(64, 16), 1)], 100 * MILLI);
+        ticks(&mut a, 300);
+        let file = snapshot(&a);
+        let mut b = Sim::load_state(&mut file.as_slice(), cfg.clone()).unwrap();
+        let mut c = Sim::load_state(&mut file.as_slice(), cfg.clone()).unwrap();
+        // The original seed again is not the continuation.
+        b.reseed(4);
+        c.reseed(4);
+        assert_eq!(b.cfg.seed, 4);
+        ticks(&mut a, 200);
+        ticks(&mut b, 200);
+        ticks(&mut c, 200);
+        assert_eq!(b.state_hash(), c.state_hash());
+        assert_ne!(b.state_hash(), a.state_hash());
+    }
+
+    #[test]
+    fn loader_refuses_bad_files() {
+        // T04 §2: another magic or version, a config that differs (named),
+        // a truncated file, trailing bytes. A different seed is accepted.
+        let mut cfg = Config::default();
+        cfg.cycle_theft_pct = 50;
+        let mut sim = Sim::new(cfg.clone());
+        sim.seed_founders(&[(ancestor_t(ANCESTOR_T_K, 16), 1)], 100 * MILLI);
+        ticks(&mut sim, 60);
+        let file = snapshot(&sim);
+        let err = |f: &[u8], c: &Config| Sim::load_state(&mut &f[..], c.clone()).err().map(|e| e.to_string());
+        assert_eq!(err(&file, &cfg), None);
+        let mut seeded = cfg.clone();
+        seeded.seed = 12;
+        assert_eq!(err(&file, &seeded), None);
+        let e = err(&file, &Config::default()).expect("a config mismatch was accepted");
+        assert!(e.contains("cycle_theft_pct") && e.contains("50"), "{e}");
+        let mut later = cfg.clone();
+        later.legacy_pending_range = true;
+        later.p_bit_rot = 0.0;
+        let e = err(&file, &later).unwrap();
+        assert!(e.contains("legacy_pending_range") && !e.contains("p_bit_rot"), "not the first field: {e}");
+        let mut f = file.clone();
+        f[0] = b'X';
+        assert!(err(&f, &cfg).unwrap().contains("magic"));
+        let mut f = file.clone();
+        f[8] = 2;
+        assert!(err(&f, &cfg).unwrap().contains("version 2"));
+        assert!(err(&file[..file.len() - 1], &cfg).unwrap().contains("truncated"));
+        let mut f = file.clone();
+        f.push(0);
+        assert!(err(&f, &cfg).unwrap().contains("after the last organism"));
+        let mut small = cfg.clone();
+        small.world_size = 1 << 15;
+        assert!(err(&file, &small).unwrap().contains("world_size"));
     }
 }

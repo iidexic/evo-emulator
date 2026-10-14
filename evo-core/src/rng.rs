@@ -72,9 +72,16 @@ impl Rng {
         (u.ln() / (-p).ln_1p()).floor() as u64
     }
 
-    /// Internal state, for the whole-simulation state hash (determinism tests).
+    /// Internal state, for the whole-simulation state hash (determinism
+    /// tests) and for snapshots (T04).
     pub fn state(&self) -> [u64; 4] {
         self.s
+    }
+
+    /// The generator whose `state()` is `s`, so a snapshot's stream goes on
+    /// exactly where it stopped (T04). Inverse of `state`.
+    pub fn from_state(s: [u64; 4]) -> Rng {
+        Rng { s }
     }
 
     /// Fisher–Yates shuffle in place.
@@ -120,6 +127,18 @@ mod tests {
         }
         let want = p * n as f64; // 10,000; sd ~100
         assert!((hits as f64 - want).abs() < 5.0 * want.sqrt(), "hits {hits}");
+    }
+
+    #[test]
+    fn from_state_continues_the_stream() {
+        let mut a = Rng::new(9);
+        for _ in 0..10 {
+            a.next_u64();
+        }
+        let mut b = Rng::from_state(a.state());
+        for _ in 0..100 {
+            assert_eq!(a.next_u64(), b.next_u64());
+        }
     }
 
     #[test]

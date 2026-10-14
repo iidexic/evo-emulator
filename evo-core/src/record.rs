@@ -45,6 +45,40 @@ pub struct RunInfo {
     pub founder_starts: Vec<u32>,
     /// `--inject` flags as given: (tick, genome hex, copies), E009b.
     pub injections: Vec<(u64, String, u32)>,
+    /// `--state-every N` (T04): a snapshot `state/<tick>.bin` every N
+    /// ticks and at the final tick. `None` without the flag.
+    pub state_every: Option<u64>,
+    /// `--replay-from FILE` (T04): the snapshot this run started from.
+    /// `None` for a run from tick 0.
+    pub replay_from: Option<ReplayFrom>,
+}
+
+/// Where a replay started (`meta.json` key `replay_from`, T04).
+pub struct ReplayFrom {
+    /// FILE as given on the command line.
+    pub path: String,
+    /// The snapshot's tick, where this run starts.
+    pub tick: u64,
+    /// The seed in the snapshot's config (the original run's).
+    pub file_seed: u64,
+    /// `--seed S` given with the replay: the PRNG was re-seeded with
+    /// `Rng::new(S)` at `tick`. `None`: the file's stream continued.
+    pub reseed: Option<u64>,
+}
+
+/// A JSON string literal (quotes included) for `s`.
+fn json_str(s: &str) -> String {
+    let mut o = String::from("\"");
+    for c in s.chars() {
+        match c {
+            '"' => o.push_str("\\\""),
+            '\\' => o.push_str("\\\\"),
+            c if (c as u32) < 0x20 => o.push_str(&format!("\\u{:04x}", c as u32)),
+            c => o.push(c),
+        }
+    }
+    o.push('"');
+    o
 }
 
 pub struct Recorder {
@@ -90,7 +124,9 @@ pub fn disasm(bytes: &[u8]) -> String {
 impl Recorder {
     /// Create `dir` and the CSV files, and register the genomes already
     /// seeded into `sim` (origin `seed`). Call after seeding, before the
-    /// first tick.
+    /// first tick. For a replay (`info.replay_from`, T04) call it on the
+    /// loaded `Sim` at the snapshot tick: every living body's birth genome
+    /// is registered with origin `replay` instead, first seen at that tick.
     pub fn create(dir: &Path, sim: &Sim, info: RunInfo) -> io::Result<Recorder> {
         std::fs::create_dir_all(dir)?;
         // Labels from an earlier run in the same directory would silently
@@ -115,8 +151,9 @@ impl Recorder {
             injection_starts: Vec::new(),
         };
         r.injection_starts = vec![Vec::new(); r.info.injections.len()];
+        let origin = if r.info.replay_from.is_some() { "replay" } else { "seed" };
         for o in sim.orgs.iter().filter(|o| o.alive) {
-            r.add_genome(o.genome_hash, &o.genome, sim.tick, o.id, "seed", 0);
+            r.add_genome(o.genome_hash, &o.genome, sim.tick, o.id, origin, 0);
         }
         r.write_meta(&sim.cfg, None)?;
         Ok(r)
@@ -282,6 +319,18 @@ impl Recorder {
             })
             .collect();
         writeln!(w, "  \"injections\": [{}],", injections.join(", "))?;
+        match self.info.state_every {
+            Some(n) => writeln!(w, "  \"state_every\": {n},")?,
+            None => writeln!(w, "  \"state_every\": null,")?,
+        }
+        match &self.info.replay_from {
+            Some(f) => writeln!(
+                w,
+                "  \"replay_from\": {{\"path\": {}, \"tick\": {}, \"file_seed\": {}, \"reseed\": {}}},",
+                json_str(&f.path), f.tick, f.file_seed, f.reseed.map_or("null".to_string(), |s| s.to_string())
+            )?,
+            None => writeln!(w, "  \"replay_from\": null,")?,
+        }
         writeln!(w, "  \"config\": {{")?;
         let fields = cfg.fields();
         for (n, (k, v)) in fields.iter().enumerate() {
@@ -291,6 +340,24 @@ impl Recorder {
         writeln!(w, "  }}")?;
         writeln!(w, "}}")?;
         Ok(())
+    }
+
+    /// Write a full-state snapshot of `sim` to `DIR/state/<tick>.bin`
+    /// (`--state-every`, T04; `Sim::save_state`), creating `state/` if
+    /// needed. The file is written under a temporary name and renamed into
+    /// place, so a run killed mid-write leaves no truncated `.bin`.
+    /// Returns the file's path.
+    pub fn save_state(&self, sim: &Sim) -> io::Result<PathBuf> {
+        let dir = self.dir.join("state");
+        std::fs::create_dir_all(&dir)?;
+        let path = dir.join(format!("{}.bin", sim.tick));
+        let tmp = dir.join(format!("{}.bin.tmp", sim.tick));
+        let mut f = BufWriter::new(File::create(&tmp)?);
+        sim.save_state(&mut f)?;
+        f.flush()?;
+        drop(f);
+        std::fs::rename(&tmp, &path)?;
+        Ok(path)
     }
 
     /// Write `genomes.csv` and the final `meta.json`, and flush everything.
