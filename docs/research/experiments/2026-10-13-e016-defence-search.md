@@ -259,6 +259,17 @@ the first run, and the original text above is left as written.
    is how a cost that raises an already-present defence is reported if
    the gate fails.
 
+Implemented in the runner (commit `98ae921`). One reading of item 1
+accepted: G is compared with the ancestor on the canonical form
+(`traits.canonical_instrs`), so a byte change that leaves the
+`func_hash` unchanged is not a difference; byte for byte, every std
+smoke-world endowment raise carried such a silent flip and would have
+been `structural`. Neighbourhood baseline after the floor: tierra 0
+complete of 85 (`n0`) and 78 (`t50`); std 22 of 97, 20 `parameter`
+(endowment 35–54) and 2 `structural` (byte 19, the `sub B` after
+`divide`, to `0x2f` or `0xaf`). World stage launched 2026-10-13 with
+`world --jobs 24` (four non-tax arms, 30 seeds).
+
 Runner choices the record left open, accepted as implemented: F from
 `tierra_n0` as §2 says (T02 took it from the cost arm; both are kept
 in `tax.json`); candidate share over all exact births in the window;
