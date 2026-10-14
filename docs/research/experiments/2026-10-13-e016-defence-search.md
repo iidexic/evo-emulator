@@ -332,9 +332,10 @@ whole class lists (§2); the P = 86 runs are kept as
 
 Seed 14 of both tierra arms lost its founder at tick 252 (the same
 tick in both: the two arms run the same stream until the first cost
-event), so those two runs have no candidates and are excluded as E007
-did, leaving 29 seeds per tierra arm; `tierra_tax` s14 survives (the
-tax draws from tick 0 and changes the stream). Every std
+event), so those two runs have no candidates and count as seeds with
+no defence, as §2 says (the tierra gate counts below are "of 30" with
+seed 14 a no); `tierra_tax` s14 survives (the tax draws from tick 0
+and changes the stream). Every std
 run and every other tierra_n0 and tierra_t50 run persists to 250,000
 (population at the end, median: tierra about 1,530, std about 1,900 to
 2,050).
@@ -381,7 +382,7 @@ that runs a few bytes; a searching parasite runs the host's whole copy
 loop in the host, and at N = 50 the host's budget goes with it. H16's
 "graded, survivable" reads differently for the two bodies: graded for
 std, near-lethal for tierra in the harness, while the tierra world
-persists in 29 of 29 seeds under it with 43% of replicator-class deaths
+persists in 29 of 30 seeds under it with 43% of replicator-class deaths
 entered. (Caveat on `b_probed` for immune genomes: the probe harness
 stops when the probe dies, so `b_probed` of a complete genome is 1 or 0
 by construction and says nothing about the host.)
@@ -414,8 +415,8 @@ genome is a `parameter` one (endowment raises, as §7.1 expected); the
 structural std set (295 and 682 `func_hash`es) is a pad-placement
 defence and is read below only for completeness.
 
-Seeds with a structural complete genome: tierra_n0 29 of 29, tierra_t50
-29 of 29, tierra_tax 21 of 30, std_n0 30 of 30, std_t50 27 of 30. First
+Seeds with a structural complete genome: tierra_n0 29 of 30, tierra_t50
+29 of 30, tierra_tax 21 of 30, std_n0 30 of 30, std_t50 27 of 30. First
 structural complete genome, median tick: tierra_n0 1,859, tierra_t50
 1,865 (max 9,402 and 9,823); std 46,393 and 16,927. Parameter defences
 arose and were maintained in every std seed (60 of 60) and in no tierra
@@ -425,7 +426,7 @@ seed.
 
 Registered gate (§4): seeds with a maintained structural defence (≥ 1%
 of replicator-class exact births in four consecutive 25,000-tick
-windows): **tierra_t50 29 of 29, tierra_n0 29 of 29, tierra_tax 5 of
+windows): **tierra_t50 29 of 30, tierra_n0 29 of 30, tierra_tax 5 of
 30** (the five survivors, every one of them); std_t50 1 of 30 (s8, 8
 windows), std_n0 1 of 30 (s21, 5 windows). The gate needed ≥ 10, ≤ 2
 and ≤ 2: **fails on the `n0` clause**, in the way §7.4 said it would
@@ -505,7 +506,7 @@ first origin lost after 10 and 21 ticks (medians). The structural std
 ### 8.5 H17 (E015 stage 3, read at 50,000 from the `n0` arms)
 
 Parasite-lineage share of exact births in the bin ending at 50,000:
-above 5% in **29 of 29** tierra_n0 seeds (prediction ≥ 20), median
+above 5% in **29 of 30** tierra_n0 seeds (prediction ≥ 20), median
 22.2% (7.6–40.0%); at or below 2% in 24 of 30 std_n0 seeds (≥ 20),
 median 1.36% (0.46–3.33%): **holds**. Entered share of replicator-class
 deaths in (25,000, 50,000]: tierra_n0 median 23.6% against the
