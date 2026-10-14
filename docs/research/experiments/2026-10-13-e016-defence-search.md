@@ -307,3 +307,248 @@ Cost: a 250,000-tick run writes about 1 GB of CSV before gzip (the
 four killed smoke runs reached 2.6 GB at tick 168,000); gzipped, 150
 runs are an estimated 15–20 GB plus snapshots. The desktop has 218 GB
 free at launch.
+
+## 8. Results (2026-10-14)
+
+Runner `analysis/e016_defence.py`; outputs under `runs/e016/`
+(`screen.csv`, `bins.csv`, `runs.csv`, `summary.md`, `lod_seeds.csv`,
+`lod_summary.md`, `replay.csv`, `replay_summary.md`; per run
+`defence.csv`, `measures/`, `analyse.json`, `lod/`). Every number below
+is in those files; the per-seed tables are in `summary.md` and
+`lod_summary.md` and are not repeated here.
+
+### 8.1 The runs
+
+150 runs of 250,000 ticks: the four non-tax arms launched 2026-10-13
+(`world --jobs 24`, 1,077 s for the 120 once resumed), the tax arm
+2026-10-14 at P = 88 (§2; 660 s). A reboot during the batch's
+`--classify` step cut 24 class lists short (tierra_n0 s26–s30,
+tierra_t50 s1–s13 and s15–s20); the runner's resume accepted them until
+`analyse` failed on a half row, the check in commit `ca7e436` now
+re-classifies such a run, and the 24 were redone before anything below
+was computed. The tax calibration moved from P = 86 to P = 88 with the
+whole class lists (§2); the P = 86 runs are kept as
+`runs/e016/tierra_tax_p86/` and read only in §8.2.
+
+Seed 14 of both tierra arms lost its founder at tick 252 (the same
+tick in both: the two arms run the same stream until the first cost
+event), so those two runs have no candidates and are excluded as E007
+did, leaving 29 seeds per tierra arm; `tierra_tax` s14 survives (the
+tax draws from tick 0 and changes the stream). Every std
+run and every other tierra_n0 and tierra_t50 run persists to 250,000
+(population at the end, median: tierra about 1,530, std about 1,900 to
+2,050).
+
+**The tax arm is not survivable.** Under `--cycle-tax-pct 88
+--cycle-tax-frac 0.2398`, 25 of 30 seeds die out: s6, s21, s11 and s30
+at ticks 38, 64, 149 and 1,262, then 21 seeds in a wave between 35,690
+(s7) and 54,330 (s9); s3, s14, s20, s22 and s25 reach 250,000. The
+P = 86 arm did the same (21 of 30 extinct). The targeted cost at N = 50
+kills no seed, the random tax calibrated to the same mean debit kills
+most: the tax falls on every replicator with probability F regardless of
+state, where the theft falls on entered hosts, which are the ones that
+die anyway (the harness reference below: an entered tierra ancestor
+makes 1 exact child in 3,000 ticks under the cost). In the harness the
+tax alone lowers the ancestor's births from 119 to 93 (`defence_ref.json`
+of the tax arm). So the tax control cannot be read as §4 meant it
+("maintained equally under the tax"): where the tax is survivable the
+population is one that outlived a 40,000-tick crash, and where it is
+not there is nothing to maintain. The §7.4 pairing against the tax arm
+is reported below and is not informative for the same reason.
+
+### 8.2 The screen
+
+Harness reference per arm (`defence_ref.json`; `b_alone`, `b_probed`,
+`p_probed` of the arm's ancestor with the arm's probe before it, 3,000
+ticks):
+
+| arm | `b_alone` | `b_probed` | `p_probed` |
+|---|---|---|---|
+| tierra_n0 | 119 | 119 | 119 |
+| tierra_t50 | 119 | 1 | 119 |
+| tierra_tax | 93 | 48 | 92 |
+| std_n0 | 230 | 230 | 340 |
+| std_t50 | 230 | 116 | 340 |
+
+Two things in this table were not known before the run. Without a
+cost the label-flip probe costs the tierra ancestor nothing (119
+births entered or not): it reads the host's procedure and the host
+keeps its own rate, as Tierra's parasites did. Under the 50% theft the
+entered tierra ancestor makes 1 exact child in 3,000 ticks against 119
+alone; the std ancestor with its `pad` probe keeps half (116 of 230).
+E014's 0.90 at N = 50 was the std body with a fall-through intruder
+that runs a few bytes; a searching parasite runs the host's whole copy
+loop in the host, and at N = 50 the host's budget goes with it. H16's
+"graded, survivable" reads differently for the two bodies: graded for
+std, near-lethal for tierra in the harness, while the tierra world
+persists in 29 of 29 seeds under it with 43% of replicator-class deaths
+entered. (Caveat on `b_probed` for immune genomes: the probe harness
+stops when the probe dies, so `b_probed` of a complete genome is 1 or 0
+by construction and says nothing about the host.)
+
+Candidates and complete genomes, totals over the arm's runs
+(`screen.csv`, `defence.csv`; "viable" = replicator-class alone with
+`b_alone` ≥ half the ancestor's, §7.1):
+
+| arm | runs with a candidate | screened | viable | complete | of which structural | parameter | tolerant |
+|---|---|---|---|---|---|---|---|
+| tierra_n0 | 29 | 29,983 | 21,935 | 20,741 | 20,741 | 0 | 0 |
+| tierra_t50 | 29 | 37,894 | 30,896 | 29,737 | 29,737 | 0 | 0 |
+| tierra_tax | 28 | 5,011 | 4,100 | 3,837 | 3,837 | 0 | 8 |
+| std_n0 | 30 | 32,061 | 31,910 | 5,742 | 295 | 5,447 | 0 |
+| std_t50 | 30 | 33,299 | 33,219 | 6,899 | 682 | 6,217 | 0 |
+
+In the tierra arms 95% of every viable candidate is immune (20,741 of
+21,935; 29,737 of 30,896); the probe reproduces at all on 1,195 and
+1,159 of them, which are the ancestor and the mutants that keep its
+labels. The complete genomes are the relabelling §1 named: of the
+31,349 complete tierra genomes of the ancestor's length (41 bytes, n0
+and t50 together), 31,304 change at least one byte of the `searchf`
+template (bytes 13–16) **and** at least one of L1 (bytes 18–21); 40
+change L1 only, 4 the template only, 1 neither. The rest of the complete
+set (12,607 and 18,742 of the ancestor's length; the others shorter or
+longer bodies) is the same relabelling in bodies that have changed
+elsewhere too. No tolerant genome arose in the tierra arms (8 in the
+tax arm, all in dying seeds). In the std arms almost every complete
+genome is a `parameter` one (endowment raises, as §7.1 expected); the
+structural std set (295 and 682 `func_hash`es) is a pad-placement
+defence and is read below only for completeness.
+
+Seeds with a structural complete genome: tierra_n0 29 of 29, tierra_t50
+29 of 29, tierra_tax 21 of 30, std_n0 30 of 30, std_t50 27 of 30. First
+structural complete genome, median tick: tierra_n0 1,859, tierra_t50
+1,865 (max 9,402 and 9,823); std 46,393 and 16,927. Parameter defences
+arose and were maintained in every std seed (60 of 60) and in no tierra
+seed.
+
+### 8.3 H16 gate 2
+
+Registered gate (§4): seeds with a maintained structural defence (≥ 1%
+of replicator-class exact births in four consecutive 25,000-tick
+windows): **tierra_t50 29 of 29, tierra_n0 29 of 29, tierra_tax 5 of
+30** (the five survivors, every one of them); std_t50 1 of 30 (s8, 8
+windows), std_n0 1 of 30 (s21, 5 windows). The gate needed ≥ 10, ≤ 2
+and ≤ 2: **fails on the `n0` clause**, in the way §7.4 said it would
+fail. The relabelling is a defence against the registered probe, it is
+two substitutions away, and it arises by tick 2,500 in 22 of 29
+tierra_n0 seeds and 21 of 29 tierra_t50 seeds, cost or no cost. It then
+holds 15–25% of replicator-class exact births in every window of every
+`n0` seed (per-window medians over seeds at 50,000 / 100,000 / 150,000
+/ 200,000 / 250,000: 19.3%, 15.2%, 19.3%, 17.4%, 14.9%). Mutation
+supply, not the cost, makes it common.
+
+Paired reading (§7.4), tierra_t50 against tierra_n0 by seed, 29 pairs:
+structural share of replicator-class exact births in the last
+2,500-tick bin, t50 above in **23 of 29**, below in 6, sign test p =
+0.0023 (prediction ≥ 20: **holds**); per-window medians in t50 26.4%,
+20.4%, 22.0%, 21.3%, 20.6% against the `n0` figures above; the
+structural class's share of census bodies after 25,000, median over
+seeds, 3.06% (1.52–6.47%) against 1.80% (0.84–4.33%). "Maintained"
+yes/no is tied in all 29 pairs. Against the tax arm: share at the end
+t50 above in 3 of 4 pairs (26 unpaired, the extinct seeds), maintained
+above in 25 of 30 (the 25 extinctions): both uninformative (§8.1).
+
+So the cost raises the relabelled class's share by about a third
+(20.6% against 14.9% at the end, 23 of 29 pairs) and does not create
+it. The share never approaches 100% in either arm, and the entered
+share of replicator-class deaths after 25,000 stays at 43.0% (39.5–47.8%)
+in tierra_t50 against 23.6% (22.5–27.2%) in tierra_n0, because the
+defence is against one label: a relabelled lineage has its own one-hop
+parasite, which follows it. This is Tierra's immunity by label change,
+and it is a moving target, not a closed door.
+
+Cost measures in the world (`runs.csv`, after 25,000, medians over
+seeds): debit per tick of entered replicator-class deaths 21,194
+milli-units in tierra_t50 (66% of the 32,000 cap; std_t50 12,140,
+38%); offspring per tick of entered over unentered reproducers 0.53
+in tierra_t50 against 0.72 in tierra_n0 (normalised 0.73; std 0.75
+against 0.95, normalised 0.79). The cost is graded in the world as E014
+measured it in the harness, for both bodies.
+
+std: the structural std set is maintained in one seed per arm and is
+lost at once elsewhere (§8.4). No std prediction was made and none is
+read.
+
+### 8.4 Line of descent, look-back, time-to-loss (`lod` stage)
+
+79 tierra lines (29 + 29 + 21) and 57 std lines. Tierra: the line to the
+first structural complete genome is short (median 31 organisms in
+tierra_n0, 36 in tierra_t50, 45 in tierra_tax; median 6 steps after
+pairing, of which in the two non-tax arms a median 5 are neutral alone
+in the harness, 0 beneficial, 0 deleterious; tax 1 / 4 / 1); the world
+column (T06's first reading: the
+last step's child's exact children per death against its
+contemporaries in its 2,500-tick bin) is above 1 in 19 of 29, 20 of 29
+and 17 of 21 lines, median 1.18, 1.21 and 1.27. Neutral alone,
+favoured in the world: the signature of a defence, and of the same size
+with and without the cost. Look-back (Croft): the first complete
+genome's parent carries a median 80% of its edits from the ancestor
+(all of them in 1 line, none in 2); the parent's body as it was at the
+division that made the first complete genome carries all of them in 34
+of the 47 lines where that body is recorded; the grandparent a median
+67%. The two coordinated changes therefore do not arrive by the route
+§7.3 expected (a label flip that is a viable parasite, then the
+matching template change): they are already both in the parent's
+body in most lines, written into it during its life, and the first
+"complete" child is that body copied. Time-to-loss: a relabelled
+lineage's origins are thousands per run (median 6,273 in tierra_n0,
+5,599 in tierra_t50); the median origin has no further exact births
+(time-to-loss 0), the longest-lived lose it after 14,064 and 13,273
+ticks, and about 30 lineages per run are alive at 250,000 (censored).
+The class persists; its lineages turn over.
+
+std: 37 steps median (14 paired), B / n / D 3.5 / 17 / 6, world column
+0.81 (std_n0) and 1.06 (std_t50); origins 148 and 513 per run, the
+first origin lost after 10 and 21 ticks (medians). The structural std
+"defence" is deleterious in the world and is lost as it arises.
+
+### 8.5 H17 (E015 stage 3, read at 50,000 from the `n0` arms)
+
+Parasite-lineage share of exact births in the bin ending at 50,000:
+above 5% in **29 of 29** tierra_n0 seeds (prediction ≥ 20), median
+22.2% (7.6–40.0%); at or below 2% in 24 of 30 std_n0 seeds (≥ 20),
+median 1.36% (0.46–3.33%): **holds**. Entered share of replicator-class
+deaths in (25,000, 50,000]: tierra_n0 median 23.6% against the
+registered > 25%: **fails by 1.4 points**; std_n0 7.23%, inside 7–14%.
+E015's legacy-world figures (23.5–26.4% entered, 8–27% parasite share)
+are the fixed-edge figures too: the `alloc`/`copy` edge manufactured
+no part of the template body's parasitism that this measure can see.
+Over the whole run the parasite share in the last bin is 19.2%
+(1.8–33.7%) in tierra_n0 and 31.0% (1.5–47.6%) in tierra_t50 against
+1.4% and 2.2% in std.
+
+### 8.6 Replays (`replay` stage)
+
+Pending at the time of writing (the stage runs; about 1,380 replays). What
+the first 290 show: every tierra_n0 replay, from the founder (22
+seeds) or from the 2,500-tick snapshot before the first relabelling (7
+seeds), produces 171–217 structural complete genomes by tick 50,000.
+With an arising rate of 100% the potentiation count against the
+background rate is not informative, as §7.3's "from the founder" clause
+anticipated for t ≤ 2,500. The table is added here when the stage ends.
+
+### 8.7 Reading
+
+1. **H16 gate 2 fails as registered and the paired reading holds.** The
+   only defence that arose is Tierra's relabelling; it arises in every
+   tierra seed by mutation supply, with or without the cost, and the
+   cost raises its share by about a third (23 of 29 pairs, p = 0.0023).
+   No tolerant defence (eject, reset, self-check) arose in 150 runs.
+2. **The tax control failed as a control.** The random tax at the
+   calibrated rate kills 25 of 30 seeds where the targeted theft kills
+   none; the two debits are not interchangeable at the population level
+   even at the same mean. A survivable control needs a different design
+   (a lower P that matches the surviving arms' population, or a tax on
+   entered hosts' neighbours), decided outside this record.
+3. **H17 holds on the parasite share and misses the entered threshold
+   by 1.4 points**, with the std control inside its band on both.
+4. The relabelling is complete in the registered sense and open in the
+   evolutionary one: every new label has its own one-hop parasite, the
+   entered share under the cost stays at 43%, and the class's lineages
+   turn over in thousands of origins per run. Whether a closed defence
+   exists for this body (a longer label, a check at the procedure, an
+   eject) is §6's question, and the neighbourhood screen (0 complete
+   single mutants of 10,496 for tierra) says it is not one substitution
+   away.
+5. Not decided here: `drain` (PLAN §8.3, §6 above). The write-up of
+   E016 and the `drain` decision go to Derek with this record.
