@@ -51,6 +51,32 @@ groupings and writes the per-seed table and the shakedown criteria to
 `runs/measures/summary.md`. Tests, from the repo root:
 `uv run --project analysis --with pytest pytest analysis/tests/test_measures.py`.
 
+## Reading a genome (pseudo-code)
+
+`pseudo.py` reads a genome's bytes the way the CPU runs them and says
+what each instruction or short run of them does, with what each
+register holds where it is known: the ancestor reads as
+`absorb×64 → alloc 21 → copy×21 → divide(16) → repeat`, a row per step
+(`repeat 64 times: absorb energy`, `copy all 21 of my bytes into the
+child`). It follows jumps through registers whose values it can work out,
+reads `body ; dec R ; skipz R ; jump back` as a counted loop, names search
+labels, and marks code that never runs. It is static: values only known
+while running (the flag, bytes loaded from elsewhere), changes to the
+body after birth, and code outside the body (a neighbour's, run by a
+parasite) are not seen; the module docstring lists every limit.
+
+```
+uv run pseudo.py 13325271fc11401605086c5a1845486c11101c130d
+uv run pseudo.py ../runs/e015/world/std_fix/s1 --top 5   # the genomes with the most exact births
+```
+
+`explore.py` shows it for the organism and the genome you pick, and adds
+its one-line `path` to the genome table (the 2,000 most-born genomes) and
+to each step of the ancestry, so a change of behaviour reads as a change
+of words (`absorb×64` to `absorb×121`). `world.py`'s inspector reads the
+span below its table. Tests: `uv run --with pytest pytest
+tests/test_pseudo.py`.
+
 To see what one genome does, tick by tick, without reading its
 disassembly: `cargo run --release --example trace -- HEX [ticks]
 [ADDR=HEX ...]` in `evo-core/` (the last form plants dead code in free
@@ -171,8 +197,9 @@ at a death site that still equal a known genome), debris or free; plots
 that over time; draws the world map at a chosen snapshot (one row per
 patch, bodies colored by class, dead bodies faded, off-body IPs marked);
 and has an inspector that decodes any address span at that snapshot,
-with the owner of each byte and whose IP is on it, and the same span at
-every snapshot. Two tables find what to inspect: organisms whose IP was
+with the owner of each byte and whose IP is on it, the span read as
+pseudo-code (as a body when it starts at a living or intact dead body's
+first byte), and the same span at every snapshot. Two tables find what to inspect: organisms whose IP was
 outside their own body at the snapshot, and the addresses where the most
 organisms had an off-body IP across the run (dead-code trampolines).
 Loading a 100-snapshot run takes a few seconds.

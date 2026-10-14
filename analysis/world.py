@@ -50,14 +50,14 @@ def _():
     # Libraries, plus the run loader (evo_run) and the palette shared with
     # report.py and explore.py.
     import functools
-    import subprocess
 
     import altair as alt
     import marimo as mo
     import numpy as np
     import polars as pl
 
-    from evo_run import binary, load, run_sets, world
+    from evo_run import load, run_sets, world
+    from pseudo import decode, explain
     from report import CLASS_COLOR, GRAY_LIGHT, GRID, INK, INK_2, SEQ_STEPS, SURFACE, class_order
 
     # A world map has a few thousand segments; more than altair's default row limit.
@@ -71,21 +71,21 @@ def _():
         SEQ_STEPS,
         SURFACE,
         alt,
-        binary,
         class_order,
+        decode,
+        explain,
         functools,
         load,
         mo,
         np,
         pl,
         run_sets,
-        subprocess,
         world,
     )
 
 
 @app.cell
-def _(CLASS_COLOR, GRAY_LIGHT, GRID, INK, INK_2, SEQ_STEPS, SURFACE, alt, binary, class_order, functools, subprocess):
+def _(CLASS_COLOR, GRAY_LIGHT, GRID, INK, INK_2, SEQ_STEPS, SURFACE, alt, class_order, decode, functools):
     # Small helpers used by the cells below.
 
     # The five kinds of address, in stacking order (alive at the bottom,
@@ -115,22 +115,19 @@ def _(CLASS_COLOR, GRAY_LIGHT, GRID, INK, INK_2, SEQ_STEPS, SURFACE, alt, binary
         dom = class_order(names)
         return alt.Scale(domain=dom, range=[CLASS_COLOR.get(k, GRAY_LIGHT) for k in dom])
 
-    _exe = functools.cache(binary)
-
     @functools.cache
     def dis(hexstr):
         """Decode bytes (as hex) from their first byte: a tuple of
-        (offset, size, instruction). Runs `evo-core --disasm`, building it on
-        first use; cached because the same bytes recur at an address across
+        (offset, size, instruction), as `evo-core --disasm` prints them
+        (pseudo.py's decoder, so no build is needed while runs hold the
+        binary), except that a `lit` whose operand lies past the last byte
+        shows `?`. Cached because the same bytes recur at an address across
         many snapshots. `lit` is the only two-byte instruction."""
-        if not hexstr:
-            return ()
-        out = subprocess.run([str(_exe()), "--disasm", hexstr], capture_output=True, text=True, check=True).stdout
-        ins, off = [], 0
-        for text in out.strip().split(" ; "):
-            size = 2 if text.startswith("lit ") else 1
-            ins.append((off, size, text))
-            off += size
+        code, ins, off = bytes.fromhex(hexstr), [], 0
+        while off < len(code):
+            i = decode(code, off)
+            ins.append((off, i.size, i.text))
+            off += i.size
         return tuple(ins)
 
     return KINDS, KIND_COLOR, STATE_LETTER, class_color, dis, look
@@ -449,10 +446,11 @@ def _(get_span, mo, n, set_span):
 
 
 @app.cell
-def _(STATE_LETTER, dis, get_span, layout, mo, n, np, orgs, pl, snaps, tick_pick):
+def _(STATE_LETTER, dis, explain, get_span, layout, mo, n, np, orgs, pl, run, snaps, tick_pick):
     # The span at the picked snapshot, decoded from its first byte, one row
     # per instruction. Decoding is linear from the start you give, so a
     # start in the middle of a `lit` reads its operand as an instruction.
+    # Below the table, the span read as pseudo-code (pseudo.py).
     _t = tick_pick.value
     _a, _len = get_span()
     _a %= n
@@ -493,11 +491,29 @@ def _(STATE_LETTER, dis, get_span, layout, mo, n, np, orgs, pl, snaps, tick_pick
             "owner": _owner(_b[0]),
             "IP of": ", ".join(_ips[o] for o in range(_off, _off + _size) if o in _ips),
         })
+    # Pseudo-code. A span that starts where a living or intact dead body
+    # starts, and holds all of it, is read as that body from a new
+    # organism's start; any other span is entered at its first byte with
+    # every register unknown, and `self 0` there gives the executor's start.
+    _locality = run.meta["config"].get("locality", 512)
+    _body = pl.concat([d.select(pl.col("id", "start", "len").cast(pl.Int64)) for d in (_living, _dead)])
+    _body = _body.filter((pl.col("start") == _a) & (pl.col("len") <= _len))
+    if _body.height:
+        _id, _blen = int(_body["id"][0]), int(_body["len"][0])
+        _reading = explain(_w.bytes[_idx[:_blen]].tobytes(), locality=_locality, base=_a, wrap=n)
+        _how = f"as the body of organism {_id} ({_blen} bytes), from a new organism's start"
+    else:
+        _reading = explain(_w.bytes[_idx].tobytes(), own=False, fresh=False, locality=_locality, base=_a, wrap=n)
+        _how = "entered at its first byte with every register unknown (not a body start)"
     mo.vstack([
         mo.md(f"Addresses {_a:,} to {(_a + _len - 1) % n:,} at tick {_t:,}. State per byte: "
               "`.` free, `d` debris, `o` owned. **IP of**: organisms whose IP is on that "
               "instruction; `(own)` means inside its own body."),
         mo.ui.table(pl.DataFrame(_rows), selection=None, page_size=64, show_column_summaries=False),
+        mo.md(f"**Read as pseudo-code**, {_how}: each row is one or a few instructions and what they "
+              "do; `path` is the route from the first byte; `?` is a value only known while running. "
+              "Only the span's bytes are read: a path that leaves them ends there."
+              f"\n```\n{_reading.text()}\n```"),
     ])
     return
 

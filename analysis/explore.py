@@ -20,9 +20,10 @@ def _(mo):
 
     Sections: population, space-time, one organism, patches,
     interactions (copies from foreign bytes, code run outside the own
-    body), deaths, diversity, and genomes (listing, ancestry, and the
-    single- and two-genome tests). The memory itself, from the world
-    snapshots in `world.bin`, has its own notebook: `world.py`.
+    body), deaths, diversity, and genomes (pseudo-code listing,
+    ancestry, and the single- and two-genome tests). The memory itself,
+    from the world snapshots in `world.bin`, has its own notebook:
+    `world.py`.
 
     **How marimo works.** Each cell is a Python function. A name that a cell
     defines (without a leading `_`) is visible to every other cell, and
@@ -49,6 +50,7 @@ def _():
     import polars as pl
 
     from evo_run import CORE, binary, classify, load, run_sets
+    from pseudo import explain
     from report import (
         AQUA,
         BIRTH_COLOR,
@@ -99,6 +101,7 @@ def _():
         class_order,
         classify,
         deaths_with_signature,
+        explain,
         io,
         load,
         mo,
@@ -134,18 +137,7 @@ def _(CLASS_COLOR, GRAY_LIGHT, GRID, INK, INK_2, SURFACE, alt, class_order):
         dom = class_order(names)
         return alt.Scale(domain=dom, range=[CLASS_COLOR.get(k, GRAY_LIGHT) for k in dom])
 
-    def listing(disasm, ip=None):
-        """One instruction per line with its byte offset, from a genome's
-        `disasm` column. `lit` is the only two-byte instruction. Marks the
-        line the instruction pointer is on, if `ip` is given."""
-        lines, off = [], 0
-        for ins in disasm.split(" ; "):
-            mark = "   <- ip" if off == ip else ""
-            lines.append(f"{off:3}  {ins}{mark}")
-            off += 2 if ins.startswith("lit ") else 1
-        return "\n".join(lines)
-
-    return class_color, listing, look
+    return class_color, look
 
 
 @app.cell
@@ -188,6 +180,21 @@ def _(births_typed, classify, classify_btn, deaths_with_signature, load, picker)
     every = run.meta["census_every"]
     end = run.meta["ticks_run"]
     return births, deaths, end, every, orgs, run
+
+
+@app.cell
+def _(explain, run):
+    # Genome listings in pseudo-code (pseudo.py): the bytes read the way
+    # the CPU runs them, from a new organism's start. Each row is one or a
+    # few instructions and what they do; `path` is the route a new
+    # organism takes, in one line. `@k` is the address of byte k, `?` a
+    # value only known while running. Searches use this run's locality.
+    _locality = run.meta["config"].get("locality", 512)
+
+    def read_genome(hexstr):
+        return explain(bytes.fromhex(hexstr), locality=_locality)
+
+    return (read_genome,)
 
 
 @app.cell(hide_code=True)
@@ -353,7 +360,7 @@ def _(INK_2, alt, class_color, every, look, mo, orgs, pl, run, window):
 
 
 @app.cell
-def _(BIRTH_COLOR, BIRTH_ORDER, BLUE, alt, births, deaths, listing, look, mo, orgs, pl, run, spacetime):
+def _(BIRTH_COLOR, BIRTH_ORDER, BLUE, alt, births, deaths, look, mo, orgs, pl, read_genome, run, spacetime):
     # One organism's life: the one clicked above, or before any click the
     # one with the most children.
     _sel = spacetime.value
@@ -397,15 +404,15 @@ def _(BIRTH_COLOR, BIRTH_ORDER, BLUE, alt, births, deaths, listing, look, mo, or
     _energy = (_line + _marks).properties(
         width="container", height=200, title=f"Organism {org_id}: energy at each census (last point: at death)")
 
-    # Genome at birth, and the body at the last census with the instruction
-    # pointer marked. They differ when the body changed after birth (bit rot
-    # or a foreign write): a somatic change.
-    _g = dict(zip(run.genomes["raw_hash"], run.genomes["disasm"]))
+    # Genome at birth in pseudo-code, and the body at the last census with
+    # the instruction pointer marked. They differ when the body changed
+    # after birth (bit rot or a foreign write): a somatic change.
+    _g = dict(zip(run.genomes["raw_hash"], run.genomes["bytes_hex"]))
     _bh, _nh = _first["birth_hash"], _last["now_hash"]
-    _code = [mo.md(f"**Birth genome** `{_bh}`\n```\n{listing(_g[_bh])}\n```")]
+    _code = [mo.md(f"**Birth genome** `{_bh}`\n```\n{read_genome(_g[_bh]).text()}\n```")]
     if _nh != _bh:
         _code.append(mo.md(f"**Body at tick {_last['tick']:,}** `{_nh}` (somatic change)\n"
-                           f"```\n{listing(_g[_nh], _last['ip_off'])}\n```"))
+                           f"```\n{read_genome(_g[_nh]).text(_last['ip_off'])}\n```"))
     else:
         _code.append(mo.md(f"**At tick {_last['tick']:,}** body unchanged; ip at offset {_last['ip_off']}, "
                            f"next op `{_last['op_at_ip']}`"))
@@ -415,7 +422,7 @@ def _(BIRTH_COLOR, BIRTH_ORDER, BLUE, alt, births, deaths, listing, look, mo, or
         mo.md(f"## Organism {org_id}\n{_birth_txt}; {_end_txt}. Class of birth genome: `{_cls}`. "
               f"Children: {_kids.height:,} ({_kid_counts})."),
         look(_energy),
-        mo.hstack(_code, justify="start", gap=2, align="start"),
+        *_code,
     ])
     return (org_id,)
 
@@ -697,10 +704,14 @@ def _(AQUA, BLUE, GRAY, GRID, ORANGE, SURFACE, alt, class_color, geno_by, look, 
 
 
 @app.cell
-def _(births, end, mo, pl, run):
+def _(births, end, mo, pl, read_genome, run):
     # Every genome seen in the run. raw_hash is over the bytes; func_hash
     # ignores modifier bits the decoder does not read, so genomes that only
     # differ in encoding share one. Select a row to see its listing.
+    # `path`: the pseudo-code reading's one-line route (pseudo.py), for the
+    # _TOP most-born genomes only (about 0.3 ms each; a run can have
+    # 800,000 genomes).
+    _TOP = 2000
     _births = births.group_by("raw_hash").agg(births_in_run=pl.len())
     _alive = run.census.filter(pl.col("tick") == end).select(pl.col("now_hash").alias("raw_hash"), alive_at_end="count")
     _g = (
@@ -710,25 +721,31 @@ def _(births, end, mo, pl, run):
         .with_columns(pl.col("births_in_run", "alive_at_end").fill_null(0))
         .sort("births_in_run", descending=True)
     )
+    _g = _g.with_columns(path=pl.Series(
+        [read_genome(h).story if i < _TOP else None for i, h in enumerate(_g["bytes_hex"])], dtype=pl.Utf8))
     # Every column of every genome by raw hash, for the ancestry walk.
     genome_by_hash = {r["raw_hash"]: r for r in _g.iter_rows(named=True)}
     genome_table = mo.ui.table(
-        _g.select("raw_hash", "func_hash", "class", "len", "origin", "first_tick", "births_in_run", "alive_at_end", "disasm"),
+        _g.select("raw_hash", "func_hash", "class", "len", "origin", "first_tick", "births_in_run", "alive_at_end",
+                  "path", "disasm"),
         selection="single", page_size=10, show_column_summaries=False,
-        label=f"{_g.height} raw genomes, {_g['func_hash'].n_unique()} functional")
+        label=f"{_g.height} raw genomes, {_g['func_hash'].n_unique()} functional"
+              + (f"; path for the {_TOP:,} most born" if _g.height > _TOP else ""))
     mo.vstack([mo.md("## Genomes"), genome_table])
     return genome_by_hash, genome_table
 
 
 @app.cell
-def _(genome_by_hash, genome_table, listing, mo, pl):
-    # The selected genome: its listing, and its ancestry back to the seed
-    # through genomes.csv parent links. A `birth` genome's parent is the
-    # executor's body at `divide`; a `somatic` genome is a body that
-    # changed after birth (bit rot or a foreign write), and its parent is
-    # that body's birth genome. Exact copies add no step, so one step is
-    # one change of bytes. changed: byte offsets that differ from the
-    # parent (the next row), or the change in length.
+def _(genome_by_hash, genome_table, mo, pl, read_genome):
+    # The selected genome: its pseudo-code listing, and its ancestry back
+    # to the seed through genomes.csv parent links. A `birth` genome's
+    # parent is the executor's body at `divide`; a `somatic` genome is a
+    # body that changed after birth (bit rot or a foreign write), and its
+    # parent is that body's birth genome. Exact copies add no step, so one
+    # step is one change of bytes. changed: byte offsets that differ from
+    # the parent (the next row), or the change in length; path: each
+    # step's route in pseudo-code, so a change of behaviour shows as a
+    # change of words (absorb×64 to absorb×121).
     _sel = genome_table.value
     mo.stop(len(_sel) == 0, mo.md("_Select a genome above to see its listing, ancestry and trace._"))
     genome_pick = _sel["raw_hash"][0]
@@ -752,7 +769,8 @@ def _(genome_by_hash, genome_table, listing, mo, pl):
     _anc = pl.DataFrame([
         {"step": i, "raw_hash": c["raw_hash"], "origin": c["origin"], "first_tick": c["first_tick"],
          "class": c["class"], "len": c["len"], "births_in_run": c["births_in_run"],
-         "changed": _changed(c, _chain[i + 1] if i + 1 < len(_chain) else None), "disasm": c["disasm"]}
+         "changed": _changed(c, _chain[i + 1] if i + 1 < len(_chain) else None),
+         "path": c["path"] or read_genome(c["bytes_hex"]).story, "disasm": c["disasm"]}
         for i, c in enumerate(_chain)
     ])
     _note = "" if _chain[-1]["origin"] == "seed" else f" (stopped after {len(_chain)} steps)"
@@ -761,7 +779,12 @@ def _(genome_by_hash, genome_table, listing, mo, pl):
     trace_btn = mo.ui.run_button(label="Trace alone", tooltip="Run it alone, one line per tick (examples/trace.rs)")
     host_btn = mo.ui.run_button(label="Test against a host", tooltip="Two-genome harness: before the ancestor (evo-core --host)")
     mo.vstack([
-        mo.md(f"**{_r['raw_hash']}** ({_r['class']}, {_r['len']} bytes, {_r['origin']})\n```\n{listing(_r['disasm'])}\n```"),
+        mo.md(f"**{_r['raw_hash']}** ({_r['class']}, {_r['len']} bytes, {_r['origin']}), read as pseudo-code: "
+              "each row is one or a few instructions and what they do; `path` is the route a new organism "
+              "takes; `@k` is the address of byte k, `?` a value only known while running. A path that "
+              "\"runs on past its end\" goes on into whatever bytes follow the body in memory "
+              "(a neighbour's code, or old code in free memory), which this reading does not see."
+              f"\n```\n{read_genome(_r['bytes_hex']).text()}\n```"),
         mo.md(f"**Ancestry**, newest first{_note}"),
         mo.ui.table(_anc, selection=None, page_size=10, show_column_summaries=False),
         mo.hstack([trace_ticks, trace_btn, host_btn], justify="start", gap=1),
