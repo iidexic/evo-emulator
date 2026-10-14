@@ -1,6 +1,6 @@
 # T04. Full-state snapshots and replay from a tick
 
-Status: specified 2026-10-13; built the same day (Opus, `63cae21`;
+Status: specified 2026-10-13; built the same day (Opus, `4307c30`;
 docs/instrumentation.md, "Snapshots and replay"). §2's list needed no
 addition: it already had every `Sim` and `Org` field T02, T03 and T08
 added (`exec_by_others` and the cycle counters are `OrgStats` words,

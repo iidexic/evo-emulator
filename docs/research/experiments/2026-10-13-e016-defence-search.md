@@ -201,3 +201,77 @@ Whether `drain` follows (PLAN §8.3) is read after this record's
 results. Insertions in `--neighbours` (a tolerant eject is an
 insertion) are a T03 extension for the negative-case reachability
 argument, built only if no defence appears.
+
+## 7. Amendments before launch (2026-10-13, from the runner's smoke runs)
+
+The runner (`analysis/e016_defence.py`, commit `28f029e`) was built
+against §1–§3 and smoke-tested on 2,000- and 30,000-tick worlds before
+any E016 run. Four things in the registration do not survive contact
+with the harness and the smoke worlds. They are amended here, before
+the first run, and the original text above is left as written.
+
+1. **The immune rule had no viability floor and the probe harness
+   stops when the probe dies.** The single-mutant neighbourhood is not
+   defence-free: tierra has 85 "immune" single mutants at `n0` (78 at
+   `t50`), std 97, nearly all endowment raises (`lit A {e}`, byte 33
+   tierra / byte 17 std) or absorb-count changes (byte 7 / byte 6). The
+   probe runs the host's procedure with the host's operands, divides
+   with an endowment it cannot pay, and starves at its first division,
+   so `p_probed` is 0 after about 10 ticks. Most of these barely
+   replicate alone (tierra `b_alone` ≤ 19 against the ancestor's 119;
+   std's endowment raises keep the full 230). Amended rule, both kinds:
+   G must be replicator-class alone **and** `b_alone(G) ≥ 0.5 ×
+   b_alone(A)`. And every complete genome is classed by mechanism:
+   **`parameter`** if it differs from the arm's ancestor only in the
+   operand bytes of `lit A {k}` and `lit A {e}` (`traits.py`'s ABSORB /
+   ENDOW positions for the body), **`structural`** otherwise.
+   `parameter` defences are reported (share, seeds) but do not count
+   toward H16 gate 2; the gate is read on `structural` defences. The
+   same endowment raises appear in std smoke worlds by tick 200, so
+   without this split every std seed would be "complete" at once.
+2. **"Maintained" could pass on one late window.** Amended: the
+   defence class holds ≥ 1% of replicator-class exact births in at
+   least four consecutive 25,000-tick windows (100,000 ticks), anywhere
+   in the run. The "to 250,000" clause is dropped.
+3. **Structural defences arise before the first snapshot.** In all
+   three `t50` smoke seeds two-change relabellings (template byte 15
+   with a matching L1 byte) appear by tick 500–1,800 and hold 32–52% of
+   window 1. The one-change label flip is a viable parasite and the
+   second change restores self-matching with a new pair, so the
+   relabelling is two steps away through a parasite intermediate (the
+   look-back is expected to show exactly that). Two amendments:
+   snapshots every **2,500** ticks (`--state-every 2500`; about 90 MB
+   raw per run, gzipped by the runner after the run and inflated for a
+   replay), and the replay rule uses the last multiple of 2,500 below
+   t. A defence with t < 2,500 is replayed from tick 0 with new seeds,
+   which is the per-seed arising rate itself, and is reported as "from
+   the founder" rather than as potentiation.
+4. **Gate 2's `n0` clause is likely to fail for the wrong reason.** If
+   relabellings are near-neutral they will arise in `tierra_n0` too,
+   and "≤ 2 of 30 seeds with a maintained defence in `n0`" would be
+   failed by mutation supply, not by selection. The gate stands as
+   registered (it is H16's claim and the failure is informative), and a
+   second, paired reading is added: `structural` defence share at
+   250,000 (and the number of maintained seeds) in `tierra_t50` against
+   `tierra_n0` and `tierra_tax`, paired by seed, sign test over 30
+   seeds; prediction `t50 > n0` and `t50 > tax` in ≥ 20 of 30 pairs
+   each. H16 gate 2 passes on the registered gate; the paired reading
+   is how a cost that raises an already-present defence is reported if
+   the gate fails.
+
+Runner choices the record left open, accepted as implemented: F from
+`tierra_n0` as §2 says (T02 took it from the cost arm; both are kept
+in `tax.json`); candidate share over all exact births in the window;
+each `func_hash` tested on its most common raw body; `entered_cpt_norm`
+over replicator-class reproducers; the H17 parasite set computed on
+the run cut at 50,000; the neighbourhood screen under every arm's
+flags; replay seeds 1001–1010; background replays from 25,000 to
+100,000 with no-defence seeds cycled if fewer than 10. The std probe
+is the `pad` (`--host 00`, E005/E014's fall-through intruder), since
+std has no label to flip; a std "defence" is therefore against a
+placement accident, which is why §4 makes no std prediction.
+
+Cost: a 250,000-tick run writes about 1 GB of CSV before gzip (the
+four killed smoke runs reached 2.6 GB at tick 168,000); gzipped, 150
+runs are an estimated 15–20 GB plus snapshots. The desktop has 218 GB
+free at launch.
