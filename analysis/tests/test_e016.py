@@ -1,6 +1,8 @@
-"""Tests for e016_defence.py: the defence rule, candidate selection, the tax
-calibration arithmetic (T02 §4.2), the probe body, the replay snapshot tick,
-the meta.json check, and the reading helpers. One engine call: the probe
+"""Tests for e016_defence.py: the defence rule with §7.1's floor and the
+mechanism class, candidate selection, the tax calibration arithmetic (T02
+§4.2), the probe body, the replay snapshot tick (§7.3), snapshot gzip and
+inflation, the meta.json check, "maintained" (§7.2), the paired reading's
+sign test (§7.4), and the reading helpers. One engine call: the probe
 parasite against the tierra ancestor (skipped without the binary).
 
     uv run --project analysis --with pytest pytest analysis/tests/test_e016.py
@@ -60,6 +62,51 @@ def test_apply_rule_adds_both_columns():
     out = e.apply_rule(df, REF_T50)
     assert out["immune"].to_list() == [False, True, False]
     assert out["tolerant"].to_list() == [False, True, False]
+    assert "mechanism" not in out.columns
+    hexes = [e.HEX["tierra"], e.PROBE["tierra"], e.HEX["tierra"]]
+    out = e.apply_rule(df.with_columns(hx=pl.Series(hexes)), REF_T50, "tierra", "hx")
+    assert out["mechanism"].to_list() == ["parameter", "structural", "parameter"]
+
+
+# ---- §7.1: the viability floor and the mechanism class ---------------------------------------
+
+def test_floor_is_half_the_ancestors_exact_births_alone_for_both_kinds():
+    # tierra n0: floor 59.5 of 119. The neighbourhood's endowment raises starve the probe (p 0) but make 3-19 alone.
+    assert e.is_defence("replicator", 19, 9, 0, REF_N0) == (False, False)
+    assert e.is_defence("replicator", 59, 59, 0, REF_N0) == (False, False)
+    assert e.is_defence("replicator", 60, 60, 0, REF_N0) == (True, False)
+    ref = e.Ref("replicator", 230, 100, 340)                                  # std-like reference
+    assert e.is_defence("replicator", 114, 200, 340, ref) == (False, False)   # tolerant numbers, below 115
+    assert e.is_defence("replicator", 115, 120, 340, ref) == (False, True)
+    assert e.is_defence("replicator", 230, 0, 1, ref) == (True, False)        # std endowment 35-53: full rate, pad starves
+
+
+def sub(hx: str, pos: int, byte: int) -> str:
+    b = bytearray.fromhex(hx)
+    b[pos] = byte
+    return b.hex()
+
+
+def test_mechanism_parameter_only_in_the_two_lit_operands():
+    t, s_ = e.HEX["tierra"], e.HEX["std"]
+    assert e.PARAM_POS == {"std": (6, 17), "tierra": (7, 33)}
+    assert bytes.fromhex(t)[6] & 0x1F == 17 and bytes.fromhex(t)[32] & 0x1F == 17   # the `lit A` guards
+    assert bytes.fromhex(s_)[5] & 0x1F == 17 and bytes.fromhex(s_)[16] & 0x1F == 17
+    assert e.mechanism(sub(t, 33, 62), "tierra") == "parameter"               # endowment 16 -> 62
+    assert e.mechanism(sub(sub(t, 33, 62), 7, 100), "tierra") == "parameter"  # and absorb 127 -> 100
+    assert e.mechanism(sub(s_, 17, 40), "std") == "parameter"
+    assert e.mechanism(sub(sub(s_, 17, 0x50), 6, 0x60), "std") == "parameter"  # the smoke worlds' std raises
+    assert e.mechanism(sub(t, 32, 0x10), "tierra") == "structural"            # the guard byte, no longer `lit`
+    assert e.mechanism(sub(t, 32, 0x91), "tierra") == "parameter"             # a synonymous `lit A`: no change
+    # Synonymous bytes elsewhere are no difference (the std smoke worlds' raises carry them).
+    assert e.mechanism(sub(sub(sub(s_, 3, 0xF1), 6, 0x60), 17, 0x54), "std") == "parameter"
+    assert e.mechanism(sub(sub(sub(s_, 12, 0x58), 6, 0x50), 17, 0x52), "std") == "parameter"
+    assert e.mechanism(sub(sub(sub(t, 3, 0x83), 15, 0x05), 20, 0x12), "tierra") == "structural"
+    assert e.mechanism(sub(sub(t, 15, 0x05), 20, 0x12), "tierra") == "structural"  # template + L1 relabelling
+    assert e.mechanism(sub(sub(t, 33, 62), 15, 0x05), "tierra") == "structural"    # an operand plus anything else
+    assert e.mechanism(sub(s_, 6, 0x60), "tierra") == "structural"            # another body
+    assert e.mechanism(t + "00", "tierra") == "structural"                    # same bytes, other length
+    assert e.mechanism(s_[:34] + s_[36:], "std") == "structural"              # a deletion
 
 
 # ---- candidate selection (§3) --------------------------------------------------------------
@@ -141,13 +188,41 @@ def test_tierra_probe_flips_byte_18_from_nop1_to_nop0_and_nothing_else():
         e.probe_hex(e.HEX["std"])
 
 
-def test_snapshot_tick_is_the_last_multiple_of_25000_below_t():
-    assert e.snapshot_tick(25_001) == 25_000
-    assert e.snapshot_tick(50_000) == 25_000      # below, not at
-    assert e.snapshot_tick(50_001) == 50_000
-    assert e.snapshot_tick(249_999) == 225_000
-    assert e.snapshot_tick(25_000) is None        # no snapshot at tick 0
-    assert e.snapshot_tick(1) is None
+def test_snapshot_tick_is_the_last_multiple_of_2500_below_t():
+    assert e.STATE_EVERY == 2_500
+    assert e.snapshot_tick(2_501) == 2_500
+    assert e.snapshot_tick(5_000) == 2_500        # below, not at
+    assert e.snapshot_tick(5_001) == 5_000
+    assert e.snapshot_tick(249_999) == 247_500
+    assert e.snapshot_tick(2_500) == 0            # no snapshot below: from the founder
+    assert e.snapshot_tick(515) == 0              # the smoke worlds' relabellings
+    assert e.snapshot_tick(1) == 0
+
+
+def test_snapshot_gzip_and_inflate_round_trip(tmp_path):
+    d = tmp_path / "run"
+    (d / "state").mkdir(parents=True)
+    data = {2_500: bytes(range(256)) * 40, 5_000: b"EVOSTATE" + bytes(1_000)}
+    for t, b in data.items():
+        (d / "state" / f"{t}.bin").write_bytes(b)
+    (d / "state" / "7500.bin.tmp").write_bytes(b"partial")    # the engine's temporary name is not a snapshot
+    (d / "meta.json").write_text('{"ticks_run": 5000}')
+    assert e.snapshot_ticks(d) == [2_500, 5_000]
+    plain, packed = e.deflate_state(d)
+    assert plain == sum(len(b) for b in data.values()) and packed > 0
+    assert sorted(p.name for p in (d / "state").iterdir()) == ["2500.bin.gz", "5000.bin.gz", "7500.bin.tmp"]
+    assert e.snapshot_ticks(d) == [2_500, 5_000]
+    assert e.missing_snapshots(d, 5_000) == []
+    assert e.missing_snapshots(d, 10_000) == []               # the run ended at 5,000 (extinct)
+    with e.snapshot_file(d, 2_500) as f:
+        assert f.read_bytes() == data[2_500] and f.parent != d / "state"
+        held = f
+    assert not held.exists()                                  # the inflated copy is gone
+    assert (d / "state" / "2500.bin.gz").exists()
+    assert e.inflate_to(d / "state" / "5000.bin.gz", tmp_path / "x.bin").read_bytes() == data[5_000]
+    with pytest.raises(SystemExit):
+        with e.snapshot_file(d, 7_500):
+            pass
 
 
 # ---- meta.json ----------------------------------------------------------------------------------
@@ -156,7 +231,7 @@ def good_meta(arm: str = "tierra_t50") -> dict:
     b = e.base(arm)
     return {
         "ticks_requested": 250_000, "ticks_run": 250_000, "ancestor": b, "founders": [{"hex": e.HEX[b], "count": 1}],
-        "founder_starts": [32_768], "state_every": 25_000, "replay_from": None,
+        "founder_starts": [32_768], "state_every": 2_500, "replay_from": None,
         "config": {"patch_income": 512_000, "patch_cap": 8_192_000, "legacy_pending_range": False,
                    "cycle_theft_pct": 50 if arm.endswith("t50") else 0,
                    "cycle_tax_pct": 0, "cycle_tax_frac": 1.0, **e.NOISE},
@@ -218,22 +293,56 @@ def test_physics_flags_per_arm():
     with pytest.raises(SystemExit):
         e.physics("tierra_tax")
     cmd = e.world_cmd(Path("evo"), Path("d"), "tierra_t50", 7, 250_000, None, True)
-    assert cmd[-2:] == ["--state-every", "25000"] and "--legacy-pending-range" not in cmd
+    assert cmd[-2:] == ["--state-every", "2500"] and "--legacy-pending-range" not in cmd
     assert "--state-every" not in e.world_cmd(Path("evo"), Path("d"), "tierra_t50", 7, 2_000, None, False)
 
 
 # ---- reading helpers ----------------------------------------------------------------------------
 
-def test_maintained_rule():
+def test_maintained_needs_four_consecutive_windows_anywhere():
     lo, hi = 0.005, 0.02
-    assert e.maintained([None, lo, hi, hi, hi, hi, hi, hi, hi, hi])["clause"] == "to_end"
+    assert e.maintained([None, lo, hi, hi, hi, hi, lo, lo, lo, lo])["maintained"] is True   # windows 3-6
     m = e.maintained([hi, hi, hi, hi, lo, lo, lo, lo, lo, lo])
-    assert m["clause"] == "run" and m["longest_windows"] == 4
-    assert e.maintained([hi, hi, hi, lo, hi, hi, hi, lo, lo, lo])["maintained"] is False
-    assert e.maintained([lo] * 9 + [hi]) == dict(maintained=True, clause="to_end", first_window=10,
-                                                 longest_windows=1, windows_held=1)  # as §1 is written
+    assert m["maintained"] is True and m["longest_windows"] == 4 and m["first_window"] == 1
+    assert e.maintained([lo] * 6 + [hi] * 4)["maintained"] is True                          # to the end, four
+    assert e.maintained([hi, hi, hi, lo, hi, hi, hi, lo, lo, lo])["maintained"] is False    # two runs of three
+    assert e.maintained([lo] * 9 + [hi]) == dict(maintained=False, first_window=10, longest_windows=1,
+                                                 windows_held=1)  # one late window fails (§7.2)
+    assert e.maintained([lo] * 7 + [hi] * 3)["maintained"] is False                         # three to the end
+    assert e.maintained([hi, hi, None, hi, hi])["maintained"] is False                      # an empty window breaks it
     assert e.maintained([lo] * 10)["first_window"] is None
-    assert e.maintained([0.01])["maintained"] is True                                   # >= 1%, not >
+    assert e.maintained([0.01] * 4)["maintained"] is True                                   # >= 1%, not >
+    assert e.maintained([0.01] * 3)["maintained"] is False
+
+
+# ---- §7.4: the paired reading ---------------------------------------------------------------------
+
+def test_sign_test_arithmetic():
+    assert e.sign_test(0, 0) == 1.0
+    assert e.sign_test(1, 0) == 1.0                              # 2 x 1/2
+    assert e.sign_test(5, 0) == pytest.approx(2 / 32)            # 0.0625
+    assert e.sign_test(0, 5) == pytest.approx(2 / 32)
+    assert e.sign_test(3, 3) == 1.0
+    assert e.sign_test(8, 2) == pytest.approx(2 * (45 + 10 + 1) / 1024)   # 0.109375
+    assert e.sign_test(20, 10) == pytest.approx(0.0987, abs=1e-4)
+    assert e.sign_test(30, 0) == pytest.approx(2 / 2 ** 30)
+
+
+def test_paired_by_seed_with_ties_and_missing():
+    runs = pl.DataFrame({
+        "arm": ["tierra_t50"] * 5 + ["tierra_n0"] * 4,
+        "seed": [1, 2, 3, 4, 5, 1, 2, 3, 4],
+        "structural_share_end": [0.30, 0.10, 0.0, None, 0.5, 0.05, 0.20, 0.0, 0.1],
+        "maintained": [True, True, False, True, True, False, True, False, False],
+    })
+    r = e.paired(runs, "tierra_t50", "tierra_n0", "structural_share_end")
+    assert r == dict(pairs=3, plus=1, minus=1, ties=1, unpaired=2, p=1.0)    # s4 missing a share, s5 no partner
+    m = e.paired(runs, "tierra_t50", "tierra_n0", "maintained")
+    assert (m["pairs"], m["plus"], m["minus"], m["ties"], m["unpaired"]) == (4, 2, 0, 2, 1)
+    assert m["p"] == pytest.approx(0.5)
+    lines = e.paired_lines(runs, 30)
+    assert "t50 above in 1 of 3 pairs" in lines[1] and "[>= 20]: fails" in lines[1]
+    assert "not readable" in lines[3]                                         # no tierra_tax runs
 
 
 def test_pair_off_break_and_repair():
@@ -306,15 +415,23 @@ def test_world_refuses_a_binary_without_snapshots(monkeypatch):
     e.require_snapshots(Path("evo-core"))  # a T04 binary passes
 
 
-def test_replay_plan_snapshots_and_background():
-    runs = pl.DataFrame({"arm": ["tierra_t50"] * 4, "seed": [1, 2, 3, 4], "screened": [True] * 4,
-                         "first_complete_tick": [60_000, 500, None, None]}, schema_overrides={"first_complete_tick": pl.Int64})
+def test_replay_plan_snapshots_founder_and_background(tmp_path):
+    runs = pl.DataFrame({"arm": ["tierra_t50"] * 5, "seed": [1, 2, 3, 4, 5], "screened": [True] * 5,
+                         "first_structural_tick": [60_001, 515, None, None, 2_500]},
+                        schema_overrides={"first_structural_tick": pl.Int64})
     plan, notes = e.replay_plan(runs, "tierra_t50")
-    defence = [p for p in plan if p[0] == 1]
-    assert defence == [(1, 50_000, s, 110_000) for s in range(1001, 1011)]
-    assert any("s2" in n and "no snapshot" in n for n in notes)
-    background = [p for p in plan if p[3] == e.BACKGROUND_TO]
-    assert [p[0] for p in background] == [3, 4] * 5          # two seeds without a defence, cycled
-    assert [p[2] for p in background] == list(range(1001, 1011))
-    assert all(p[1] == 25_000 for p in background)
-    assert len(e.replay_plan(runs, "tierra_t50", 2)[0]) == 4  # smoke: two per source
+    assert [p for p in plan if p[1] == 1] == [("potentiation", 1, 60_000, k, 110_001) for k in range(1001, 1011)]
+    founder = [p for p in plan if p[0] == "founder"]
+    assert founder == [("founder", s, 0, k, e.FOUNDER_TO) for s in (2, 5) for k in range(1001, 1011)]
+    assert sum("from the founder" in n for n in notes) == 2
+    # Founder runs depend on the new seed only: seeds 2 and 5 share them.
+    dirs = {e.replay_job_dir(tmp_path, "tierra_t50", p) for p in founder}
+    assert dirs == {tmp_path / "replay" / "tierra_t50" / "founder" / f"r{k}" for k in range(1001, 1011)}
+    background = [p for p in plan if p[0] == "background"]
+    assert [p[1] for p in background] == [3, 4] * 5          # two seeds without a defence, cycled
+    assert [p[3] for p in background] == list(range(1001, 1011))
+    assert all(p[2] == 25_000 and p[4] == e.BACKGROUND_TO for p in background)
+    assert e.replay_job_dir(tmp_path, "tierra_t50", background[0]) == tmp_path / "replay" / "tierra_t50" / "s3" / "r1001"
+    assert len(e.replay_plan(runs, "tierra_t50", 2)[0]) == 8  # smoke: two per source
+    short, notes = e.replay_plan(runs, "tierra_t50", 10, ticks=3_000)
+    assert not [p for p in short if p[0] == "background"] and any("no 25,000 snapshot" in n for n in notes)

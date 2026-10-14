@@ -1,14 +1,15 @@
 """E016: cost x ancestor, the defence search (H16 gate 2; H17 under the fixed
 edge). The record is the contract:
 docs/research/experiments/2026-10-13-e016-defence-search.md (section numbers
-below are its). Under `--cycle-theft-pct 50` an intruder's instruction on a
+below are its; §7 holds the amendments made before launch, which this runner
+implements). Under `--cycle-theft-pct 50` an intruder's instruction on a
 host's byte debits the host's per-tick budget by half its cost; in a world
 seeded with the 41-byte template body (E015), whose one-hop parasite is a
 label flip, does a defence against being entered arise and is it kept?
 
 Arms (§2), sun S = 2 (resolved 2026-10-13), 30 seeds, 250,000 ticks,
-`--census 500`, `--state-every 25000` (T04), one founder at byte 32,768,
-T08's fixed `alloc`/`copy` edge (no `--legacy-pending-range`):
+`--census 500`, `--state-every 2500` (T04; §7.3), one founder at byte
+32,768, T08's fixed `alloc`/`copy` edge (no `--legacy-pending-range`):
 
 | arm | world flags |
 |---|---|
@@ -29,19 +30,27 @@ test 2):
 For `std`: the std body has no label to flip, so its probe is the known
 fall-through intruder of E005 and E014, a one-byte `pad` (`--host 00`):
 it runs off its own end into the host and copies itself with the host's
-loop. This is a choice the record leaves open; it is E014's gate-1 probe.
+loop (§7: a std "defence" is against a placement accident).
 
-The defence rule (§1), per candidate genome G under the arm's flags, two
-3,000-tick harness runs: `alone` (G alone, `--classify`; class and exact
-births b_alone) and `probed` (`--host PROBE --host-body G`; G's exact births
-b_probed = `host_exact_births`, the probe's p_probed = `exact_births`).
-Reference: the arm's ancestor A gives b_alone(A), b_probed(A), p_probed(A).
-`immune`: G replicator-class alone and p_probed(G) < 0.1 p_probed(A).
-`tolerant`: G replicator-class alone, b_probed(G) >= 0.9 b_alone(G) and
-b_probed(G) >= 1.2 b_probed(A). Complete = either. The harness stops when
-the probe dies (`stopped_early`), so a G that kills the probe has b_probed
-over `ticks_run` ticks only and can qualify as immune, not tolerant; the
-rule is applied as written and `ticks_run`, `stopped_early` are kept.
+The defence rule (§1 with §7.1), per candidate genome G under the arm's
+flags, two 3,000-tick harness runs: `alone` (G alone, `--classify`; class
+and exact births b_alone) and `probed` (`--host PROBE --host-body G`; G's
+exact births b_probed = `host_exact_births`, the probe's p_probed =
+`exact_births`). Reference: the arm's ancestor A gives b_alone(A),
+b_probed(A), p_probed(A). Viable: G replicator-class alone and b_alone(G)
+>= 0.5 b_alone(A) (§7.1's floor). `immune`: viable and p_probed(G) < 0.1
+p_probed(A). `tolerant`: viable, b_probed(G) >= 0.9 b_alone(G) and
+b_probed(G) >= 1.2 b_probed(A). Complete = either. `mechanism` (§7.1):
+`parameter` when G has the ancestor's length and differs from it only in
+the operand bytes of `lit A {k}` and `lit A {e}` (traits.ABSORB / ENDOW,
+bytes 6 and 17, for std; traits.ABSORB_T / ENDOW_T, bytes 7 and 33, for
+tierra), else `structural`, compared on the canonical form (a synonymous
+byte elsewhere, same func_hash, is no difference); given for every screened
+genome, read on the complete ones. H16 gate 2, "maintained", the paired reading, `lod` and
+`replay` use the structural complete set; `parameter` defences are reported
+beside it. The harness stops when the probe dies (`stopped_early`), so a G
+that kills the probe has b_probed over `ticks_run` ticks only and can
+qualify as immune, not tolerant; `ticks_run`, `stopped_early` are kept.
 `alone` is one `--classify` over a temporary genomes.csv holding every
 candidate (lod.harness_alone); each genome runs alone in it, and a one-row
 file gives the same row (checked 2026-10-13).
@@ -51,13 +60,15 @@ Stages (subcommands):
 - `world`: the runs. Default arms tierra_n0, tierra_t50, std_n0, std_t50
   (`--arms tierra_tax` after `calibrate`). N at a time (`--jobs`, default
   os.cpu_count()). Each run is classified with the arm's flags and gzipped
-  (every file but patches.csv, meta.json and state/; evo_run reads .gz).
-  Resumable: a seed with classes.csv is skipped (its snapshots and meta are
-  checked). Refuses to start unless a one-tick dry run of the binary accepts
-  `--state-every` (T04), since the snapshots cannot be added afterwards
-  (§2). `--no-snapshots` drops the flag for a smoke run only (refused
-  without `--smoke`, which also needs `--out` away from runs/e016); so does
-  any `--ticks` other than 250,000. Directories runs/e016/<arm>/s<seed>/.
+  (every file but patches.csv and meta.json, and every state/<tick>.bin to
+  <tick>.bin.gz; evo_run reads .gz, `replay` inflates the snapshot it
+  needs). Resumable: a seed with classes.csv is skipped (its snapshots and
+  meta are checked). Refuses to start unless a one-tick dry run of the
+  binary accepts `--state-every` (T04), since the snapshots cannot be added
+  afterwards (§2). `--no-snapshots` drops the flag for a smoke run only
+  (refused without `--smoke`, which also needs `--out` away from
+  runs/e016); so does any `--ticks` other than 250,000. Directories
+  runs/e016/<arm>/s<seed>/.
 - `calibrate`: the tax control (§2, T02 §4.2) over replicator-class deaths
   (class of the birth genome) after tick 25,000, seeds pooled: F = entered
   share (`exec_by_others` > 0) of tierra_n0's deaths (the record: "P, F
@@ -72,52 +83,63 @@ Stages (subcommands):
   substitution and deletion of the ancestor) through the defence rule under
   each selected arm's flags of that ancestor (tierra_tax only once tax.json
   exists); writes runs/e016/nbhd_screen_<ancestor>.csv (one row per mutant
-  per arm) and prints the counts (expected: zero complete). Then every
-  finished world run of the selected arms: candidates are the
-  replicator-class (classes.csv) `func_hash`es with >= 0.5% of a 25,000-tick
-  window's exact births (all exact births in the window, any class, as the
-  denominator) in some window, or >= 50 exact births in the run; each is
-  tested on its most common raw body among its replicator-class exact births
-  (synonymous bodies share a func_hash and behave alike). Writes
-  RUN_DIR/defence.csv: `func_hash, len, b_alone, b_probed, p_probed, immune,
-  tolerant, first_tick, last_tick` (first and last births.csv tick of any
-  body with the func_hash), then `raw_hash, class_alone, exact_births,
+  per arm) and prints the counts by mechanism. Then every finished world
+  run of the selected arms: candidates are the replicator-class
+  (classes.csv) `func_hash`es with >= 0.5% of a 25,000-tick window's exact
+  births (all exact births in the window, any class, as the denominator) in
+  some window, or >= 50 exact births in the run; each is tested on its most
+  common raw body among its replicator-class exact births (synonymous
+  bodies share a func_hash and behave alike). Writes RUN_DIR/defence.csv:
+  `func_hash, len, b_alone, b_probed, p_probed, immune, tolerant,
+  first_tick, last_tick` (first and last births.csv tick of any body with
+  the func_hash), then `mechanism, raw_hash, class_alone, exact_births,
   max_window_share, host_alive, entry_off, ticks_run, stopped_early,
-  bytes_hex`; RUN_DIR/defence_ref.json (the ancestor's three numbers);
-  runs/e016/screen.csv (counts per run). Exact: the child equals the
-  executor's body at `divide` (raw_hash == parent_now_hash).
+  bytes_hex`; RUN_DIR/defence_ref.json (the ancestor's numbers);
+  runs/e016/screen.csv (counts per run, split by mechanism). Exact: the
+  child equals the executor's body at `divide` (raw_hash ==
+  parent_now_hash).
 - `analyse`: per 2,500-tick bin per run (bin k holds ticks ((k-1)2500,
   k 2500]) E015's set (`exact`, `par_share` = E005's parasite-lineage share
   of exact births with E015's `parasite_2` set over the whole run,
   `rep_deaths`, `entered_share`, `resident_share`, `resident_intr_share`,
   `pop`, `ip_off_share`, `nop_share`, `len_p10/50/90`), plus `rep_exact`,
   `defence_share` (exact births by complete genomes over replicator-class
-  exact births), `immune_share`, `tolerant_share`, `cycles_lost_per_tick`
-  (mean `cycles_lost_m / age` over entered replicator-class deaths, E014),
-  `entered_cpt` and `entered_cpt_norm` (offspring per tick of entered over
-  unentered reproducers: replicator-class deaths with `age` > 50 and
-  `offspring` > 0, mean of `offspring / age` in each group, E014's
-  amendment; norm = over the same seed and bin of the arm's n0 partner).
-  Per run: the defence by 25,000-tick window and `maintained` (§1: the
-  complete set holds >= 1% of replicator-class exact births in every window
-  from its first such window to the end (`to_end`), or in a run of >= 4
-  windows (100,000 ticks, `run`)); `first_complete_tick` (first births.csv
-  birth of a complete genome); H17's readings at 50,000 from the n0 arms
-  (parasite share in the bin ending at 50,000 with the parasite set taken
-  over the run cut at 50,000, as E015's 50,000-tick runs had it; entered
-  share of replicator-class deaths in (25,000, 50,000]). T05's
-  `measures.compute` with a `defence_class` grouping (genomes.csv gains the
-  column: `complete`, `not` (screened, neither), `unmatched` (not in
-  defence.csv)) and `qnn_series` over `func_hash` as turnover context; the
-  series, with `complete_share` (census bodies in the class), goes to
-  RUN_DIR/measures/. Writes runs/e016/bins.csv, runs.csv, summary.md (§4's
-  counts: H16 gate 2 maintained seeds per arm against >= 10 / <= 2 / <= 2;
-  H17 seeds with parasite share > 5% (tierra_n0, >= 20 of 30) and <= 2%
-  (std_n0), entered-share medians against > 25% and 7-14%).
-- `lod`: for every run with a complete genome, T06's line of descent
-  (lod.lod, unchanged logic, with the arm's physics flags and probe in its
-  two harness calls) from the founder to the first organism born with a
-  complete genome. Added per step (lod/e016_steps.csv): the world column in
+  exact births), its split `structural_share` / `parameter_share`,
+  `immune_share`, `tolerant_share` (all complete genomes),
+  `cycles_lost_per_tick` (mean `cycles_lost_m / age` over entered
+  replicator-class deaths, E014), `entered_cpt` and `entered_cpt_norm`
+  (offspring per tick of entered over unentered reproducers:
+  replicator-class deaths with `age` > 50 and `offspring` > 0, mean of
+  `offspring / age` in each group, E014's amendment; norm = over the same
+  seed and bin of the arm's n0 partner). Per run: the structural and the
+  parameter share by 25,000-tick window and `maintained` (§7.2: >= 1% of
+  replicator-class exact births in at least four consecutive windows,
+  100,000 ticks, anywhere in the run; on the structural set, with
+  `maintained_parameter` beside it); `first_structural_tick`,
+  `first_parameter_tick` (first births.csv birth of such a genome);
+  `structural_share_end` (the run's last 2,500-tick bin); H17's readings at
+  50,000 from the n0 arms (parasite share in the bin ending at 50,000 with
+  the parasite set taken over the run cut at 50,000, as E015's 50,000-tick
+  runs had it; entered share of replicator-class deaths in (25,000,
+  50,000]). T05's `measures.compute` with a `defence_class` grouping
+  (genomes.csv gains the column: `structural`, `parameter` (complete, by
+  mechanism), `not` (screened, neither), `unmatched` (not in defence.csv))
+  and `qnn_series` over `func_hash` as turnover context; the series, with
+  `structural_share` and `parameter_share` of census bodies, goes to
+  RUN_DIR/measures/. Writes runs/e016/bins.csv, runs.csv, summary.md: §4's
+  counts (H16 gate 2 maintained structural seeds per arm against >= 10 /
+  <= 2 / <= 2; H17 seeds with parasite share > 5% (tierra_n0, >= 20 of 30)
+  and <= 2% (std_n0), entered-share medians against > 25% and 7-14%), and
+  §7.4's paired reading next to the gate: tierra_t50 against tierra_n0 and
+  against tierra_tax paired by seed, on `structural_share_end` and on
+  maintained (yes/no): pairs with t50 above, below, tied; a two-sided sign
+  test over the untied pairs (binomial, p = 1/2); prediction t50 above in
+  >= 20 of 30 pairs each. A pair missing either share (an extinct run) is
+  left out and counted.
+- `lod`: for every run with a structural complete genome, T06's line of
+  descent (lod.lod, unchanged logic, with the arm's physics flags and probe
+  in its two harness calls) from the founder to the first organism born
+  with one. Added per step (lod/e016_steps.csv): the world column in
   2,500-tick bins against contemporaries (T06 follow-up rule: exact children
   per death of organisms born with the genome in the step's bin over that
   of every replicator-class organism born in the bin, both from
@@ -127,25 +149,30 @@ Stages (subcommands):
   from f = 0) paired off before counting. Croft's look-back
   (lod/lookback.csv): the end organism's parent and grandparent on the line
   (and the parent's body at divide when it differs), each with which of the
-  first complete genome's edits from the ancestor it carries (tierra by
+  first structural genome's edits from the ancestor it carries (tierra by
   region: `template` bytes 13-16, `label` L1 bytes 18-21, `other`) and the
-  diff from it to the complete genome. Time-to-loss (lod/lineages.csv):
-  every origin of a complete lineage (a body born complete whose parent was
+  diff from it to that genome. Time-to-loss (lod/lineages.csv): every
+  origin of a structural complete lineage (a body born so whose parent was
   not), the ticks from its birth to the lineage's last exact birth, and
   whether it is alive at the last census (censored). Writes
   runs/e016/lod_seeds.csv and lod_summary.md.
-- `replay` (§3, T04): for each run whose first complete genome is born at
-  t, the snapshot at the last multiple of 25,000 below t, replayed with
-  `--replay-from FILE --seed S` (S = 1001..1010) to tick t + 50,000; a
-  t at or below 25,000 has no snapshot below it and is listed, not
-  replayed. Background: 10 replays from the 25,000 snapshot of the arm's
-  seeds with no complete genome by the run's end (the first 10 by seed; with
-  fewer, they are cycled, each replay its own new seed), to tick 100,000,
-  the longest any defence replay can run. Each replay is classified and
-  screened as a world run (same rule, same arm reference); it counts if any
-  complete genome is born in it. Directories
-  runs/e016/replay/<arm>/s<seed>/r<S>/; writes runs/e016/replay.csv and
-  replay_summary.md. Refuses unless the binary accepts `--replay-from`.
+- `replay` (§3 with §7.3, T04): for each run whose first structural
+  complete genome is born at t, the snapshot at the last multiple of 2,500
+  below t (state/<tick>.bin.gz, inflated to a temporary file for the run
+  and removed after), replayed with `--replay-from FILE --seed S` (S =
+  1001..1010) to tick t + 50,000. When that multiple is 0 (t <= 2,500)
+  there is no snapshot: the replays are plain runs from the founder with
+  the arm's flags and `--seed S` to tick 50,000, which is the per-seed
+  arising rate itself; they are shared by every such source seed of the
+  arm (runs/e016/replay/<arm>/founder/r<S>/) and reported as `founder`, not
+  as potentiation. Background: 10 replays from the 25,000 snapshot of the
+  arm's seeds with no structural complete genome by the run's end (the
+  first 10 by seed; with fewer, they are cycled, each replay its own new
+  seed), to tick 100,000. Each replay is classified and screened as a world
+  run (same rule, same arm reference); it counts if a structural complete
+  genome is born in it. Directories runs/e016/replay/<arm>/s<seed>/r<S>/;
+  writes runs/e016/replay.csv (`kind`: potentiation, founder, background)
+  and replay_summary.md. Refuses unless the binary accepts `--replay-from`.
 
 Runs shorter than 50,000 ticks (smoke) read the "after 25,000" deaths after
 half the run instead.
@@ -159,18 +186,19 @@ Usage (from the repo root):
     uv run --project analysis analysis/e016_defence.py screen        # nbhd baseline first
     uv run --project analysis analysis/e016_defence.py world --jobs 24
     uv run --project analysis analysis/e016_defence.py calibrate
-    uv run --project analysis analysis/e016_defence.py world --arms tierra_tax
+    uv run --project analysis analysis/e016_defence.py world --arms tierra_tax --jobs 24
     uv run --project analysis analysis/e016_defence.py screen
     uv run --project analysis analysis/e016_defence.py analyse
     uv run --project analysis analysis/e016_defence.py lod
     uv run --project analysis analysis/e016_defence.py replay
-    uv run --project analysis analysis/e016_defence.py world --smoke --no-snapshots --seeds 2 \\
-        --ticks 2000 --out runs/e016_smoke                              # smoke test only
+    uv run --project analysis analysis/e016_defence.py world --smoke --seeds 2 --ticks 3000 \\
+        --out runs/e016_smoke                                           # smoke test only
 """
 
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import math
 import os
@@ -180,6 +208,7 @@ import sys
 import tempfile
 import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -189,6 +218,7 @@ import polars as pl
 import lod
 import measures as t05
 from e015_template import HEX, check_binary, nop_share, parasite_genomes
+from traits import ABSORB, ABSORB_T, ENDOW, ENDOW_T, canonical_instrs
 from evo_run import HASH_COLS, ROOT, Run, csv_path, gunzip_verified, gzip_verified, load, world
 
 OUT = ROOT / "runs" / "e016"
@@ -197,9 +227,9 @@ SUN = 2  # §2, resolved 2026-10-13
 TICKS = 250_000
 SEEDS = 30
 CENSUS = 500
-STATE_EVERY = 25_000
+STATE_EVERY = 2_500  # §7.3
 BIN = 2_500
-WINDOW = 25_000  # §1's windows, the candidate windows and the 25,000 snapshots
+WINDOW = 25_000  # §1's windows and the candidate windows
 HARNESS_TICKS = 3_000
 FOUNDER_START = 32_768
 SECOND_HALF = 25_000
@@ -207,9 +237,12 @@ H17_TICK = 50_000
 RESIDENT = 0.9
 CAP_M = 32_000  # Config::default(): cap_c0 = 32 units
 NOISE = {"p_write_flip": 0.004761904761904762, "q_slip": 0.0011904761904761906, "p_bit_rot": 0.0001}
-# §1: the defence rule and "maintained".
-IMMUNE_FRAC, KEEP_FRAC, GAIN_FRAC = 0.1, 0.9, 1.2
-MAINT_SHARE, MAINT_RUN = 0.01, 100_000
+# §1 with §7.1: the defence rule, its viability floor, and "maintained" (§7.2).
+IMMUNE_FRAC, KEEP_FRAC, GAIN_FRAC, FLOOR_FRAC = 0.1, 0.9, 1.2, 0.5
+MAINT_SHARE, MAINT_WINDOWS = 0.01, 4  # four consecutive 25,000-tick windows
+# §7.1: a `parameter` defence differs from the ancestor only in these operand bytes
+# (`lit A {k}`, `lit A {e}`).
+PARAM_POS = {"std": (ABSORB.offset, ENDOW.offset), "tierra": (ABSORB_T.offset, ENDOW_T.offset)}
 # §3: candidate selection.
 CAND_SHARE, CAND_EXACT = 0.005, 50
 # E014's amendment: reproducers are deaths with age > 50 and offspring > 0.
@@ -222,6 +255,7 @@ H17_NEED = 20
 # §3 replay.
 REPLAY_SEEDS = tuple(range(1001, 1011))
 REPLAY_AFTER = 50_000
+FOUNDER_TO = 50_000  # §7.3: t <= 2,500 is replayed from the founder to this tick
 BACKGROUND_FROM, BACKGROUND_TO = 25_000, 100_000
 
 NOP0, NOP1 = 1, 3
@@ -232,8 +266,8 @@ FIRST_ARMS = ["tierra_n0", "tierra_t50", "std_n0", "std_t50"]
 N0_OF = {"tierra_n0": "tierra_n0", "tierra_t50": "tierra_n0", "tierra_tax": "tierra_n0",
          "std_n0": "std_n0", "std_t50": "std_n0"}
 # Gzipped after classification; classes.csv last, so an interrupted
-# compression still leaves the run seen as classified. state/ stays plain
-# (`--replay-from` reads it).
+# compression still leaves the run seen as classified. The state/ snapshots
+# are gzipped too (deflate_state) and inflated one at a time for a replay.
 COMPRESS = ("births.csv", "deaths.csv", "orgs.csv", "census.csv", "world.bin", "genomes.csv", "classes.csv")
 
 Tax = tuple[int, float]
@@ -328,8 +362,8 @@ def require_snapshots(exe: Path) -> None:
     if code != 0 or "unknown arg" in msg:
         raise SystemExit(
             f"{exe} does not accept --state-every (T04 not built?): exit {code}: {msg.splitlines()[-1] if msg else ''}\n"
-            "E016's world stage writes full-state snapshots every 25,000 ticks, which cannot be added after the "
-            "runs (record §2). Build T04 first. (`--smoke --no-snapshots` skips them for a smoke run only.)")
+            f"E016's world stage writes full-state snapshots every {STATE_EVERY:,} ticks (§2, §7.3), which cannot be "
+            "added after the runs. Build T04 first. (`--smoke --no-snapshots` skips them for a smoke run only.)")
 
 
 def require_replay(exe: Path) -> None:
@@ -404,13 +438,57 @@ def check_meta(d: Path, arm: str, ticks: int | None, tax: Tax | None, snapshots:
 
 
 def snapshot_ticks(d: Path) -> list[int]:
+    """Ticks with a snapshot in d/state, plain (<tick>.bin) or gzipped
+    (<tick>.bin.gz)."""
     s = d / "state"
-    return sorted(int(p.stem) for p in s.glob("*.bin") if p.stem.isdigit()) if s.is_dir() else []
+    if not s.is_dir():
+        return []
+    out = set()
+    for p in s.iterdir():
+        for suf in (".bin.gz", ".bin"):
+            if p.name.endswith(suf) and p.name[:-len(suf)].isdigit():
+                out.add(int(p.name[:-len(suf)]))
+    return sorted(out)
+
+
+def deflate_state(d: Path) -> tuple[int, int]:
+    """gzip every d/state/<tick>.bin to <tick>.bin.gz (evo_run.gzip_verified:
+    read back and compared before the plain file goes). (plain, gzip) bytes."""
+    a = b = 0
+    s = d / "state"
+    if s.is_dir():
+        for p in sorted(s.glob("*.bin")):
+            x, y = gzip_verified(p)
+            a, b = a + x, b + y
+    return a, b
+
+
+def inflate_to(gz: Path, dst: Path) -> Path:
+    """Write the plain contents of `gz` to `dst` (gzip checks its CRC)."""
+    with gzip.open(gz, "rb") as fi, open(dst, "wb") as fo:
+        shutil.copyfileobj(fi, fo, 1 << 20)
+    return dst
+
+
+@contextmanager
+def snapshot_file(d: Path, tick: int):
+    """A plain path to the run's snapshot at `tick` for the length of the
+    block: state/<tick>.bin if it is plain, else state/<tick>.bin.gz inflated
+    into a temporary directory that is removed afterwards (replays of one
+    snapshot in parallel each inflate their own copy)."""
+    plain, gz = d / "state" / f"{tick}.bin", d / "state" / f"{tick}.bin.gz"
+    if plain.exists():
+        yield plain
+        return
+    if not gz.exists():
+        raise SystemExit(f"{d}: no snapshot at tick {tick} (state/{tick}.bin or .bin.gz)")
+    with tempfile.TemporaryDirectory(prefix="e016_state_") as tmp:
+        yield inflate_to(gz, Path(tmp) / f"{tick}.bin")
 
 
 def missing_snapshots(d: Path, ticks: int) -> list[int]:
-    """Multiples of 25,000 up to the run's last tick (an extinct run stops
-    early) with no state/<tick>.bin."""
+    """Multiples of STATE_EVERY up to the run's last tick (an extinct run
+    stops early) with no state/<tick>.bin or .bin.gz."""
     end = json.loads((d / "meta.json").read_text()).get("ticks_run") or ticks
     have = set(snapshot_ticks(d))
     return [t for t in range(STATE_EVERY, min(ticks, end) + 1, STATE_EVERY) if t not in have]
@@ -436,8 +514,9 @@ def run_world(exe: Path, out: Path, arm: str, seed: int, ticks: int, tax: Tax | 
         check_meta(d, arm, ticks, tax, snapshots)
         if snapshots and (miss := missing_snapshots(d, ticks)):
             raise SystemExit(f"{tag}: finished but snapshots missing at {miss}")
-        if compress and any((d / n).exists() for n in COMPRESS):
+        if compress and (any((d / n).exists() for n in COMPRESS) or any((d / "state").glob("*.bin"))):
             compress_run(d)
+            deflate_state(d)
             return f"{tag}: done; compressed"
         return f"{tag}: done"
     t0 = time.time()
@@ -460,7 +539,8 @@ def run_world(exe: Path, out: Path, arm: str, seed: int, ticks: int, tax: Tax | 
     msg = f"{tag}: run {t1 - t0:.0f} s, classify {time.time() - t1:.0f} s"
     if compress:
         a, b = compress_run(d)
-        msg += f", gzip {a / 1e6:.1f} -> {b / 1e6:.1f} MB"
+        x, y = deflate_state(d)
+        msg += f", gzip {a / 1e6:.1f} -> {b / 1e6:.1f} MB, snapshots {x / 1e6:.1f} -> {y / 1e6:.1f} MB"
     return msg
 
 
@@ -556,11 +636,37 @@ class Ref:
 
 
 def is_defence(class_alone: str, b_alone: int, b_probed: int, p_probed: int, ref: Ref) -> tuple[bool, bool]:
-    """(immune, tolerant) by §1's rule."""
-    rep = class_alone == "replicator"
-    immune = rep and p_probed < IMMUNE_FRAC * ref.p_probed
-    tolerant = rep and b_probed >= KEEP_FRAC * b_alone and b_probed >= GAIN_FRAC * ref.b_probed
+    """(immune, tolerant) by §1's rule with §7.1's floor: both need G
+    replicator-class alone with b_alone(G) >= 0.5 b_alone(A)."""
+    viable = class_alone == "replicator" and b_alone >= FLOOR_FRAC * ref.b_alone
+    immune = viable and p_probed < IMMUNE_FRAC * ref.p_probed
+    tolerant = viable and b_probed >= KEEP_FRAC * b_alone and b_probed >= GAIN_FRAC * ref.b_probed
     return immune, tolerant
+
+
+def canonical(body: bytes) -> bytes:
+    """The body as `isa::canonical` reads it (traits.canonical_instrs, written
+    back one byte per op and operand by T05's helper): a synonymous byte, such
+    as a bit-7 flip of a register op or a modifier bit an op ignores, reads as
+    the ancestor's. The ancestors are their own canonical form."""
+    return t05._canonical_body(body, canonical_instrs)
+
+
+def mechanism(body_hex: str, anc: str) -> str:
+    """§7.1: `parameter` when the body has the ancestor's length and differs
+    from it only in the operand bytes of `lit A {k}` and `lit A {e}`
+    (PARAM_POS), else `structural`. Compared on the canonical form, so a
+    synonymous byte elsewhere (same func_hash) is no difference: the std smoke
+    worlds' absorb and endowment raises carry such flips (byte 3 0x71 -> 0xf1,
+    byte 12 0x18 -> 0x58) and are parameter defences. (The ancestor itself is
+    `parameter`, vacuously; it is never complete.)"""
+    a, g = bytes.fromhex(HEX[anc]), bytes.fromhex(body_hex)
+    if len(a) != len(g):
+        return "structural"
+    ca, cg = canonical(a), canonical(g)
+    if len(ca) == len(cg) and all(i in PARAM_POS[anc] for i in range(len(ca)) if ca[i] != cg[i]):
+        return "parameter"
+    return "structural"
 
 
 def harness_rows(exe: Path, hexes: list[str], arm: str, tax: Tax | None, ticks: int, jobs: int) -> dict[str, dict]:
@@ -593,12 +699,16 @@ def reference(exe: Path, arm: str, tax: Tax | None, ticks: int) -> Ref:
     return ref
 
 
-def apply_rule(df: pl.DataFrame, ref: Ref) -> pl.DataFrame:
-    """Add `immune`, `tolerant` to a frame with class_alone, b_alone, b_probed, p_probed."""
+def apply_rule(df: pl.DataFrame, ref: Ref, anc: str | None = None, hex_col: str | None = None) -> pl.DataFrame:
+    """Add `immune`, `tolerant` to a frame with class_alone, b_alone, b_probed,
+    p_probed; with `anc` and `hex_col` (the body's bytes) also `mechanism`."""
     flags = [is_defence(c, a, b, p, ref) for c, a, b, p in
              df.select("class_alone", "b_alone", "b_probed", "p_probed").iter_rows()]
-    return df.with_columns(immune=pl.Series([f[0] for f in flags], dtype=pl.Boolean),
-                           tolerant=pl.Series([f[1] for f in flags], dtype=pl.Boolean))
+    df = df.with_columns(immune=pl.Series([f[0] for f in flags], dtype=pl.Boolean),
+                         tolerant=pl.Series([f[1] for f in flags], dtype=pl.Boolean))
+    if anc is not None and hex_col is not None:
+        df = df.with_columns(mechanism=pl.Series([mechanism(h, anc) for h in df[hex_col].to_list()], dtype=pl.Utf8))
+    return df
 
 
 # ---- screen ----------------------------------------------------------------------------------------
@@ -630,7 +740,7 @@ def candidates(exact: pl.DataFrame, window: int = WINDOW, share: float = CAND_SH
 
 
 DEFENCE_COLS = ["func_hash", "len", "b_alone", "b_probed", "p_probed", "immune", "tolerant", "first_tick", "last_tick",
-                "raw_hash", "class_alone", "exact_births", "max_window_share", "host_alive", "entry_off", "ticks_run",
+                "mechanism", "raw_hash", "class_alone", "exact_births", "max_window_share", "host_alive", "entry_off", "ticks_run",
                 "stopped_early", "bytes_hex"]
 
 
@@ -651,7 +761,8 @@ def screen_run(exe: Path, d: Path, arm: str, tax: Tax | None, ref: Ref, ticks: i
                      schema={"bytes_hex": pl.Utf8, "class_alone": pl.Utf8, "b_alone": pl.Int64, "b_probed": pl.Int64,
                              "p_probed": pl.Int64, "host_alive": pl.Boolean, "entry_off": pl.Int64,
                              "ticks_run": pl.Int64, "stopped_early": pl.Boolean}).unique("bytes_hex")
-    df = apply_rule(cand.join(h, on="bytes_hex", how="left").join(span, on="func_hash", how="left"), ref)
+    df = apply_rule(cand.join(h, on="bytes_hex", how="left").join(span, on="func_hash", how="left"), ref,
+                    base(arm), "bytes_hex")
     df = df.select(DEFENCE_COLS).sort("first_tick", "func_hash")
     df.write_csv(d / "defence.csv")
     (d / "defence_ref.json").write_text(json.dumps(dict(arm=arm, probe=PROBE[base(arm)], flags=physics(arm, tax),
@@ -661,16 +772,20 @@ def screen_run(exe: Path, d: Path, arm: str, tax: Tax | None, ref: Ref, ticks: i
 
 
 def screen_counts(df: pl.DataFrame) -> dict:
+    """Counts of one defence.csv, split by mechanism, and the first births."""
     comp = df.filter(pl.col("immune") | pl.col("tolerant"))
-    return dict(candidates=df.height, complete=comp.height, immune=int(df["immune"].sum()),
-                tolerant=int(df["tolerant"].sum()),
-                first_complete_tick=int(comp["first_tick"].min()) if comp.height and comp["first_tick"].min() is not None
-                else None)
+    first = lambda x: int(x["first_tick"].min()) if x.height and x["first_tick"].min() is not None else None
+    st, pa = comp.filter(pl.col("mechanism") == "structural"), comp.filter(pl.col("mechanism") == "parameter")
+    return dict(candidates=df.height, complete=comp.height, structural=st.height, parameter=pa.height,
+                immune=int(df["immune"].sum()), tolerant=int(df["tolerant"].sum()),
+                structural_immune=int(st["immune"].sum()), structural_tolerant=int(st["tolerant"].sum()),
+                first_complete_tick=first(comp), first_structural_tick=first(st), first_parameter_tick=first(pa))
 
 
 def nbhd_screen(exe: Path, out: Path, arms: list[str], tax: Tax | None, ticks: int, jobs: int, force: bool,
                 nbhd: Path = NBHD) -> None:
     """The reachability baseline (§1, §3): every mutant in E015's stage 1 files."""
+    out.mkdir(parents=True, exist_ok=True)
     for anc in ("tierra", "std"):
         src = nbhd / f"{anc}.csv"
         todo_arms = [a for a in arms if base(a) == anc and (a != "tierra_tax" or tax is not None)]
@@ -692,7 +807,7 @@ def nbhd_screen(exe: Path, out: Path, arms: list[str], tax: Tax | None, ticks: i
             ref = reference(exe, arm, tax, ticks)
             rows = harness_rows(exe, nb["hex"].to_list(), arm, tax, ticks, jobs)
             h = pl.DataFrame([dict(hex=x, **r) for x, r in rows.items()])
-            df = apply_rule(nb.join(h, on="hex", how="left"), ref).with_columns(arm=pl.lit(arm))
+            df = apply_rule(nb.join(h, on="hex", how="left"), ref, anc, "hex").with_columns(arm=pl.lit(arm))
             parts.append(df.select("arm", *[c for c in df.columns if c != "arm"]))
             print(f"nbhd screen {anc} {arm}: reference b_alone {ref.b_alone}, b_probed {ref.b_probed}, p_probed "
                   f"{ref.p_probed}; {time.time() - t0:.0f} s", flush=True)
@@ -701,14 +816,23 @@ def nbhd_screen(exe: Path, out: Path, arms: list[str], tax: Tax | None, ticks: i
             if old is not None:
                 new = pl.concat([old, new.cast({c: pl.Utf8 for c in new.columns})], how="vertical_relaxed")
             new.write_csv(dst)
-        allr = pl.read_csv(dst, infer_schema=False)
-        for arm in sorted(allr["arm"].unique().to_list()):
-            x = allr.filter(pl.col("arm") == arm)
-            imm = x["immune"] == "true"
-            tol = x["tolerant"] == "true"
-            print(f"nbhd screen {anc} {arm}: {x.height:,} mutants, {int((x['class_alone'] == 'replicator').sum()):,} "
-                  f"replicator-class alone; immune {int(imm.sum())}, tolerant {int(tol.sum())}, complete "
-                  f"{int((imm | tol).sum())} (expected 0)", flush=True)
+        for line in nbhd_counts(pl.read_csv(dst, infer_schema=False), anc):
+            print(line, flush=True)
+
+
+def nbhd_counts(df: pl.DataFrame, anc: str) -> list[str]:
+    """One line per arm of a nbhd_screen file (read as text)."""
+    lines = []
+    for arm in sorted(df["arm"].unique().to_list()):
+        x = df.filter(pl.col("arm") == arm)
+        imm, tol = x["immune"] == "true", x["tolerant"] == "true"
+        comp = x.filter(imm | tol)
+        rep = int((x["class_alone"] == "replicator").sum())
+        st = int((comp["mechanism"] == "structural").sum())
+        lines.append(f"nbhd screen {anc} {arm}: {x.height:,} mutants, {rep:,} replicator-class alone; immune "
+                     f"{int(imm.sum())}, tolerant {int(tol.sum())}, complete {comp.height} (structural {st}, "
+                     f"parameter {comp.height - st})")
+    return lines
 
 
 # ---- analyse -----------------------------------------------------------------------------------------
@@ -716,7 +840,7 @@ def nbhd_screen(exe: Path, out: Path, arms: list[str], tax: Tax | None, ticks: i
 DEFENCE_SCHEMA = {"func_hash": pl.Utf8, "len": pl.Int64, "b_alone": pl.Int64, "b_probed": pl.Int64,
                   "p_probed": pl.Int64, "immune": pl.Boolean, "tolerant": pl.Boolean, "first_tick": pl.Int64,
                   "last_tick": pl.Int64, "raw_hash": pl.Utf8, "class_alone": pl.Utf8, "exact_births": pl.Int64,
-                  "max_window_share": pl.Float64, "host_alive": pl.Boolean, "entry_off": pl.Int64,
+                  "mechanism": pl.Utf8, "max_window_share": pl.Float64, "host_alive": pl.Boolean, "entry_off": pl.Int64,
                   "ticks_run": pl.Int64, "stopped_early": pl.Boolean, "bytes_hex": pl.Utf8}
 
 
@@ -728,35 +852,35 @@ def read_defence(d: Path) -> pl.DataFrame | None:
 
 
 def defence_sets(df: pl.DataFrame | None) -> dict[str, set[str]]:
+    """func_hash sets: screened, complete, immune, tolerant (all complete),
+    and the complete ones by mechanism, structural and parameter."""
     if df is None:
-        return dict(screened=set(), complete=set(), immune=set(), tolerant=set())
+        return dict(screened=set(), complete=set(), immune=set(), tolerant=set(), structural=set(), parameter=set())
     f = lambda e: set(df.filter(e)["func_hash"].to_list())
-    return dict(screened=set(df["func_hash"].to_list()), complete=f(pl.col("immune") | pl.col("tolerant")),
-                immune=f(pl.col("immune")), tolerant=f(pl.col("tolerant")))
+    comp = pl.col("immune") | pl.col("tolerant")
+    return dict(screened=set(df["func_hash"].to_list()), complete=f(comp), immune=f(pl.col("immune")),
+                tolerant=f(pl.col("tolerant")), structural=f(comp & (pl.col("mechanism") == "structural")),
+                parameter=f(comp & (pl.col("mechanism") == "parameter")))
 
 
-def maintained(shares: list[float | None], threshold: float = MAINT_SHARE,
-               run_windows: int = MAINT_RUN // WINDOW) -> dict:
-    """§1's "maintained" over per-window shares (window 1 first): >= threshold
-    in every window from the first such window to the last (`to_end`), or in
-    `run_windows` consecutive windows (`run`)."""
+def maintained(shares: list[float | None], threshold: float = MAINT_SHARE, run_windows: int = MAINT_WINDOWS) -> dict:
+    """§7.2's "maintained" over per-window shares (window 1 first): >=
+    `threshold` in at least `run_windows` consecutive windows anywhere in the
+    run. A window with no replicator-class exact births does not hold."""
     ok = [s is not None and s >= threshold for s in shares]
     first = next((i for i, v in enumerate(ok) if v), None)
     longest = cur = 0
     for v in ok:
         cur = cur + 1 if v else 0
         longest = max(longest, cur)
-    to_end = first is not None and all(ok[first:])
-    clause = "to_end" if to_end else ("run" if longest >= run_windows else None)
-    return dict(maintained=clause is not None, clause=clause, first_window=None if first is None else first + 1,
+    return dict(maintained=longest >= run_windows, first_window=None if first is None else first + 1,
                 longest_windows=longest, windows_held=sum(ok))
 
 
-def snapshot_tick(t: int, every: int = STATE_EVERY) -> int | None:
-    """§3: the snapshot at the last multiple of `every` below t; None when
-    there is none (t <= every: no snapshot is written at tick 0)."""
-    s = ((t - 1) // every) * every
-    return s if s > 0 else None
+def snapshot_tick(t: int, every: int = STATE_EVERY) -> int:
+    """§7.3: the snapshot at the last multiple of `every` below t; 0 when
+    there is none (t <= every), which means a replay from the founder."""
+    return ((t - 1) // every) * every
 
 
 def cpt_ratio(d: pl.DataFrame) -> float | None:
@@ -777,8 +901,11 @@ def truncate(run: Run, tick: int) -> Run:
 
 
 def defence_class(sets: dict) -> pl.Expr:
+    """T05's grouping: structural, parameter (complete, by mechanism), not
+    (screened, neither), unmatched (not screened)."""
     f = pl.col("func_hash")
-    return (pl.when(f.is_in(sorted(sets["complete"]))).then(pl.lit("complete"))
+    return (pl.when(f.is_in(sorted(sets["structural"]))).then(pl.lit("structural"))
+            .when(f.is_in(sorted(sets["parameter"]))).then(pl.lit("parameter"))
             .when(f.is_in(sorted(sets["screened"]))).then(pl.lit("not")).otherwise(pl.lit("unmatched")))
 
 
@@ -791,14 +918,15 @@ def analyse_run(out: Path, arm: str, seed: int, ticks: int, bin_size: int, tax: 
     sets = defence_sets(ddf)
     funcs = run.genomes.select("raw_hash", "func_hash")
     raws = lambda key: sorted(set(funcs.filter(pl.col("func_hash").is_in(sorted(sets[key])))["raw_hash"].to_list()))
-    comp_r, imm_r, tol_r = raws("complete"), raws("immune"), raws("tolerant")
+    comp_r, imm_r, tol_r, st_r, pa_r = (raws("complete"), raws("immune"), raws("tolerant"), raws("structural"),
+                                        raws("parameter"))
     par, _ = parasite_genomes(run)
     binx = lambda c: ((pl.col(c) + bin_size - 1) // bin_size).cast(pl.Int64)
     winx = lambda c: pl.max_horizontal(pl.lit(1), (pl.col(c) + WINDOW - 1) // WINDOW).cast(pl.Int64)
     ex = run.class_of(run.births.filter(pl.col("raw_hash") == pl.col("parent_now_hash")), "raw_hash").with_columns(
         bin=binx("tick"), win=winx("tick"), par=pl.col("raw_hash").is_in(list(par)),
         comp=pl.col("raw_hash").is_in(comp_r), imm=pl.col("raw_hash").is_in(imm_r),
-        tol=pl.col("raw_hash").is_in(tol_r))
+        tol=pl.col("raw_hash").is_in(tol_r), st=pl.col("raw_hash").is_in(st_r), pa=pl.col("raw_hash").is_in(pa_r))
     rex = ex.filter(pl.col("class") == "replicator")
     deaths = run.class_of(run.deaths, "birth_hash").with_columns(
         bin=binx("tick"), entered=pl.col("exec_by_others") > 0,
@@ -814,6 +942,7 @@ def analyse_run(out: Path, arm: str, seed: int, ticks: int, bin_size: int, tax: 
     has_def = ddf is not None
     eb = by(ex.group_by("bin").agg(exact=pl.len(), par_share=pl.col("par").mean()), "bin")
     xb = by(rex.group_by("bin").agg(rep_exact=pl.len(), defence_share=pl.col("comp").mean(),
+                                    structural_share=pl.col("st").mean(), parameter_share=pl.col("pa").mean(),
                                     immune_share=pl.col("imm").mean(), tolerant_share=pl.col("tol").mean()), "bin")
     rb = by(rep.group_by("bin").agg(
         rep_deaths=pl.len(), entered_share=pl.col("entered").mean(),
@@ -833,6 +962,7 @@ def analyse_run(out: Path, arm: str, seed: int, ticks: int, bin_size: int, tax: 
         dfs = lambda key: x.get(key) if has_def else None
         bins.append(dict(arm=arm, seed=seed, bin=k, tick_end=hi, exact=e.get("exact", 0), par_share=e.get("par_share"),
                          rep_exact=x.get("rep_exact", 0), defence_share=dfs("defence_share"),
+                         structural_share=dfs("structural_share"), parameter_share=dfs("parameter_share"),
                          immune_share=dfs("immune_share"), tolerant_share=dfs("tolerant_share"),
                          rep_deaths=r.get("rep_deaths", 0), entered_share=r.get("entered_share"),
                          resident_share=a.get("resident_share"), resident_intr_share=i.get("resident_intr_share"),
@@ -840,13 +970,19 @@ def analyse_run(out: Path, arm: str, seed: int, ticks: int, bin_size: int, tax: 
                          pop=c.get("pop", 0), ip_off_share=c.get("ip_off_share"), nop_share=nop_share(run, w, hi),
                          len_p10=c.get("len_p10"), len_p50=c.get("len_p50"), len_p90=c.get("len_p90")))
 
-    # The defence per 25,000-tick window and §1's "maintained".
+    # The defence per 25,000-tick window and §7.2's "maintained", structural
+    # (the gate's) and parameter (reported beside it).
     n_win = ticks // WINDOW
-    wb = by(rex.group_by("win").agg(n=pl.len(), share=pl.col("comp").mean()), "win")
-    wshares = [wb[k]["share"] if k in wb and has_def else None for k in range(1, n_win + 1)]
-    m = maintained(wshares)
-    comp_births = run.births.filter(pl.col("raw_hash").is_in(comp_r))
-    first = comp_births.sort("tick", "child").row(0, named=True) if comp_births.height else None
+    wb = by(rex.group_by("win").agg(n=pl.len(), st=pl.col("st").mean(), pa=pl.col("pa").mean()), "win")
+    wst = [wb[k]["st"] if k in wb and has_def else None for k in range(1, n_win + 1)]
+    wpa = [wb[k]["pa"] if k in wb and has_def else None for k in range(1, n_win + 1)]
+    m, mp = maintained(wst), maintained(wpa)
+
+    def first_birth(rs):
+        b = run.births.filter(pl.col("raw_hash").is_in(rs))
+        return b.sort("tick", "child").row(0, named=True) if b.height else None
+
+    first, first_p, first_any = first_birth(st_r), first_birth(pa_r), first_birth(comp_r)
 
     # H17 at 50,000 (or the run's end, if shorter).
     t17 = min(H17_TICK, ticks)
@@ -868,14 +1004,23 @@ def analyse_run(out: Path, arm: str, seed: int, ticks: int, bin_size: int, tax: 
                                         if late(rep).height else None),
              entered_cpt_post=cpt_ratio(lp) if lp.height else None,
              screened=has_def, candidates=len(sets["screened"]), complete=len(sets["complete"]),
+             structural=len(sets["structural"]), parameter=len(sets["parameter"]),
              immune=len(sets["immune"]), tolerant=len(sets["tolerant"]),
-             first_complete_tick=first["tick"] if first else None,
-             first_complete_id=first["child"] if first else None,
-             first_complete_hash=first["raw_hash"] if first else None,
-             maintained=m["maintained"] if has_def else None, maintained_clause=m["clause"],
-             first_window=m["first_window"], longest_windows=m["longest_windows"], windows_held=m["windows_held"],
-             defence_share_max=max((b["defence_share"] for b in bins if b["defence_share"] is not None), default=None),
-             **{f"defence_w{k + 1}": v for k, v in enumerate(wshares)})
+             first_complete_tick=first_any["tick"] if first_any else None,
+             first_structural_tick=first["tick"] if first else None,
+             first_structural_id=first["child"] if first else None,
+             first_structural_hash=first["raw_hash"] if first else None,
+             first_parameter_tick=first_p["tick"] if first_p else None,
+             maintained=m["maintained"] if has_def else None, first_window=m["first_window"],
+             longest_windows=m["longest_windows"], windows_held=m["windows_held"],
+             maintained_parameter=mp["maintained"] if has_def else None,
+             longest_windows_parameter=mp["longest_windows"],
+             structural_share_end=bins[-1]["structural_share"] if bins else None,
+             parameter_share_end=bins[-1]["parameter_share"] if bins else None,
+             structural_share_max=max((b["structural_share"] for b in bins if b["structural_share"] is not None),
+                                      default=None),
+             **{f"structural_w{k + 1}": v for k, v in enumerate(wst)},
+             **{f"parameter_w{k + 1}": v for k, v in enumerate(wpa)})
     if do_measures:
         try:
             run.genomes = run.genomes.with_columns(defence_class=defence_class(sets))
@@ -883,11 +1028,10 @@ def analyse_run(out: Path, arm: str, seed: int, ticks: int, bin_size: int, tax: 
             qf = t05.qnn_series(run, "func_hash").select(
                 "tick", qnn_func=pl.col("qnn"), qnn_cum_func=pl.col("qnn_cum"), n_func_hash=pl.col("n_func"))
             cls = run.genomes.select(pl.col("raw_hash").alias("now_hash"), "defence_class")
+            n = lambda c: pl.col("count").filter(pl.col("defence_class").fill_null("unmatched") == c).sum() \
+                / pl.col("count").sum()
             share = (run.census.join(cls, on="now_hash", how="left").group_by("tick").agg(
-                complete_share=pl.col("count").filter(pl.col("defence_class") == "complete").sum()
-                / pl.col("count").sum(),
-                unmatched_share=pl.col("count").filter(pl.col("defence_class").fill_null("unmatched") == "unmatched")
-                .sum() / pl.col("count").sum()))
+                structural_share=n("structural"), parameter_share=n("parameter"), unmatched_share=n("unmatched")))
             series = series.join(qf, on="tick", how="left").join(share, on="tick", how="left")
             md = d / "measures"
             md.mkdir(exist_ok=True)
@@ -897,8 +1041,8 @@ def analyse_run(out: Path, arm: str, seed: int, ticks: int, bin_size: int, tax: 
             stat = series.filter(pl.col("tick") >= after(ticks))
             s.update(qnn_cum_class=summ.get("qnn_cum"), qnn_cum_func=summ["qnn_cum_func"],
                      mean_mpd=summ.get("mean_mpd"), root_lines=summ.get("root_lines"),
-                     complete_share_mean=stat["complete_share"].mean() if stat.height else None,
-                     complete_share_end=series["complete_share"][-1] if series.height else None)
+                     census_structural_mean=stat["structural_share"].mean() if stat.height else None,
+                     census_parameter_mean=stat["parameter_share"].mean() if stat.height else None)
         except Exception as err:  # an add-on; a failure is reported, not fatal
             s["measures_error"] = repr(err)[:200]
     return bins, s
@@ -943,27 +1087,80 @@ def mm(x: pl.DataFrame, c: str, f=pct) -> str:
     return f"{f(v.median())} ({f(v.min())}-{f(v.max())})"
 
 
+def sign_test(plus: int, minus: int) -> float:
+    """Two-sided exact sign test over the untied pairs: twice the binomial
+    tail P(X >= max(plus, minus)) at p = 1/2, capped at 1; 1 with no untied
+    pair."""
+    n = plus + minus
+    if n == 0:
+        return 1.0
+    k = max(plus, minus)
+    return min(1.0, 2 * sum(math.comb(n, i) for i in range(k, n + 1)) / 2 ** n)
+
+
+def paired(runs: pl.DataFrame, a: str, b: str, col: str) -> dict:
+    """§7.4: arm `a` against arm `b` paired by seed on `col` (a share, or a
+    yes/no): pairs, a above, below, tied, seeds without a pair or with a
+    missing value in either (`unpaired`), and the sign test's p."""
+    x = runs.filter(pl.col("arm") == a).select("seed", pl.col(col).cast(pl.Float64).alias("x"))
+    y = runs.filter(pl.col("arm") == b).select("seed", pl.col(col).cast(pl.Float64).alias("y"))
+    j = x.join(y, on="seed", how="full", coalesce=True)
+    ok = j.filter(pl.col("x").is_not_null() & pl.col("y").is_not_null())
+    plus, minus = int((ok["x"] > ok["y"]).sum()), int((ok["x"] < ok["y"]).sum())
+    return dict(pairs=ok.height, plus=plus, minus=minus, ties=ok.height - plus - minus,
+                unpaired=j.height - ok.height, p=sign_test(plus, minus))
+
+
+def paired_lines(runs: pl.DataFrame, n_seeds: int) -> list[str]:
+    need = math.ceil(H17_NEED * n_seeds / 30)
+    lines = [f"Paired reading (§7.4; next to the registered gate, which it does not replace): tierra_t50 against "
+             f"tierra_n0 and against tierra_tax, by seed, on the structural share of replicator-class exact births in "
+             f"the run's last {BIN:,}-tick bin and on maintained (yes/no). Sign test over untied pairs (two-sided, "
+             f"binomial p = 1/2). Prediction: t50 above in >= {need} of {n_seeds} pairs each (the share)."]
+    have = lambda a: runs.filter(pl.col("arm") == a).height > 0
+    for other in ("tierra_n0", "tierra_tax"):
+        if not (have("tierra_t50") and have(other)):
+            lines.append(f"- t50 against {other}: not readable (an arm missing).")
+            continue
+        for col, what in (("structural_share_end", "share at the end"), ("maintained", "maintained")):
+            r = paired(runs, "tierra_t50", other, col)
+            verdict = f" [>= {need}]: {yn(r['plus'] >= need)}" if col == "structural_share_end" else ""
+            lines.append(f"- t50 against {other}, {what}: t50 above in {r['plus']} of {r['pairs']} pairs, below in "
+                         f"{r['minus']}, tied {r['ties']}; {r['unpaired']} seeds unpaired; sign test p = {r['p']:.4g}"
+                         f"{verdict}.")
+    return lines
+
+
 def predictions(runs: pl.DataFrame, n_seeds: int) -> list[str]:
     at_least = lambda k: math.ceil(k * n_seeds / 30)
     at_most = lambda k: math.floor(k * n_seeds / 30)
     arm = lambda a: runs.filter(pl.col("arm") == a)
-    kept = lambda a: int(arm(a)["maintained"].fill_null(False).sum()) if arm(a).height else None
-    show = lambda a: "–" if kept(a) is None else f"{kept(a)} of {arm(a).height}"
-    lines = ["## Predictions (§4)", "", f"{n_seeds} seeds per arm; k of 30 read as >= ceil(k n / 30), <= floor(k n / 30).",
-             ""]
+    count = lambda a, c: int(arm(a)[c].fill_null(False).sum()) if arm(a).height else None
+    kept = lambda a: count(a, "maintained")
+    show = lambda a, c="maintained": "–" if count(a, c) is None else f"{count(a, c)} of {arm(a).height}"
+    lines = ["## Predictions (§4, §7)", "",
+             f"{n_seeds} seeds per arm; k of 30 read as >= ceil(k n / 30), <= floor(k n / 30). A defence is complete "
+             "under §1 with §7.1's floor; the gate counts `structural` defences only, maintained by §7.2 (>= 1% of "
+             "replicator-class exact births in 4 consecutive 25,000-tick windows).", ""]
     t50, n0, tax = kept("tierra_t50"), kept("tierra_n0"), kept("tierra_tax")
     ok = t50 is not None and n0 is not None and tax is not None and t50 >= at_least(H16_NEED) \
         and n0 <= at_most(H16_MAX) and tax <= at_most(H16_MAX)
-    lines.append(f"H16 gate 2. Seeds with a maintained defence: tierra_t50 {show('tierra_t50')} [>= {at_least(H16_NEED)}], "
-                 f"tierra_n0 {show('tierra_n0')} [<= {at_most(H16_MAX)}], tierra_tax {show('tierra_tax')} "
-                 f"[<= {at_most(H16_MAX)}]: {'not decidable (an arm missing)' if None in (t50, n0, tax) else yn(ok)}. "
-                 f"std_t50 {show('std_t50')}, std_n0 {show('std_n0')} (no prediction).")
+    lines.append(f"H16 gate 2 (registered). Seeds with a maintained structural defence: tierra_t50 {show('tierra_t50')} "
+                 f"[>= {at_least(H16_NEED)}], tierra_n0 {show('tierra_n0')} [<= {at_most(H16_MAX)}], tierra_tax "
+                 f"{show('tierra_tax')} [<= {at_most(H16_MAX)}]: "
+                 f"{'not decidable (an arm missing)' if None in (t50, n0, tax) else yn(ok)}. std_t50 {show('std_t50')}, "
+                 f"std_n0 {show('std_n0')} (no prediction).")
     if None not in (t50, n0, tax):
         lines.append(f"Refutation: t50 not above n0 ({t50} against {n0}): {'yes' if t50 <= n0 else 'no'}; maintained "
                      f"equally under the tax ({tax} against {t50}): {'yes' if t50 and tax >= t50 else 'no'}.")
-    arose = lambda a: int(arm(a)["first_complete_tick"].is_not_null().sum()) if arm(a).height else 0
-    lines.append("Seeds where a complete genome arose (maintained or not): " + ", ".join(
-        f"{a} {arose(a)}" for a in ARMS if arm(a).height) + ".")
+    lines.append("")
+    lines += paired_lines(runs, n_seeds)
+    arose = lambda a, c: int(arm(a)[c].is_not_null().sum()) if arm(a).height else 0
+    lines += ["", "Seeds where a structural complete genome arose (maintained or not): " + ", ".join(
+        f"{a} {arose(a, 'first_structural_tick')}" for a in ARMS if arm(a).height) + ". `parameter` defences "
+        "(operand bytes of `lit A {k}` / `lit A {e}` only; reported, not counted): arose in " + ", ".join(
+        f"{a} {arose(a, 'first_parameter_tick')}" for a in ARMS if arm(a).height) + "; maintained in " + ", ".join(
+        f"{a} {show(a, 'maintained_parameter')}" for a in ARMS if arm(a).height) + "."]
     tn, sn = arm("tierra_n0"), arm("std_n0")
     need = at_least(H17_NEED)
     t_hi = int((tn["par_share_h17"].fill_null(0) > PAR_HI).sum()) if tn.height else 0
@@ -992,41 +1189,47 @@ def summarize(bdf: pl.DataFrame, runs: pl.DataFrame, n_seeds: int, ticks: int, b
     lines += [calib_text(calib) if calib else "Tax not calibrated yet (no runs/e016/tax.json).", ""]
     lines += predictions(runs, n_seeds)
     lines += ["", "## Defence per seed", "",
-              "Screened candidates, complete (immune / tolerant), first birth of a complete genome, maintained (§1; "
-              "`to_end` or a `run` of 4 windows), first window >= 1% and windows held, the complete set's share of "
-              "replicator-class exact births per 25,000-tick window.", "",
-              "| arm | seed | candidates | complete (imm/tol) | first complete | maintained | first window, held | "
-              "share per window |", "|---|---|---|---|---|---|---|---|"]
-    wcols = sorted([c for c in runs.columns if c.startswith("defence_w")], key=lambda c: int(c[9:]))
+              "Screened candidates; complete genomes (structural / parameter; immune / tolerant over both); first birth "
+              "of a structural and of a parameter one; maintained structural (longest run of windows >= 1%) and "
+              "maintained parameter; the structural set's share of replicator-class exact births per 25,000-tick "
+              "window and in the last bin.", "",
+              "| arm | seed | candidates | complete (str/par; imm/tol) | first structural | first parameter "
+              "| maintained (run) | parameter maintained | structural share per window | end |",
+              "|---|---|---|---|---|---|---|---|---|---|"]
+    wcols = sorted([c for c in runs.columns if c.startswith("structural_w")], key=lambda c: int(c[12:]))
     for r in runs.sort("arm", "seed").iter_rows(named=True):
         if not r["screened"]:
-            lines.append(f"| {r['arm']} | {r['seed']} | not screened | | | | | |")
+            lines.append(f"| {r['arm']} | {r['seed']} | not screened | | | | | | | |")
             continue
-        lines.append(f"| {r['arm']} | {r['seed']} | {r['candidates']} | {r['complete']} ({r['immune']}/{r['tolerant']}) "
-                     f"| {f0(r['first_complete_tick'])} | {r['maintained_clause'] or 'no'} "
-                     f"| {r['first_window'] or '–'}, {r['windows_held']} | "
-                     + " ".join(pct(r[c]) if r[c] is not None else "–" for c in wcols) + " |")
+        lines.append(f"| {r['arm']} | {r['seed']} | {r['candidates']} | {r['complete']} ({r['structural']}/"
+                     f"{r['parameter']}; {r['immune']}/{r['tolerant']}) | {f0(r['first_structural_tick'])} "
+                     f"| {f0(r['first_parameter_tick'])} | {'yes' if r['maintained'] else 'no'} ({r['longest_windows']}) "
+                     f"| {'yes' if r['maintained_parameter'] else 'no'} | "
+                     + " ".join(pct(r[c]) if r[c] is not None else "–" for c in wcols)
+                     + f" | {pct(r['structural_share_end'])} |")
     lines += ["", "## Per run", "",
               f"Median (min-max) over seeds: parasite share in the last bin, entered share of replicator-class deaths "
               f"after {after(ticks):,}, debit per tick of entered replicator-class deaths (milli-units; cap 32,000), "
               "entered reproducers' offspring per tick over unentered (`entered_cpt_post`) and that over the n0 "
-              "partner (`_norm_post`), T05 `qnn_cum` over the defence class and over func_hash, complete share of "
-              f"census bodies after {after(ticks):,} (mean).", "",
-              "| arm | runs | parasite last bin | entered | lost/tick | cpt | cpt norm | qnn class | qnn func | complete share |",
-              "|---|---|---|---|---|---|---|---|---|---|"]
+              "partner (`_norm_post`), T05 `qnn_cum` over the defence class and over func_hash, structural and "
+              f"parameter shares of census bodies after {after(ticks):,} (mean).", "",
+              "| arm | runs | parasite last bin | entered | lost/tick | cpt | cpt norm | qnn class | qnn func "
+              "| census structural | census parameter |", "|---|---|---|---|---|---|---|---|---|---|---|"]
     for a in arms:
         x = runs.filter(pl.col("arm") == a)
         lines.append(f"| {a} | {x.height} | {mm(x, 'par_share_last')} | {mm(x, 'entered_share_post')} "
                      f"| {mm(x, 'cycles_lost_per_tick_post', f0)} | {mm(x, 'entered_cpt_post', f2)} "
                      f"| {mm(x, 'entered_cpt_norm_post', f2)} | {mm(x, 'qnn_cum_class', f2)} "
-                     f"| {mm(x, 'qnn_cum_func', f2)} | {mm(x, 'complete_share_mean')} |")
+                     f"| {mm(x, 'qnn_cum_func', f2)} | {mm(x, 'census_structural_mean')} "
+                     f"| {mm(x, 'census_parameter_mean')} |")
     step = max(1, (10_000 // bin_size))
     lines += ["", "## Per bin", "",
               f"Medians over seeds, every {step * bin_size:,} ticks (all bins in bins.csv): exact births, parasite share, "
-              "entered and resident shares of deaths, IP off body, nop share, length p10/p50/p90, defence / immune / "
-              "tolerant share of replicator-class exact births, debit per tick of entered deaths, `entered_cpt_norm`.", "",
-              "| arm | ticks | exact | parasite | entered | resident | IP off | nop | len | defence | immune | tolerant "
-              "| lost/tick | cpt norm |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+              "entered and resident shares of deaths, IP off body, nop share, length p10/p50/p90, structural / "
+              "parameter / immune / tolerant share of replicator-class exact births, debit per tick of entered deaths, "
+              "`entered_cpt_norm`.", "",
+              "| arm | ticks | exact | parasite | entered | resident | IP off | nop | len | structural | parameter "
+              "| immune | tolerant | lost/tick | cpt norm |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for a in arms:
         for k in sorted(bdf["bin"].unique().to_list()):
             if k % step and k != 1:
@@ -1037,7 +1240,8 @@ def summarize(bdf: pl.DataFrame, runs: pl.DataFrame, n_seeds: int, ticks: int, b
             lines.append(f"| {a} | {(k - 1) * bin_size:,}-{k * bin_size:,} | {f0(med(x, 'exact'))} | {pct(med(x, 'par_share'))} "
                          f"| {pct(med(x, 'entered_share'))} | {pct(med(x, 'resident_share'))} | {pct(med(x, 'ip_off_share'))} "
                          f"| {pct(med(x, 'nop_share'))} | {f0(med(x, 'len_p10'))}/{f0(med(x, 'len_p50'))}/{f0(med(x, 'len_p90'))} "
-                         f"| {pct(med(x, 'defence_share'))} | {pct(med(x, 'immune_share'))} | {pct(med(x, 'tolerant_share'))} "
+                         f"| {pct(med(x, 'structural_share'))} | {pct(med(x, 'parameter_share'))} "
+                         f"| {pct(med(x, 'immune_share'))} | {pct(med(x, 'tolerant_share'))} "
                          f"| {f0(med(x, 'cycles_lost_per_tick'))} | {f2(med(x, 'entered_cpt_norm'))} |")
     err = runs.filter(pl.col("measures_error").is_not_null()) if "measures_error" in runs.columns else runs.clear()
     if err.height:
@@ -1168,10 +1372,10 @@ def binned_world(rd: lod.RunData, steps: pl.DataFrame, size: int = BIN) -> pl.Da
 def lod_run(exe: Path, d: Path, arm: str, tax: Tax | None, ref: Ref, ticks_h: int, jobs: int) -> dict | None:
     ddf = read_defence(d)
     sets = defence_sets(ddf)
-    if not sets["complete"]:
+    if not sets["structural"]:
         return None
     rd = lod.load_run(d)
-    comp_raw = set(rd.genomes.filter(pl.col("func_hash").is_in(sorted(sets["complete"])))["raw_hash"].to_list())
+    comp_raw = set(rd.genomes.filter(pl.col("func_hash").is_in(sorted(sets["structural"])))["raw_hash"].to_list())
     cb = rd.births.filter(pl.col("raw_hash").is_in(sorted(comp_raw))).sort("tick", "child")
     if not cb.height:
         return None
@@ -1235,8 +1439,9 @@ def lod_run(exe: Path, d: Path, arm: str, tax: Tax | None, ref: Ref, ticks_h: in
 
 
 def lod_summary(rows: list[dict]) -> str:
-    lines = ["# E016 lod stage: lines of descent to the first complete genome", "",
-             "T06's line (analysis/lod.py) per run with a complete genome, harness under the arm's flags with the arm's "
+    lines = ["# E016 lod stage: lines of descent to the first structural complete genome", "",
+             "T06's line (analysis/lod.py) per run with a structural complete genome (§7.1; `parameter` defences are "
+             "not followed), harness under the arm's flags with the arm's "
              "probe. Steps counted after pairing off break-and-repair pairs (B / n / D of the rest; of those between "
              "genomes that both have exact children alone, B and D). World column: the last step's child in its "
              "2,500-tick bin, exact children per death over contemporaries'. Look-back: edits of the first complete "
@@ -1253,63 +1458,91 @@ def lod_summary(rows: list[dict]) -> str:
                      f"| {r['lookback']} | {r['origins']} ({r['origins_censored']}) | {f0(r['ttl_median'])}/{f0(r['ttl_max'])} "
                      f"| {f0(r['first_origin_ttl'])}{' (censored)' if r['first_origin_censored'] else ''} |")
     if not rows:
-        lines.append("No run has a complete genome.")
+        lines.append("No run has a structural complete genome.")
     return "\n".join(lines)
 
 
 # ---- replay ------------------------------------------------------------------------------------------------
 
-def replay_one(exe: Path, out: Path, arm: str, seed: int, snap: int, new_seed: int, to_tick: int, tax: Tax | None,
-               ref: Ref, jobs: int, force: bool, compress: bool) -> dict:
-    src = run_dir(out, arm, seed) / "state" / f"{snap}.bin"
-    d = replay_dir(out, arm, seed, new_seed)
-    tag = f"replay {arm}/s{seed}/r{new_seed}"
-    rep = dict(tick=snap, reseed=new_seed)
+Replay = tuple[str, int, int, int, int]  # (kind, source seed, snapshot tick, new seed, to tick)
+
+
+def replay_job_dir(out: Path, arm: str, job: Replay) -> Path:
+    """A founder run depends on the new seed only, so every source seed of
+    the arm shares it."""
+    kind, seed, _, new_seed, _ = job
+    return out / "replay" / arm / "founder" / f"r{new_seed}" if kind == "founder" else replay_dir(out, arm, seed, new_seed)
+
+
+def replay_one(exe: Path, out: Path, arm: str, job: Replay, tax: Tax | None, ref: Ref, jobs: int, force: bool,
+               compress: bool) -> dict:
+    """Run (or find), classify and screen one replay. `founder`: a plain run
+    with the arm's flags and `--seed S` to FOUNDER_TO; otherwise
+    `--replay-from` the source run's snapshot, inflated to a temporary file
+    for the length of the run."""
+    kind, seed, snap, new_seed, to_tick = job
+    d = replay_job_dir(out, arm, job)
+    founder = kind == "founder"
+    rep = None if founder else dict(tick=snap, reseed=new_seed)
+    ticks = to_tick if founder else None
     if force or not has(d, "classes.csv"):
-        if not src.exists():
-            raise SystemExit(f"{tag}: no snapshot {src}")
-        if force or not has(d, "genomes.csv"):
+        mj = json.loads((d / "meta.json").read_text()) if (d / "meta.json").exists() else {}
+        if force or not has(d, "genomes.csv") or mj.get("ticks_run") is None:
             if d.exists():
                 shutil.rmtree(d)
             d.parent.mkdir(parents=True, exist_ok=True)
             with open(d.parent / f"r{new_seed}.stdout", "w", encoding="utf-8", newline="") as f:
-                subprocess.run(replay_cmd(exe, src, d, arm, new_seed, to_tick, tax), stdout=f,
-                               stderr=subprocess.STDOUT, check=True)
-        check_meta(d, arm, None, tax, False, rep)
+                if founder:
+                    subprocess.run(world_cmd(exe, d, arm, new_seed, to_tick, tax, False), stdout=f,
+                                   stderr=subprocess.STDOUT, check=True)
+                else:
+                    with snapshot_file(run_dir(out, arm, seed), snap) as src:
+                        subprocess.run(replay_cmd(exe, src, d, arm, new_seed, to_tick, tax), stdout=f,
+                                       stderr=subprocess.STDOUT, check=True)
+        check_meta(d, arm, ticks, tax, False, rep)
         if not (d / "genomes.csv").exists():
             gunzip_verified(d / "genomes.csv.gz")
         subprocess.run(classify_cmd(exe, d, arm, tax), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                        check=True)
     else:
-        check_meta(d, arm, None, tax, False, rep)
+        check_meta(d, arm, ticks, tax, False, rep)
     df = read_defence(d) if (d / "defence.csv").exists() and not force else screen_run(exe, d, arm, tax, ref,
                                                                                         HARNESS_TICKS, jobs)
     if compress:
         compress_run(d)
     c = screen_counts(df)
-    return dict(arm=arm, seed=seed, new_seed=new_seed, snapshot=snap, to_tick=to_tick, **c,
-                arose=c["first_complete_tick"] is not None)
+    return dict(dir=str(d), **c, arose=c["first_structural_tick"] is not None)
 
 
-def replay_plan(runs: pl.DataFrame, arm: str, n: int = len(REPLAY_SEEDS)) -> tuple[list[tuple[int, int, int, int]],
-                                                                                    list[str]]:
-    """(seed, snapshot, new seed, to tick) per replay, and notes. Defence seeds
-    from their first complete tick t; background from the arm's seeds with no
-    complete genome (§3). `n` < 10 for a smoke run only."""
+def replay_plan(runs: pl.DataFrame, arm: str, n: int = len(REPLAY_SEEDS),
+                ticks: int = TICKS) -> tuple[list[Replay], list[str]]:
+    """The arm's replays (§3 with §7.3) and notes. A seed whose first
+    structural complete genome is born at t: from the snapshot at the last
+    multiple of 2,500 below t to t + 50,000 (`potentiation`), or, with no such
+    snapshot (t <= 2,500), plain runs from the founder to FOUNDER_TO
+    (`founder`). Background from the 25,000 snapshot of the seeds with none,
+    to 100,000 (none for runs shorter than 25,000 ticks: smoke). `n` < 10 for
+    a smoke run only."""
     new_seeds = REPLAY_SEEDS[:n]
     x = runs.filter(pl.col("arm") == arm).sort("seed")
-    plan, notes = [], []
-    for seed, t in x.filter(pl.col("first_complete_tick").is_not_null()).select("seed", "first_complete_tick").iter_rows():
+    plan: list[Replay] = []
+    notes = []
+    for seed, t in (x.filter(pl.col("first_structural_tick").is_not_null())
+                    .select("seed", "first_structural_tick").iter_rows()):
         s = snapshot_tick(t)
-        if s is None:
-            notes.append(f"{arm}/s{seed}: first complete genome at tick {t:,}, no snapshot below it; not replayed")
-            continue
-        plan += [(seed, s, k, t + REPLAY_AFTER) for k in new_seeds]
-    bg = x.filter(pl.col("first_complete_tick").is_null() & pl.col("screened"))["seed"].to_list()
-    if bg:
-        plan += [(bg[i % len(bg)], BACKGROUND_FROM, k, BACKGROUND_TO) for i, k in enumerate(new_seeds)]
+        if s == 0:
+            notes.append(f"{arm}/s{seed}: first structural complete genome at tick {t:,}, before the first snapshot; "
+                         f"replayed from the founder (tick 0) to {FOUNDER_TO:,}: the arising rate, not potentiation")
+            plan += [("founder", seed, 0, k, FOUNDER_TO) for k in new_seeds]
+        else:
+            plan += [("potentiation", seed, s, k, t + REPLAY_AFTER) for k in new_seeds]
+    bg = x.filter(pl.col("first_structural_tick").is_null() & pl.col("screened"))["seed"].to_list()
+    if ticks < BACKGROUND_FROM:
+        notes.append(f"{arm}: runs of {ticks:,} ticks have no {BACKGROUND_FROM:,} snapshot; no background replays")
+    elif bg:
+        plan += [("background", bg[i % len(bg)], BACKGROUND_FROM, k, BACKGROUND_TO) for i, k in enumerate(new_seeds)]
     else:
-        notes.append(f"{arm}: no screened seed without a complete genome; no background replays")
+        notes.append(f"{arm}: no screened seed without a structural complete genome; no background replays")
     return plan, notes
 
 
@@ -1317,30 +1550,32 @@ def screened_runs(out: Path, arms: list[str], seeds: list[int]) -> pl.DataFrame:
     rows = []
     for a in arms:
         for s in seeds:
-            d = run_dir(out, a, s)
-            df = read_defence(d)
-            if df is None:
-                continue
-            rows.append(dict(arm=a, seed=s, screened=True, **screen_counts(df)))
-    schema = {"arm": pl.Utf8, "seed": pl.Int64, "screened": pl.Boolean, "candidates": pl.Int64, "complete": pl.Int64,
-              "immune": pl.Int64, "tolerant": pl.Int64, "first_complete_tick": pl.Int64}
-    return pl.DataFrame(rows, schema=schema, orient="row") if rows else pl.DataFrame(schema=schema)
+            df = read_defence(run_dir(out, a, s))
+            if df is not None:
+                rows.append(dict(arm=a, seed=s, screened=True, **screen_counts(df)))
+    schema = {"arm": pl.Utf8, "seed": pl.Int64, "screened": pl.Boolean, "first_structural_tick": pl.Int64}
+    return pl.DataFrame(rows, infer_schema_length=None) if rows else pl.DataFrame(schema=schema)
 
 
 def replay_summary(df: pl.DataFrame, notes: list[str]) -> str:
-    lines = ["# E016 replay stage: potentiation (§3)", "",
-             f"Each run whose first complete genome is born at t: replays from the snapshot at the last multiple of "
-             f"{STATE_EVERY:,} below t, new seeds {REPLAY_SEEDS[0]}-{REPLAY_SEEDS[-1]}, to t + {REPLAY_AFTER:,}. "
-             f"Background: replays from the {BACKGROUND_FROM:,} snapshot of the arm's seeds with no complete genome, to "
-             f"{BACKGROUND_TO:,}. A replay counts if a complete genome (its own screen) is born in it.", "",
-             "| arm | source | snapshot | to tick | replays | with a complete genome |", "|---|---|---|---|---|---|"]
+    lines = ["# E016 replay stage: potentiation (§3, §7.3)", "",
+             f"`potentiation`: a run whose first structural complete genome is born at t, replayed from the snapshot "
+             f"at the last multiple of {STATE_EVERY:,} below t with new seeds {REPLAY_SEEDS[0]}-{REPLAY_SEEDS[-1]}, to "
+             f"t + {REPLAY_AFTER:,}. `founder`: t <= {STATE_EVERY:,}, no snapshot below it; plain runs from tick 0 with "
+             f"the new seeds to {FOUNDER_TO:,}, shared by every such seed of the arm: the arising rate, not "
+             f"potentiation. `background`: replays from the {BACKGROUND_FROM:,} snapshot of the arm's seeds with no "
+             f"structural complete genome, to {BACKGROUND_TO:,}. A replay counts if a structural complete genome (its "
+             "own screen) is born in it.", "",
+             "| arm | kind | source | snapshot | to tick | replays | with a structural complete genome |",
+             "|---|---|---|---|---|---|---|"]
     if df.height:
-        g = (df.with_columns(src=pl.when(pl.col("to_tick") == BACKGROUND_TO).then(pl.lit("background"))
+        g = (df.with_columns(src=pl.when(pl.col("kind") == "background").then(pl.lit("background seeds"))
                              .otherwise(pl.format("s{}", pl.col("seed"))))
-             .group_by("arm", "src", "snapshot", "to_tick").agg(n=pl.len(), arose=pl.col("arose").sum())
-             .sort("arm", "src"))
+             .group_by("arm", "kind", "src", "snapshot", "to_tick").agg(n=pl.len(), arose=pl.col("arose").sum())
+             .sort("arm", "kind", "src"))
         for r in g.iter_rows(named=True):
-            lines.append(f"| {r['arm']} | {r['src']} | {r['snapshot']:,} | {r['to_tick']:,} | {r['n']} | {r['arose']} |")
+            lines.append(f"| {r['arm']} | {r['kind']} | {r['src']} | {r['snapshot']:,} | {r['to_tick']:,} | {r['n']} "
+                         f"| {r['arose']} |")
     lines += [""] + [f"- {n}" for n in notes]
     return "\n".join(lines)
 
@@ -1447,10 +1682,13 @@ def main() -> None:
         if rows:
             sc = pl.DataFrame(rows, infer_schema_length=None)
             sc.write_csv(out / "screen.csv")
-            for r in sc.group_by("arm").agg(runs=pl.len(), with_complete=(pl.col("complete") > 0).sum(),
-                                            complete=pl.col("complete").sum()).sort("arm").iter_rows(named=True):
-                print(f"screen {r['arm']}: {r['runs']} runs, {r['with_complete']} with a complete genome, "
-                      f"{r['complete']} complete func_hashes", flush=True)
+            for r in sc.group_by("arm").agg(
+                    runs=pl.len(), with_structural=(pl.col("structural") > 0).sum(),
+                    with_parameter=(pl.col("parameter") > 0).sum(), structural=pl.col("structural").sum(),
+                    parameter=pl.col("parameter").sum()).sort("arm").iter_rows(named=True):
+                print(f"screen {r['arm']}: {r['runs']} runs; with a structural complete genome {r['with_structural']} "
+                      f"({r['structural']} func_hashes), with a parameter one {r['with_parameter']} "
+                      f"({r['parameter']})", flush=True)
         print(f"screen: {time.time() - t_all:.0f} s")
         return
 
@@ -1479,7 +1717,7 @@ def main() -> None:
             ref = None
             for s in seeds:
                 d = run_dir(out, x, s)
-                if read_defence(d) is None or not defence_sets(read_defence(d))["complete"]:
+                if read_defence(d) is None or not defence_sets(read_defence(d))["structural"]:
                     continue
                 check_meta(d, x, a.ticks, tax, snapshots)
                 ref = ref or reference(exe, x, tax, a.harness_ticks)
@@ -1499,17 +1737,22 @@ def main() -> None:
         runs = screened_runs(out, arms, seeds)
         rows, notes = [], []
         for x in arms:
-            plan, nts = replay_plan(runs, x, a.replays)
+            plan, nts = replay_plan(runs, x, a.replays, a.ticks)
             notes += nts
             if not plan:
                 continue
             ref = reference(exe, x, tax, a.harness_ticks)
+            uniq = list({str(replay_job_dir(out, x, j)): j for j in plan}.values())  # founder runs are shared
             # Replays run in parallel; each one's screen uses one harness thread.
             with ThreadPoolExecutor(a.jobs) as ex:
-                for r in ex.map(lambda p: replay_one(exe, out, x, p[0], p[1], p[2], p[3], tax, ref, 1, a.force,
-                                                     not a.no_compress), plan):
-                    rows.append(r)
-                    print(f"replay {x}/s{r['seed']}/r{r['new_seed']}: {r['complete']} complete", flush=True)
+                done = dict(zip([str(replay_job_dir(out, x, j)) for j in uniq],
+                                ex.map(lambda j: replay_one(exe, out, x, j, tax, ref, 1, a.force, not a.no_compress),
+                                       uniq)))
+            for j in plan:
+                kind, seed, snap, new_seed, to_tick = j
+                r = done[str(replay_job_dir(out, x, j))]
+                rows.append(dict(arm=x, kind=kind, seed=seed, new_seed=new_seed, snapshot=snap, to_tick=to_tick, **r))
+                print(f"replay {x} {kind} s{seed}/r{new_seed}: {r['structural']} structural complete", flush=True)
         df = pl.DataFrame(rows, infer_schema_length=None) if rows else pl.DataFrame()
         if rows:
             df.write_csv(out / "replay.csv")
