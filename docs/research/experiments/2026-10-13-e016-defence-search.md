@@ -108,6 +108,19 @@ deaths after 25,000: F = entered share, r = Σ `cycles_lost_m` / Σ
 P here before `tierra_tax` is launched. The tax arm is the bottleneck
 control: the population pays the same time, not for being entered.
 
+**Calibrated 2026-10-13** (`e016_defence.py calibrate`, `runs/e016/tax.json`;
+seeds 1–30 pooled, replicator-class deaths after tick 25,000): F =
+2,517,939 / 10,467,188 = 0.2406 entered in `tierra_n0`; r =
+20,585,602,719,500 / 3,111,947,132 = 6,615.0 milli-units per
+organism-tick in `tierra_t50` (7,978,799 deaths, their own entered
+share 0.4344); P = 100 r / (F × 32,000) = 85.93, rounded to 86.
+`tierra_tax` runs with `--cycle-tax-pct 86 --cycle-tax-frac
+0.24055543857624417`. Seed 14 of the tierra arms went extinct at tick
+252 in both `tierra_n0` and `tierra_t50` (the founder died after one
+birth, before any theft could differ between the arms); it stays in
+the pooled sums (it contributes nothing after 25,000) and counts as a
+seed with no defence in §3's per-seed reading.
+
 Run order: `tierra_n0`, `tierra_t50`, `std_n0`, `std_t50` together
 (120 runs; about 2 minutes each at 250,000 ticks, 9 at a time on the
 desktop, so about 30 minutes at 24 wide), then `tierra_tax` after
