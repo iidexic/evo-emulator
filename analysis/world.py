@@ -57,7 +57,7 @@ def _():
     import numpy as np
     import polars as pl
 
-    from evo_run import ROOT, binary, load, world
+    from evo_run import binary, load, run_sets, world
     from report import CLASS_COLOR, GRAY_LIGHT, GRID, INK, INK_2, SEQ_STEPS, SURFACE, class_order
 
     # A world map has a few thousand segments; more than altair's default row limit.
@@ -68,7 +68,6 @@ def _():
         GRID,
         INK,
         INK_2,
-        ROOT,
         SEQ_STEPS,
         SURFACE,
         alt,
@@ -79,6 +78,7 @@ def _():
         mo,
         np,
         pl,
+        run_sets,
         subprocess,
         world,
     )
@@ -137,23 +137,30 @@ def _(CLASS_COLOR, GRAY_LIGHT, GRID, INK, INK_2, SEQ_STEPS, SURFACE, alt, binary
 
 
 @app.cell
-def _(ROOT, mo):
-    # Only runs that carry world snapshots.
-    run_dirs = {
-        p.parent.relative_to(ROOT / "runs").as_posix(): p.parent
-        for p in sorted([*(ROOT / "runs").rglob("world.bin"), *(ROOT / "runs").rglob("world.bin.gz")])
-    }
-    mo.stop(not run_dirs, mo.md(
-        "No run under `runs/` has a `world.bin`. Every run recorded with `evo-core --out DIR` "
-        "since 2026-10-07 writes one."))
-    picker = mo.ui.dropdown(options=list(run_dirs), value=next(iter(run_dirs)), searchable=True, label="run")
-    picker
-    return picker, run_dirs
+def _(mo, run_sets):
+    # Only complete runs that carry world snapshots (one still going has
+    # no genomes.csv yet), grouped into sets as in explore.py: newest set
+    # first, dated by the day its earliest run finished.
+    runs_by_set = run_sets(need_world=True)
+    mo.stop(not runs_by_set, mo.md(
+        "No complete run under `runs/` has a `world.bin`. Every run recorded with "
+        "`evo-core --out DIR` since 2026-10-07 writes one."))
+    set_picker = mo.ui.dropdown(options=list(runs_by_set), value=next(iter(runs_by_set)), searchable=True, label="set")
+    return runs_by_set, set_picker
 
 
 @app.cell
-def _(load, picker, pl, run_dirs, world):
-    run_dir = run_dirs[picker.value]
+def _(mo, runs_by_set, set_picker):
+    # The runs of the picked set, newest first; a new set picks its first.
+    _runs = runs_by_set[set_picker.value]
+    picker = mo.ui.dropdown(options=_runs, value=next(iter(_runs)), searchable=True, label="run")
+    mo.hstack([set_picker, picker], justify="start", gap=1)
+    return (picker,)
+
+
+@app.cell
+def _(load, picker, pl, world):
+    run_dir = picker.value
     run = load(run_dir)
     snaps = world(run_dir)  # tick -> World(bytes, state)
     snap_ticks = sorted(snaps)

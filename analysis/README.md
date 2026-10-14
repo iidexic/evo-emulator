@@ -140,7 +140,12 @@ uv run marimo edit explore.py   # notebook, code visible and editable
 uv run marimo run explore.py    # app view, controls and charts only
 ```
 
-Pick a run (any folder under `runs/` with a `meta.json`), narrow the tick
+Pick a set (the folder holding the run directories, such as `e004/far`
+or `diag`), then a run in it; both lists put the newest first and end
+each name with the date the run finished (a set's date is its earliest
+run's). Only complete runs are listed: one still going, or killed, has
+no `genomes.csv` yet. The lists are read when the notebook opens, so
+reload it to see a run that finished since. Then narrow the tick
 window, hover charts for values, and click a body in the space-time view
 to see that organism's energy, children and genome listing. The
 **Classify genomes** button runs `--classify` for runs without
@@ -153,7 +158,8 @@ seed with the bytes each step changed, plus buttons that run it through
 `examples/trace.rs` or `--host` (both in the code's default physics). The
 last cell is scratch space for polars queries.
 
-`world.py` is the companion notebook for runs with a `world.bin`:
+`world.py` is the companion notebook for runs with a `world.bin` (same
+two-step picker, listing only those runs):
 
 ```
 uv run marimo edit world.py

@@ -24,8 +24,10 @@ import hashlib
 import io
 import json
 import os
+import re
 import subprocess
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -222,6 +224,56 @@ def _read(path: Path, name: str) -> pl.DataFrame:
         if c.endswith("_m") and c[:-2] not in df.columns
     ]
     return df.with_columns(units) if units else df
+
+
+def complete(run_dir: str | Path) -> bool:
+    """Whether RUN_DIR has every file `load` reads. evo-core writes
+    genomes.csv and the final meta.json last, so a run still going, or one
+    killed before its end, is not complete: it has no genomes.csv."""
+    d = Path(run_dir)
+    return (d / "meta.json").exists() and all(csv_path(d, n) for n in HASH_COLS if n != "classes")
+
+
+def _natural(name: str) -> list:
+    """Sort key that puts s2 before s10."""
+    return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", name)]
+
+
+def run_sets(need_world: bool = False) -> dict[str, dict[str, Path]]:
+    """The complete runs under runs/, grouped into sets for the notebooks'
+    two run pickers: {set label: {run label: run directory}}.
+
+    A set is the folder holding the run directories (`e004/far`, `diag`; a
+    run directly under runs/ is a set of its own), and a run is its folder
+    name (`s1`). Every label ends in ` | yyyymmdd`: for a run, the date of
+    its meta.json, which evo-core rewrites at the end, so the day the run
+    finished; for a set, the date of its earliest run. Sets come newest
+    first by the time of their earliest run; runs newest day first, then
+    by name (s2 before s10), since seeds of one batch finish in no useful
+    order. `need_world`: only runs with world snapshots (world.bin or
+    world.bin.gz)."""
+    root = ROOT / "runs"
+    sets: dict[str, list[tuple[float, str, Path]]] = {}
+    for p in root.rglob("meta.json"):
+        d = p.parent
+        if not complete(d):
+            continue
+        if need_world and not ((d / "world.bin").exists() or (d / "world.bin.gz").exists()):
+            continue
+        rel = d.relative_to(root)
+        key = (rel.parent if rel.parent != Path(".") else rel).as_posix()
+        sets.setdefault(key, []).append((p.stat().st_mtime, d.name, d))
+
+    def day(t: float) -> str:
+        return datetime.fromtimestamp(t).strftime("%Y%m%d")
+
+    out = {}
+    for key, runs in sorted(sets.items(), key=lambda kv: min(t for t, _, _ in kv[1]), reverse=True):
+        runs.sort(key=lambda r: _natural(r[1]))
+        runs.sort(key=lambda r: day(r[0]), reverse=True)  # stable: name order within a day
+        first = min(t for t, _, _ in runs)
+        out[f"{key} | {day(first)}"] = {f"{name} | {day(t)}": d for t, name, d in runs}
+    return out
 
 
 def load(run_dir: str | Path) -> Run:

@@ -48,7 +48,7 @@ def _():
     import marimo as mo
     import polars as pl
 
-    from evo_run import CORE, ROOT, binary, classify, load
+    from evo_run import CORE, binary, classify, load, run_sets
     from report import (
         AQUA,
         BIRTH_COLOR,
@@ -89,7 +89,6 @@ def _():
         INK,
         INK_2,
         ORANGE,
-        ROOT,
         SEQ_STEPS,
         SIG_COLOR,
         SIG_ORDER,
@@ -105,6 +104,7 @@ def _():
         mo,
         pl,
         population_by_class,
+        run_sets,
         subprocess,
     )
 
@@ -149,29 +149,36 @@ def _(CLASS_COLOR, GRAY_LIGHT, GRID, INK, INK_2, SURFACE, alt, class_order):
 
 
 @app.cell
-def _(ROOT, mo):
-    # Every directory under runs/ that holds a meta.json is a run.
-    run_dirs = {
-        p.parent.relative_to(ROOT / "runs").as_posix(): p.parent
-        for p in sorted((ROOT / "runs").rglob("meta.json"))
-    }
-    mo.stop(not run_dirs, mo.md("No run directories under `runs/`. Record one with `evo-core --out DIR`."))
-    _default = "diag/control_s1" if "diag/control_s1" in run_dirs else next(iter(run_dirs))
-    picker = mo.ui.dropdown(options=list(run_dirs), value=_default, searchable=True, label="run")
+def _(mo, run_sets):
+    # Every complete run under runs/ (one still going has no genomes.csv
+    # yet), grouped into sets: the folder holding the run directories
+    # (`e004/far`, `diag`). Newest set first; the date is the day the
+    # set's earliest run finished.
+    runs_by_set = run_sets()
+    mo.stop(not runs_by_set, mo.md("No complete run directories under `runs/`. Record one with `evo-core --out DIR`."))
+    set_picker = mo.ui.dropdown(options=list(runs_by_set), value=next(iter(runs_by_set)), searchable=True, label="set")
+    return runs_by_set, set_picker
+
+
+@app.cell
+def _(mo, runs_by_set, set_picker):
+    # The runs of the picked set, newest first; a new set picks its first.
+    _runs = runs_by_set[set_picker.value]
+    picker = mo.ui.dropdown(options=_runs, value=next(iter(_runs)), searchable=True, label="run")
     classify_btn = mo.ui.run_button(
         label="Classify genomes",
         tooltip="Run every genome alone in the single-genome harness (writes classes.csv)",
     )
-    mo.hstack([picker, classify_btn], justify="start", gap=1)
-    return classify_btn, picker, run_dirs
+    mo.hstack([set_picker, picker, classify_btn], justify="start", gap=1)
+    return classify_btn, picker
 
 
 @app.cell
-def _(births_typed, classify, classify_btn, deaths_with_signature, load, picker, run_dirs):
+def _(births_typed, classify, classify_btn, deaths_with_signature, load, picker):
     # Load the picked run. The button first runs `evo-core --classify`, which
     # labels every genome replicator / one_shot / inexact / loafer / dies by running it
     # alone from a fresh start. Without classes.csv every class is "unknown".
-    run_dir = run_dirs[picker.value]
+    run_dir = picker.value
     if classify_btn.value:
         classify(run_dir)
     run = load(run_dir)
