@@ -91,6 +91,22 @@ Complete reruns are at `runs/lod/e007/s<seed>/` (`lod_e007.py` makes them
 when a seed is incomplete), and other analyses on this machine should read
 E007 from there.
 
+## E016 defence search
+
+`e016_defence.py` runs E016 against its pre-registration
+(`docs/research/experiments/2026-10-13-e016-defence-search.md`), in stages:
+`world` (five arms, 30 seeds, 250,000 ticks, snapshots every 25,000; it
+refuses a binary without T04's `--state-every`), `calibrate` (the tax
+control's P and F, `runs/e016/tax.json`), `screen` (the §1 defence rule in
+the harness against the probe parasite, on the E015 neighbourhoods and on
+each run: `defence.csv`), `analyse` (per-bin measures, H16 gate 2 and H17
+counts, T05 with a `defence_class` grouping: `runs/e016/summary.md`),
+`lod` (lod.py's line to the first complete genome, with the arm's physics
+and probe, binned world fitness, Croft's look-back, time-to-loss) and
+`replay` (T04's `--replay-from`). The module docstring has every rule.
+`--smoke --out DIR` for short test runs (`--no-snapshots` only with it).
+Tests: `uv run --project analysis --with pytest pytest analysis/tests/test_e016.py`.
+
 ## Looking at a run
 
 Record a run directory with the CLI, then report on it:

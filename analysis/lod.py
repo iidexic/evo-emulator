@@ -119,10 +119,11 @@ def evo_bin(path: str | Path | None = None) -> Path:
     return evo_run.binary()
 
 
-def harness_alone(exe: Path, genomes: dict[str, str], ticks: int) -> dict[str, dict]:
+def harness_alone(exe: Path, genomes: dict[str, str], ticks: int, flags: tuple[str, ...] = ()) -> dict[str, dict]:
     """Single-genome harness (`--classify` over a temporary genomes.csv).
     `genomes` maps raw hash -> bytes hex; returns raw hash -> {class, births,
-    exact_births, first_birth_tick, alive}."""
+    exact_births, first_birth_tick, alive}. `flags`: physics flags for the
+    harness (default none: the code's default physics; E016 passes its arm's)."""
     if not genomes:
         return {}
     with tempfile.TemporaryDirectory(prefix="lod_") as tmp:
@@ -130,7 +131,7 @@ def harness_alone(exe: Path, genomes: dict[str, str], ticks: int) -> dict[str, d
             w = csv.writer(f, lineterminator="\n")
             w.writerow(["raw_hash", "bytes_hex"])
             w.writerows(genomes.items())
-        subprocess.run([str(exe), "--classify", tmp, "--harness-ticks", str(ticks)],
+        subprocess.run([str(exe), "--classify", tmp, "--harness-ticks", str(ticks), *flags],
                        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         with open(Path(tmp) / "classes.csv", newline="", encoding="utf-8") as f:
             rows = list(csv.DictReader(f))
@@ -146,12 +147,16 @@ def harness_alone(exe: Path, genomes: dict[str, str], ticks: int) -> dict[str, d
     }
 
 
-def harness_entered(exe: Path, host_hex: str, ticks: int) -> dict:
+def harness_entered(exe: Path, host_hex: str, ticks: int, flags: tuple[str, ...] = (),
+                    probe: str = PAD_HEX) -> dict:
     """Two-genome harness: a one-byte `pad` placed immediately before the
     genome (`--host 00 --host-body HEX`). Returns {host_exact, host_alive,
-    pad_exact, ticks_run, stopped_early}."""
+    pad_exact, ticks_run, stopped_early, entry_off}. `probe` replaces the
+    `pad` by another intruder body and `flags` adds physics flags (E016's
+    probe parasite under its arm's physics); `pad_exact` is then the probe's
+    exact births."""
     out = subprocess.run(
-        [str(exe), "--host", PAD_HEX, "--host-body", host_hex, "--harness-ticks", str(ticks)],
+        [str(exe), "--host", probe, "--host-body", host_hex, "--harness-ticks", str(ticks), *flags],
         check=True, capture_output=True, text=True,
     ).stdout
     header, row = out.strip().splitlines()[:2]
@@ -162,6 +167,7 @@ def harness_entered(exe: Path, host_hex: str, ticks: int) -> dict:
         "pad_exact": int(v["exact_births"]),
         "ticks_run": int(v["ticks_run"]),
         "stopped_early": v["stopped_early"] == "true",
+        "entry_off": int(v["entry_off"]) if "entry_off" in v else None,
     }
 
 
@@ -324,7 +330,7 @@ class Pick:
 
 
 def pick_end(run: RunData, at: int, pick: str, exe: Path | None, ticks: int,
-             cache: dict[str, dict]) -> Pick:
+             cache: dict[str, dict], alone_kw: dict | None = None) -> Pick:
     if pick.startswith("id:"):
         return Pick(end_id=int(pick[3:]), at=at)
     if pick != "top":
@@ -351,7 +357,7 @@ def pick_end(run: RunData, at: int, pick: str, exe: Path | None, ticks: int,
         need = {r["rep"]: hexes[r["rep"]] for r in chunk
                 if r["rep"] not in cache and not (run.classes and r["rep"] in run.classes)}
         if need:
-            cache.update(harness_alone(exe, need, ticks))
+            cache.update(harness_alone(exe, need, ticks, **(alone_kw or {})))
         for r in chunk:
             cls = run.classes[r["rep"]] if run.classes and r["rep"] in run.classes else cache[r["rep"]]["class"]
             if cls != "replicator":
@@ -472,17 +478,25 @@ class Result:
     seconds: float
     harness_ticks: int
     exe: str
+    flags: tuple[str, ...] = ()
+    probe: str = PAD_HEX
 
 
 def lod(run_dir: str | Path, at: int | None = None, pick: str = "top", harness_ticks: int = 3000,
         out: str | Path | None = None, exe: str | Path | None = None, run: RunData | None = None,
-        jobs: int = 8, log=print) -> Result:
+        jobs: int = 8, log=print, flags: tuple[str, ...] = (), probe: str = PAD_HEX) -> Result:
     """Draw the line, measure it, write the files. Raises NoLine when there
-    is nothing to draw."""
+    is nothing to draw. `flags` (physics flags for both harness calls) and
+    `probe` (the intruder of the entered call, `pad` by default) are for
+    runners whose world is not the default physics (E016); with the defaults
+    the calls are T06's."""
     t0 = time.time()
     run_dir = Path(run_dir)
     exe_path = exe if isinstance(exe, Path) else evo_bin(exe)
     run = run or load_run(run_dir)
+    flags = tuple(flags)
+    alone_kw = {"flags": flags} if flags else {}
+    entered_kw = {**alone_kw, **({"probe": probe} if probe != PAD_HEX else {})}
     if not run.census_ticks:
         raise NoLine("no census rows")
     if at is None:
@@ -493,7 +507,7 @@ def lod(run_dir: str | Path, at: int | None = None, pick: str = "top", harness_t
             raise NoLine(f"run ends at tick {last}; no census at {at}")
         raise NoLine(f"tick {at} is not a census tick")
     cache: dict[str, dict] = {}
-    p = pick_end(run, at, pick, exe_path, harness_ticks, cache)
+    p = pick_end(run, at, pick, exe_path, harness_ticks, cache, alone_kw)
     line = walk_back(run, p.end_id)
     if line["bytes_hex"].null_count():
         raise RuntimeError("a line genome is missing from genomes.csv")
@@ -504,9 +518,11 @@ def lod(run_dir: str | Path, at: int | None = None, pick: str = "top", harness_t
     first = line.unique("raw_hash", keep="first", maintain_order=True)
     hexes = dict(first.select("raw_hash", "bytes_hex").iter_rows())
     alone = {h: cache[h] for h in hexes if h in cache}
-    alone.update(harness_alone(exe_path, {h: x for h, x in hexes.items() if h not in alone}, harness_ticks))
+    alone.update(harness_alone(exe_path, {h: x for h, x in hexes.items() if h not in alone}, harness_ticks,
+                               **alone_kw))
     with ThreadPoolExecutor(jobs) as pool:
-        entered = dict(zip(hexes, pool.map(lambda x: harness_entered(exe_path, x, harness_ticks), hexes.values())))
+        entered = dict(zip(hexes, pool.map(lambda x: harness_entered(exe_path, x, harness_ticks, **entered_kw),
+                                           hexes.values())))
 
     # Steps.
     L = line.rows(named=True)
@@ -636,7 +652,7 @@ def lod(run_dir: str | Path, at: int | None = None, pick: str = "top", harness_t
     steps.write_csv(out_dir / "steps.csv")
     genomes.write_csv(out_dir / "genomes.csv")
     res = Result(run_dir, out_dir, at, p, line, genomes, steps, absorb, time.time() - t0, harness_ticks,
-                 str(exe_path))
+                 str(exe_path), flags, probe)
     (out_dir / "summary.md").write_text(summary_md(res) + "\n", encoding="utf-8", newline="\n")
     log(f"lod: wrote {out_dir} ({res.seconds:.1f} s)")
     return res
@@ -766,7 +782,9 @@ def summary_md(r: Result) -> str:
                      + ", ".join(f"{h} ({n} bodies, {cl})" for h, n, cl in p.skipped) + ".")
     lines += [
         f"Founder {r.line['id'][0]} ({g0['raw_hash']}). Line: {r.line.height} organisms, "
-        f"{r.genomes.height} distinct genomes. Harness: {r.harness_ticks:,} quiet ticks, `{r.exe}`.",
+        f"{r.genomes.height} distinct genomes. Harness: {r.harness_ticks:,} quiet ticks, `{r.exe}`"
+        + (f", physics flags `{' '.join(r.flags)}`" if r.flags else "")
+        + (f", entered by the probe `{r.probe}` instead of a `pad`" if r.probe != PAD_HEX else "") + ".",
         "",
         f"Steps: {c['total']} ({c['synonymous']} synonymous): beneficial {c['beneficial']}, "
         f"neutral {c['neutral']}, deleterious {c['deleterious']} "
