@@ -18,6 +18,7 @@ before the runs, as always.
 | [T06](T06-lenski-lod.md) | line of descent with fitness per step, on E007's absorb sweep | nothing | built 2026-10-13 (`2f27841`); E007 record follow-up; sweep step deleterious in the harness in 8 of 9 seeds, D-before-B in seed 3 |
 | [T07](T07-density.md) | replicator density by uniform sampling (B0) | nothing | not built |
 | [T08](T08-alloc-copy-edge.md) | `alloc`/`copy` range edge: writes into one's own pending region pass range; `--legacy-pending-range` keeps the old world; four gate arms rerun | T03 | built 2026-10-13 (Opus; `2260b62` engine and tests, `a000687` runner; runs in `runs/e015/world/`); legacy flag reproduces three pinned hashes; under the fixed edge std persists 10 of 10 at sun 1 and 2 (parasite share 0.6%, 1.8%), tierra 1 of 10 at sun 1 and 10 of 10 at sun 2 (20.4%), so E016's S = 2 |
+| [T09](T09-measures-vectorise.md) | `measures.py`: the per-id and per-census Python loops (`_tree`, `_euler`, `_persistence`, `_tree_metrics`, `_series` body) in numpy, output identical | T05 | specified 2026-10-14 (Fable), not built; `_series` is 20 s of a 27 s `analyse_run` on an E016 std run, about 70% of E016's `analyse` time |
 
 ## Order
 
