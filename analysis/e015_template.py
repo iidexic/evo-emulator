@@ -32,14 +32,32 @@ Stages (subcommands):
   runs/e015/world/<arm>/s<seed>, outputs gate_<arm>.csv and .md):
   `tierra_quiet` (noise off: `--p 0 --rot 0`), `tierra_sun2` and
   `tierra_sun3` (`--sun 2`, `--sun 3`, noise on; the choice of N is in
-  GATE_ARMS's comment). Each gate
-  summary also has stage 3's per-bin measures on its runs (gate[_<arm>]_bins.csv,
-  _runs.csv) and the profile of replicator-class deaths (median age, share
-  with no child, share of absorbs short, mean ration).
+  GATE_ARMS's comment). These four, and the registered `tierra` gate, are
+  the world before T08 (2026-10-13), which fixed the `alloc`/`copy` range
+  edge; they now carry `--legacy-pending-range`, which reproduces it bit for
+  bit (their runs were made before the flag existed, and their meta.json
+  has no `legacy_pending_range` key, which `check_meta` reads as the legacy
+  world). T08's baseline arms, under the fixed edge: `std_fix` (`--ancestor
+  std`), `std_fix_sun2` (`--ancestor std --sun 2`), `tierra_fix` and
+  `tierra_fix_sun2` (`--ancestor tierra`, without and with `--sun 2`). Each
+  gate summary also has stage 3's per-bin measures on its runs
+  (gate[_<arm>]_bins.csv, _runs.csv), the per-run summary (parasite share in
+  the last bin, entered and resident shares after 25,000), the edge
+  signature (births with `copy_errors` 0 whose `raw_hash` differs from
+  `parent_now_hash`: under the legacy edge, children that lost their first
+  bytes; with slips 0, and with the difference confined to bytes 0-2), and
+  the profile of replicator-class deaths (median age, share with no child,
+  share of absorbs short, mean ration).
 - `world` (stage 3, the comparison): `tierra` against `std`, 30 seeds each,
   50,000 ticks, one founder (as E007), `--census 500`, classified. Not run
   until the gate passes (the runner refuses unless `--force-world`).
-  Directories runs/e015/world/<arm>/s<seed>. Per 2,500-tick bin (bin k
+  Directories runs/e015/world/<arm>/s<seed>. As coded (the registered
+  design) its `tierra` arm is the gate's ten legacy seeds plus twenty more,
+  and its `std` arm is the default physics, which since T08 is the fixed
+  edge; the runner refuses to compare arms under different edges. Stage 3
+  under the fixed edge, with a same-sun std control, is folded into E016's
+  cost-off arms (docs/research/experiments/2026-10-13-e016-defence-search.md).
+  Per 2,500-tick bin (bin k
   holds ticks ((k-1)*2500, k*2500]) and per run:
   - `par_share`: E005's parasite-lineage share of exact births (exact: the
     child equals the executor's body at `divide`). Parasite genomes, over
@@ -85,6 +103,7 @@ Usage (from analysis/):
     uv run e015_template.py nbhd --threads 12
     uv run e015_template.py gate --jobs 6
     uv run e015_template.py gate --analyse-only
+    uv run e015_template.py gate --arm std_fix_sun2 --jobs 12    # T08's baseline arms
     uv run e015_template.py world --jobs 6 --force-world     # only after the gate passes
     EVO_BIN=../evo-core/target/t03/release/evo-core.exe uv run e015_template.py gate
     uv run e015_template.py gate --seeds 2 --ticks 3000 --out ../runs/e015-smoke   # smoke test
@@ -115,10 +134,16 @@ HEX = {
 }
 ARM_FLAGS = {"std": [], "tierra": ["--ancestor", "tierra"]}
 ARMS = ["std", "tierra"]
-# Gate arms. `tierra` is the registered gate; the others were added after it
-# failed (docs/tasks/README.md, "E015 persistence and world"). Physics flags
-# only (the world run adds `--ancestor tierra`); `--classify` gets the same
-# flags (the harness ignores the noise ones, `--sun` acts on it).
+# T08 (2026-10-13): a write into the executor's own pending region passes the
+# range check, so a child at the backward locality edge no longer keeps stale
+# first bytes. The flag restores the world every run before it was made in.
+LEGACY = "--legacy-pending-range"
+# Gate arms. `tierra` is the registered gate; the next three were added after
+# it failed (docs/tasks/README.md, "E015 persistence and world"); all four
+# were run before T08 and carry LEGACY. The `_fix` arms are T08's baseline
+# under the fixed edge (T08 section 4). Physics flags only (the run adds
+# `--ancestor <base(arm)>`); `--classify` gets the same flags (the harness
+# ignores the noise ones; `--sun` and LEGACY act on it).
 # - tierra_quiet: no write flips, no copy slips, no bit rot (`--p 0` sets
 #   both write probabilities, `--rot 0` bit rot): E005's quiet world but for
 #   debris decay, which has no flag and changes no byte (it relabels debris
@@ -135,18 +160,25 @@ ARMS = ["std", "tierra"]
 #   bodies at 40.64 each. Equal at N = 1.068; `--sun` is a whole number, so 2,
 #   then 3 if 2 fails. (2026-10-13: sun 2 passed 10 of 10; sun 3 not run.)
 GATE_ARMS = {
-    "tierra": [],
-    "tierra_quiet": ["--p", "0", "--rot", "0"],
-    "tierra_sun2": ["--sun", "2"],
-    "tierra_sun3": ["--sun", "3"],
+    "tierra": [LEGACY],
+    "tierra_quiet": ["--p", "0", "--rot", "0", LEGACY],
+    "tierra_sun2": ["--sun", "2", LEGACY],
+    "tierra_sun3": ["--sun", "3", LEGACY],
+    "std_fix": [],
+    "std_fix_sun2": ["--sun", "2"],
+    "tierra_fix": [],
+    "tierra_fix_sun2": ["--sun", "2"],
 }
-for _arm, _flags in GATE_ARMS.items():
-    ARM_FLAGS[_arm] = ["--ancestor", "tierra", *_flags]
 
 
 def base(arm: str) -> str:
-    """The ancestor an arm seeds (`std` or `tierra`)."""
+    """The ancestor an arm seeds (`std` or `tierra`): the name up to the
+    first underscore."""
     return arm.split("_")[0]
+
+
+for _arm, _flags in GATE_ARMS.items():
+    ARM_FLAGS[_arm] = ["--ancestor", base(_arm), *_flags]
 
 
 TICKS = 50_000
@@ -341,8 +373,9 @@ def run_one(exe: Path, out: Path, arm: str, seed: int, ticks: int, force: bool, 
 
 
 def check_meta(run, arm: str) -> None:
-    """The run seeded the arm's ancestor under the arm's physics (sun and
-    noise as its flags say)."""
+    """The run seeded the arm's ancestor under the arm's physics (sun, noise
+    and the `alloc`/`copy` edge as its flags say). A meta.json with no
+    `legacy_pending_range` key is from before T08, so the legacy world."""
     m, b = run.meta, base(arm)
     if m.get("ancestor") != b or m["founders"][0]["hex"] != HEX[b]:
         raise SystemExit(f"{run.dir}: meta.json ancestor {m.get('ancestor')}, founder {m['founders'][0]['hex']}; "
@@ -351,11 +384,14 @@ def check_meta(run, arm: str) -> None:
     sun = int(flags[flags.index("--sun") + 1]) if "--sun" in flags else 1
     c = m["config"]
     quiet = "--p" in flags
+    legacy = LEGACY in flags
     ok = (int(c["patch_income"]) == 256_000 * sun and int(c["patch_cap"]) == 4_096_000 * sun
           and (float(c["p_write_flip"]) == 0.0) == quiet and (float(c["q_slip"]) == 0.0) == quiet
-          and (float(c["p_bit_rot"]) == 0.0) == quiet)
+          and (float(c["p_bit_rot"]) == 0.0) == quiet
+          and bool(c.get("legacy_pending_range", True)) == legacy)
     if not ok:
-        raise SystemExit(f"{run.dir}: meta.json config does not match arm {arm} (sun {sun}, quiet {quiet})")
+        raise SystemExit(f"{run.dir}: meta.json config does not match arm {arm} (sun {sun}, quiet {quiet}, "
+                         f"legacy edge {legacy}; meta legacy_pending_range {c.get('legacy_pending_range', 'absent')})")
 
 
 # ---- stage 2: the persistence gate -------------------------------------------------------
@@ -392,7 +428,8 @@ def summarize_gate(rows: list[dict], ticks: int, seeds: list[int], arm: str = "t
     verdict = "passes" if passed >= need else "fails"
     pop_cols = [c for c in df.columns if c.startswith("pop_") and c.endswith("k")]
     flags = " ".join(ARM_FLAGS[arm])
-    lines = [f"# E015 persistence gate, arm `{arm}` (`{flags}`; K = 127, E = 16), {n} seeds, {ticks:,} ticks", "",
+    k = 127 if base(arm) == "tierra" else 64
+    lines = [f"# E015 persistence gate, arm `{arm}` (`{flags}`; K = {k}, E = 16), {n} seeds, {ticks:,} ticks", "",
              f"Pass: replicator-class bodies (harness class of the current body) alive at tick {ticks:,} in >= {need} "
              f"of {len(seeds)} seeds (E004's criterion; 8 of 10 scaled). **{passed} of {n}: the gate {verdict}.**", "",
              "Per seed: last census with a living body, replicator-class bodies alive at the run's end, last census with a "
@@ -438,6 +475,35 @@ def gate_detail(out: Path, arm: str, seeds: list[int], ticks: int, bin_size: int
                      f"| {pct(med(x, 'par_share'))}{rng} | {pct(med(x, 'entered_share'))} ({f0(med(x, 'rep_deaths'))}) "
                      f"| {f0(med(x, 'pop'))} | {pct(med(x, 'ip_off_share'))} | {pct(med(x, 'nop_share'))} "
                      f"| {f0(med(x, 'len_p10'))}/{f0(med(x, 'len_p50'))} |")
+    rdf = pl.DataFrame([s for _, s in res], infer_schema_length=None)
+    pct2 = lambda v: "–" if v is None else f"{100 * v:.2f}%"
+
+    def mm(c: str, f=pct) -> str:
+        x = rdf[c].drop_nulls() if c in rdf.columns else pl.Series([], dtype=pl.Float64)
+        return "–" if not x.len() else f"{f(x.median())} ({f(x.min())}-{f(x.max())})"
+
+    par_hi = int((rdf["par_share_last"].fill_null(0) > PAR_HI).sum()) if rdf.height else 0
+    ent_hi = int((rdf["entered_share_post"].fill_null(0) > ENTER_T).sum()) if rdf.height else 0
+    lines += ["", f"Per run, median (min-max) over the {rdf.height} seeds: parasite-lineage share of exact births in the "
+              f"last bin (and seeds above {pct(PAR_HI)}), entered share of replicator-class deaths after {SECOND_HALF:,} "
+              f"(and seeds above {pct(ENTER_T)}), resident share after {SECOND_HALF:,} of deaths that ran and of "
+              "intruder deaths (`exec_foreign / executed` > 0.9).", "",
+              "| parasite share, last bin | seeds > 5% | entered after 25,000 | seeds > 25% | resident (deaths that ran) "
+              "| resident (intruder deaths) |", "|---|---|---|---|---|---|",
+              f"| {mm('par_share_last')} | {par_hi} | {mm('entered_share_post')} | {ent_hi} "
+              f"| {mm('resident_share_post')} | {mm('resident_intr_share_post')} |"]
+    tot = lambda c: int(rdf[c].sum()) if c in rdf.columns and rdf.height else 0
+    pooled = lambda c: pct2(tot(c) / tot("births_all")) if tot("births_all") else "–"
+    lines += ["", "Edge signature (T08): births with `copy_errors` 0 whose `raw_hash` differs from `parent_now_hash`, "
+              "as a share of all births; then those with no slip either, and of those the ones that differ from the "
+              "parent's body only in bytes 0-2 (same length, longer than 3 bytes: the legacy edge's footprint; the "
+              "rest of the signature is mostly bodies that copy a shifted or partial region every time). Pooled over "
+              "seeds, then "
+              "the per-seed median (min-max).", "",
+              "| births | edge signature | no slip | bytes 0-2 only |", "|---|---|---|---|",
+              f"| {tot('births_all'):,} | {pooled('edge_sig')}; {mm('edge_sig_share', pct2)} "
+              f"| {pooled('edge_sig_noslip')}; {mm('edge_sig_noslip_share', pct2)} "
+              f"| {pooled('edge_sig_head')}; {mm('edge_sig_head_share', pct2)} |"]
     parts = []
     for s in seeds:
         d = run_dir(out, arm, s)
@@ -449,7 +515,8 @@ def gate_detail(out: Path, arm: str, seeds: list[int], ticks: int, bin_size: int
     lines += ["", "Replicator-class deaths (class of the birth genome), seeds pooled: count, median age, share with no "
               "child, share of their absorbs short of a full ration (any pool below its cap counts, under the "
               "proportional rule), and their mean ration as a share of a full one (sum `absorb_gain_m` / sum "
-              "`absorbs` / 8,000; the body breaks even at about 95.6% in the harness).", "",
+              "`absorbs` / 8,000; the ancestor breaks even at about "
+              f"{'95.6' if base(arm) == 'tierra' else '92.3'}% in the harness).", "",
               "| ticks | deaths | median age | no child | absorbs short | mean ration |", "|---|---|---|---|---|---|"]
     for lab, x in (("0-2,500", dd.filter(pl.col("tick") <= 2_500) if dd is not None else None),
                    ("0-5,000", dd.filter(pl.col("tick") <= 5_000) if dd is not None else None), ("all", dd)):
@@ -490,6 +557,38 @@ def parasite_genomes(run) -> tuple[set[str], pl.DataFrame]:
         foreign_med_2=pl.col("raw_hash").replace_strict(fm, default=None, return_dtype=pl.Float64))
     par = per_g.filter((pl.col("depth") >= 5) & (pl.col("foreign_med_2") > 0.25) & (pl.col("executors") >= 2))
     return set(par["raw_hash"].to_list()), par
+
+
+def edge_signature(run) -> dict:
+    """T08 section 4: births with `copy_errors` 0 whose `raw_hash` differs from
+    `parent_now_hash`, a child that differs from its parent's body with no
+    recorded copy error. Under the legacy `alloc`/`copy` edge these are
+    mostly children placed at the backward locality edge, whose first bytes
+    (1 for std, 3 for tierra) the copy loop could not write. Also counted:
+    those with no slip either (a slip shifts or skips bytes and is not a copy
+    error), and of those the ones whose difference from the parent's body is
+    confined to bytes 0-2, same length and longer than 3 bytes (the edge's
+    footprint; bit rot in the pending region or in the parent's body during
+    the copy, the other quiet source, lands anywhere, but also lands there).
+    Most of the signature in these worlds is neither: bodies that copy a
+    shifted or partial region of themselves, or free memory, every time
+    (deterministic inexact copiers), so the bytes 0-2 column is the one that
+    tracks the edge. Shares are of all births."""
+    b = run.births
+    sig = b.filter((pl.col("copy_errors") == 0) & (pl.col("raw_hash") != pl.col("parent_now_hash")))
+    noslip = sig.filter(pl.col("slips") == 0)
+    hx = dict(run.genomes.select("raw_hash", "bytes_hex").iter_rows())
+    head = 0
+    for c, p, k in noslip.group_by("raw_hash", "parent_now_hash").len().iter_rows():
+        cb, pb = hx.get(c), hx.get(p)
+        # bytes_hex has two digits per byte, so bytes 3 on start at digit 6.
+        if cb is not None and pb is not None and len(cb) == len(pb) > 6 and cb[6:] == pb[6:]:
+            head += k
+    n = b.height
+    share = lambda x: x / n if n else None
+    return dict(births_all=n, edge_sig=sig.height, edge_sig_share=share(sig.height),
+                edge_sig_noslip=noslip.height, edge_sig_noslip_share=share(noslip.height),
+                edge_sig_head=head, edge_sig_head_share=share(head))
 
 
 def nop_share(run, w: dict, tick: int) -> float | None:
@@ -550,7 +649,8 @@ def analyse_world(out: Path, arm: str, seed: int, ticks: int, bin_size: int, mea
              resident_intr_share_post=late(intr)["resident"].mean() if late(intr).height else None,
              ip_off_share_post=late(orgs)["off"].mean() if late(orgs).height else None,
              nop_share_end=bins[-1]["nop_share"] if bins else None,
-             len_p50_end=bins[-1]["len_p50"] if bins else None)
+             len_p50_end=bins[-1]["len_p50"] if bins else None,
+             **edge_signature(run))
     if measures:
         try:
             import measures as t05
@@ -629,7 +729,8 @@ def main() -> None:
     ap.add_argument("--no-measures", action="store_true", help="world: skip T05's measures")
     ap.add_argument("--analyse-only", action="store_true")
     ap.add_argument("--arm", choices=list(GATE_ARMS), default="tierra",
-                    help="gate: which arm (tierra is the registered gate; the others were added after it failed)")
+                    help="gate: which arm (tierra is the registered gate; the other legacy-edge arms were added after "
+                         "it failed; the _fix arms are T08's baseline under the fixed edge)")
     a = ap.parse_args()
     t_all = time.time()
     exe = evo_bin(a.evo_bin)
@@ -648,6 +749,12 @@ def main() -> None:
 
     seeds = list(range(1, (a.seeds or (GATE_SEEDS if a.stage == "gate" else WORLD_SEEDS)) + 1))
     arms = [a.arm] if a.stage == "gate" else ARMS
+    if a.stage == "world" and len({LEGACY in ARM_FLAGS[arm] for arm in arms}) > 1:
+        raise SystemExit("stage 3 as registered compares " + ", ".join(
+            f"{arm} ({'legacy' if LEGACY in ARM_FLAGS[arm] else 'fixed'} edge)" for arm in arms)
+            + ": not one physics. Since T08 the `tierra` arm (the gate's ten seeds) is the legacy world and `std` "
+              "the fixed one; stage 3 under the fixed edge is folded into E016's cost-off arms "
+              "(docs/research/experiments/2026-10-13-e016-defence-search.md)")
     if a.stage == "world" and not a.force_world:
         g = a.out / "world" / "gate.csv"
         ok = g.exists() and pl.read_csv(g)["passed"].sum() >= GATE_NEED
