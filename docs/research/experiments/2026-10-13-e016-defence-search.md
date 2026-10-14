@@ -3,7 +3,7 @@
 Status: pre-registration written 2026-10-13, before any run. Two
 parameters are left open here and are filled in from runs that are not
 E016: the sun level (from T08's four gate arms under the fixed
-`alloc`/`copy` edge, §2) and the tax control's `P` (from E016's own
+`alloc`/`copy` edge, §2; resolved the same day, S = 2) and the tax control's `P` (from E016's own
 cost-off tierra arm, calibrated as T02 §4.2, read before the tax arm
 is launched). Everything else is fixed below. Runner:
 `analysis/e016_defence.py` (to be written against this record; stages
@@ -91,6 +91,16 @@ alive at 50,000 in ≥ 8 of 10), else 2 (`tierra_fix_sun2` passed at the
 legacy edge 10 of 10; if the fixed-edge arm fails at sun 2 too, stop
 and redesign, do not raise sun further without a new record). The
 same S for every arm, so std is the same-sun control H17 lacked.
+
+**Resolved 2026-10-13, S = 2** (E015 record, stage 2c; T08 gate arms
+under the fixed edge, 10 seeds, 50,000 ticks): `tierra_fix` passes 1 of
+10 at sun 1 (mean ration 86% against a 95.6% break-even), 10 of 10 at
+sun 2 with parasite-lineage share 20.4% median (7.6–37.4%) in the last
+bin and 24.8% of replicator-class deaths entered after 25,000, the same
+as the legacy world; the edge was neither the margin problem nor the
+source of the parasites. The same-sun std baseline for §4's reading:
+`std_fix_sun2` parasite share 1.8% (1.1–3.3%; 6 of 10 at or under 2%),
+entered 7.2%; at sun 1 0.6% and 4.4%.
 
 `P`, `F` from `tierra_n0` exactly as T02 §4.2 (over replicator-class
 deaths after 25,000: F = entered share, r = Σ `cycles_lost_m` / Σ
