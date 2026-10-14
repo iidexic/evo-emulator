@@ -472,11 +472,15 @@ mod tests {
         // debris but keep their code, and the pad goes on running them at
         // its own cost. Its births are bounded by its per-tick cap, not by
         // who pays, so they are the flag-off count again. Flag off: pad
-        // 340 exact births, host 211.
+        // 340 exact births, host 230 (211 before T08: 19 of the host's 230
+        // children went to the backward edge of the radius, the pad's
+        // one-byte pending region blocking the forward run, and lost byte 0
+        // to the `alloc`/`copy` range edge; `legacy_pending_range` still
+        // gives 211).
         let g = assemble("pad\n").unwrap();
         let host = ancestor(64, 16);
         let off = run_with_host(&g, &host, 3000, &Config::default());
-        assert_eq!((off.exact_births, off.host_exact_births), (340, 211));
+        assert_eq!((off.exact_births, off.host_exact_births), (340, 230));
         let mut cfg = Config::default();
         cfg.charge_owner = true;
         let on = run_with_host(&g, &host, 3000, &cfg);
@@ -503,8 +507,9 @@ mod tests {
         // E009: the split charge with `pad` before the ancestor. The pad's
         // births never change (its per-tick cap sets them, and an owner at
         // zero never stops it). The host pays its share and makes the
-        // flag-off 211 children up to 8%, because it rides at its store cap
-        // and pays out of energy it could not have kept; from 9% it dies.
+        // flag-off 230 children (211 before T08, see the test above) up to
+        // 8%, because it rides at its store cap and pays out of energy it
+        // could not have kept; from 9% it dies.
         let g = assemble("pad\n").unwrap();
         let host = ancestor(64, 16);
         let off = run_with_host(&g, &host, 3000, &Config::default());
@@ -518,7 +523,7 @@ mod tests {
             (zero.births, zero.exact_births, zero.host_exact_births, zero.executed, zero.exec_foreign),
             (off.births, off.exact_births, off.host_exact_births, off.executed, off.exec_foreign)
         );
-        assert_eq!((at(8).exact_births, at(8).host_exact_births, at(8).host_alive), (340, 211, true));
+        assert_eq!((at(8).exact_births, at(8).host_exact_births, at(8).host_alive), (340, 230, true));
         let ten = at(10);
         assert_eq!((ten.exact_births, ten.host_exact_births), (340, 13));
         assert!(ten.alive && !ten.host_alive && !ten.stopped_early);
@@ -772,7 +777,10 @@ mod tests {
         // E010 harness rows: a one-byte `pad` immediately before the K = 120
         // ancestor, 3,000 ticks, at each N of the calibration. At N = 0 it is
         // E005's mechanism: the pad runs the host's loop at its own cost, 189
-        // exact children, and the host makes 140 of its own. From N = 100 the
+        // exact children, and the host makes 149 of its own (140 before T08:
+        // 9 of its 149 children were placed at the backward edge of the
+        // radius and lost byte 0 to the `alloc`/`copy` range edge;
+        // `legacy_pending_range` still gives 140). From N = 100 the
         // host pays at least the pad's cost for every instruction the pad
         // runs on it and dies within 2-17 ticks before its first child; the
         // pad goes on running the dead host's code on debris (its 189
@@ -792,7 +800,7 @@ mod tests {
             assert_eq!((d.births, d.exact, d.alive, d.max_energy), (189, 189, true, 100 * MILLI), "N {pct}");
             assert!(d.gained <= d.host_paid, "N {pct}");
             if *pct == 0 {
-                assert_eq!((d.host_exact, d.host_alive, d.host_paid, d.gained), (140, true, 0, 0));
+                assert_eq!((d.host_exact, d.host_alive, d.host_paid, d.gained), (149, true, 0, 0));
             } else {
                 assert_eq!((d.host_exact, d.host_alive), (0, false), "N {pct}");
                 assert!(d.host_paid > 100 * MILLI, "N {pct}");

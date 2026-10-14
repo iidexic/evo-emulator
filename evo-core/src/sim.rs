@@ -535,10 +535,29 @@ impl Sim {
 
     /// Attempt a write by organism `i` at `addr`. Applies locality, write
     /// protection, and write noise. Returns whether the write landed.
+    ///
+    /// Locality (T08, 2026-10-13): a write whose target lies inside the
+    /// executor's own pending region passes the range check. `alloc`
+    /// already checked the whole region against locality when it claimed
+    /// it, and the region is the organism's own; checking again from the IP
+    /// of the `copy` (or `store`) measures where the copy loop happens to
+    /// sit in the body, a few bytes past the `alloc`, so a child placed at
+    /// the backward edge of the radius used to lose its first bytes and keep
+    /// whatever stale bytes were there. Every other write checks range from
+    /// the IP. Reads are unchanged (`copy` reads its source from the IP's
+    /// range). Under `Config::legacy_pending_range` every write checks range
+    /// from the IP, as before T08; that mode is bit-identical to the old
+    /// engine. The noise draw below comes after the range check in both
+    /// modes, so a write that passes under the new rule and faulted under
+    /// the old one draws one `chance` more: the intended divergence.
     fn write(&mut self, i: usize, addr: u32, val: u8) -> bool {
         let addr = self.wrap(addr);
         let ip = self.orgs[i].ip;
-        if !self.in_range(ip, addr) {
+        // Inside the executor's own pending region (the test `copy`'s
+        // lineage and slip bookkeeping use).
+        let own_pending = self.orgs[i].pending
+            .map_or(false, |(ps, pl)| self.off(addr, -(ps as i64)) < pl);
+        if !(own_pending && !self.cfg.legacy_pending_range) && !self.in_range(ip, addr) {
             self.orgs[i].flag = true;
             self.orgs[i].stats.range_faults += 1;
             return false;
@@ -826,6 +845,16 @@ impl Sim {
                     }
                 }
             }
+            // `alloc` claims a run of `want` free or debris bytes whose two
+            // ends (so all of it) lie within locality of this instruction's
+            // IP; the far rule (`alloc_far`) takes the farthest such run,
+            // which for the backward candidate puts the child's byte 0
+            // exactly `locality` behind this IP. That check is the region's
+            // only range check for writes: later writes into the pending
+            // region (the `copy` loop runs a few bytes further on) pass
+            // range whatever the IP (`write`, T08). Under
+            // `legacy_pending_range` they are checked from the IP again, so
+            // the first bytes of a child at the backward edge fault.
             Op::Alloc => {
                 let want = self.orgs[i].regs[r];
                 // Release any earlier pending region (content stays).
@@ -1701,8 +1730,12 @@ mod tests {
     fn charge_owner_pct_zero_is_the_default_world() {
         // E009: N = 0 must leave the E007 world untouched. The full check is
         // the CLI hash at tick 20,000 of seed 1 (census.csv 6f523da9f7e05a4e,
-        // births.csv 33b07ce87cc80ea6); this is a short version of it, with
+        // births.csv 33b07ce87cc80ea6; both before T08, so now with
+        // `--legacy-pending-range`); this is a short version of it, with
         // reference numbers taken from the default world at tick 2,000.
+        // T08 changed the default world (the `alloc`/`copy` range edge): the
+        // numbers before it, (895, 28627, 27733, 688492519, 36317283733),
+        // are now the `legacy_pending_range` world's, checked below.
         let run = |cfg: Config| {
             let mut sim = Sim::new(cfg);
             sim.seed(sim.cfg.world_size / 2, &ancestor(64, 16), 100 * MILLI, 0);
@@ -1722,14 +1755,19 @@ mod tests {
         cfg.charge_owner_pct = 0;
         let zero = run(cfg);
         assert_eq!(zero, run(Config::default()));
-        assert_eq!(zero, (895, 28627, 27733, 688492519, 36317283733));
+        assert_eq!(zero, (865, 26807, 25943, 808373520, 42060706534));
+        let mut legacy = Config::default();
+        legacy.legacy_pending_range = true;
+        assert_eq!(run(legacy), (895, 28627, 27733, 688492519, 36317283733));
     }
 
     #[test]
     fn transfer_pct_zero_is_the_default_world() {
         // E010: N = 0 must leave the E007 world untouched; the same short
         // check as for `charge_owner_pct`, with the same reference numbers
-        // (the CLI hash at tick 20,000 of seed 1 is the full check).
+        // (the CLI hash at tick 20,000 of seed 1 is the full check). T08
+        // moved them; the pre-T08 ones are checked under
+        // `legacy_pending_range` in `charge_owner_pct_zero_is_the_default_world`.
         let run = |cfg: Config| {
             let mut sim = Sim::new(cfg);
             sim.seed(sim.cfg.world_size / 2, &ancestor(64, 16), 100 * MILLI, 0);
@@ -1755,7 +1793,7 @@ mod tests {
         cfg.transfer_pct = 0;
         let zero = run(cfg);
         assert_eq!(zero, run(Config::default()));
-        assert_eq!(zero, (895, 28627, 27733, 688492519, 36317283733));
+        assert_eq!(zero, (865, 26807, 25943, 808373520, 42060706534));
     }
 
     #[test]

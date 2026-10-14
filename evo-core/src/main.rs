@@ -4,6 +4,7 @@
 //!          [--ancestor std|tierra] [--k K] [--e E]
 //!          [--no-protect] [--p P] [--world N] [--patch N]
 //!          [--alloc-far | --alloc-near] [--absorb-prop | --absorb-fixed]
+//!          [--legacy-pending-range]
 //!          [--locality N] [--out DIR] [--census N] [--sun N] [--rot P]
 //!          [--self-owner] [--charge-owner] [--charge-owner-pct N] [--transfer-pct N]
 //!          [--cycle-theft-pct N] [--cycle-tax-pct P] [--cycle-tax-frac F]
@@ -33,6 +34,17 @@
 //! --patch N sets the patch size and scales per-patch income and cap so
 //! energy per byte stays at the base world's density (E002). --sun N then
 //! multiplies per-patch income and cap by N (E004).
+//!
+//! --legacy-pending-range (T08, 2026-10-13) restores the world before the
+//! fix of the `alloc`/`copy` range edge: every write checks locality from
+//! the IP, so a child `alloc` placed at the backward edge of the radius
+//! loses the first bytes the `copy` loop writes (a few bytes past the
+//! `alloc`, out of range) and keeps the stale bytes there. Without it
+//! (the default) a write into the executor's own pending region passes
+//! the range check, since `alloc` checked the whole region when it claimed
+//! it. Every run recorded before 2026-10-13 is the legacy world, and the
+//! flag reproduces it bit for bit. meta.json records
+//! `legacy_pending_range`; runs before the flag have no key.
 //!
 //! --absorb-prop / --absorb-fixed choose whether `absorb` takes a ration
 //! proportional to how full the pool is, or a fixed one. --rot P sets the
@@ -245,6 +257,7 @@ fn main() {
             "--rot" => { cfg.p_bit_rot = next().parse().unwrap(); i += 1; }
             "--alloc-far" => cfg.alloc_far = true,
             "--alloc-near" => cfg.alloc_far = false,
+            "--legacy-pending-range" => cfg.legacy_pending_range = true,
             "--absorb-prop" => cfg.absorb_proportional = true,
             "--absorb-fixed" => cfg.absorb_proportional = false,
             "--self-owner" => cfg.self_owner = true,

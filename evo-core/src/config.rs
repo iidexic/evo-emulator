@@ -33,6 +33,16 @@ pub struct Config {
     /// `alloc` claims the farthest fitting free run within locality instead
     /// of the nearest. Dispersal experiment (E002); default off.
     pub alloc_far: bool,
+    /// The world before T08 (2026-10-13): every write checks locality from
+    /// the IP, including writes into the executor's own pending region, so
+    /// a child that `alloc` placed at the backward edge of the radius loses
+    /// the first bytes the `copy` loop (a few bytes past `alloc`) writes,
+    /// and keeps whatever stale bytes were there. Default false: a write
+    /// into the executor's own pending region passes the locality check
+    /// (`alloc` already checked the whole region when it claimed it).
+    /// Every run recorded before 2026-10-13 is this legacy world; with the
+    /// flag the engine is bit-identical to it. CLI `--legacy-pending-range`.
+    pub legacy_pending_range: bool,
     /// `absorb` takes a ration proportional to how full the pool is,
     /// `absorb_rate * pool / patch_cap`, instead of `min(pool, absorb_rate)`.
     /// First-order uptake of a dilute resource (E004); default off.
@@ -113,8 +123,8 @@ impl Config {
             seed, world_size, patch_size, pools_start_full, locality,
             patch_income, patch_cap, absorb_rate, upkeep_per_byte,
             store_cap_per_byte, cap_c0, cap_c1, write_protection, alloc_far,
-            absorb_proportional, self_owner, charge_owner, charge_owner_pct,
-            transfer_pct, cycle_theft_pct, cycle_tax_pct, cycle_tax_frac,
+            legacy_pending_range, absorb_proportional, self_owner, charge_owner,
+            charge_owner_pct, transfer_pct, cycle_theft_pct, cycle_tax_pct, cycle_tax_frac,
             cost_simple, cost_load, cost_store, cost_copy, cost_search_base,
             cost_search_per16, cost_alloc_base, cost_alloc_per_byte, cost_divide,
             cost_absorb, p_write_flip, q_slip, p_bit_rot, p_debris_decay,
@@ -134,6 +144,8 @@ impl Config {
             ("cap_c1", cap_c1.to_string()),
             ("write_protection", write_protection.to_string()),
             ("alloc_far", alloc_far.to_string()),
+            // Runs before T08 (2026-10-13) have no key; they are the legacy world.
+            ("legacy_pending_range", legacy_pending_range.to_string()),
             ("absorb_proportional", absorb_proportional.to_string()),
             ("self_owner", self_owner.to_string()),
             ("charge_owner", charge_owner.to_string()),
@@ -200,6 +212,7 @@ impl Default for Config {
             cap_c1: 0,
             write_protection: true,
             alloc_far: true,
+            legacy_pending_range: false,
             absorb_proportional: true,
             self_owner: false,
             charge_owner: false,
