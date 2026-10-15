@@ -137,6 +137,20 @@ first structural defence, or runs from the founder when it arose before
 `--smoke --out DIR` for short test runs (`--no-snapshots` only with it).
 Tests: `uv run --project analysis --with pytest pytest analysis/tests/test_e016.py`.
 
+## B0 replicator density
+
+`b0_density.py run` (T07, `docs/tasks/T07-density.md` §2) runs `evo-core
+--density LEN:N` over the spec's cells: LEN 8-64 at N = 10^6 and 1,000
+harness ticks, LEN 21 also at 3,000, seeds 1 and 2, then LEN <= 16 at
+N = 10^7 if that pass took under 10 minutes (`--big-max-len 32` takes
+the 10^7 pass to every LEN <= 32, which §3's second bullet reads). It
+writes `runs/b0/density.csv`, each cell's kept bodies under
+`runs/b0/cells/`, and `runs/b0/summary.md`: counts, Clopper-Pearson 95%
+intervals for `replicator` and for `one_shot + replicator`, every such
+body's hex, and §3's decision against BFF's 7.1e-11. `summary` rewrites
+the summary from the files; `--smoke` runs N / 100 into `runs/b0_smoke`.
+Resumable. Tests: `uv run --project analysis --with pytest pytest analysis/tests/test_b0.py`.
+
 ## Looking at a run
 
 Record a run directory with the CLI, then report on it:
