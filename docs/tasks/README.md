@@ -32,10 +32,18 @@ before the runs, as always.
   full-state snapshot to version 2 with different new fields, so the
   merge needs one combined version-2 layout (or version 3) and both
   round-trip tests re-run. Flag off is bit-identical in both.
-- Branch `worktree-agent-a4532956e0fedf8ee` (T10): merged at `64cf742`;
-  its second pilot (founders exempt, F = 0.80, P = 26, and F = 1.0,
-  P = 21) was running at 01:20; merge the follow-up commits when they
-  exist.
+- Branch `worktree-agent-a4532956e0fedf8ee` (T10): merged at `64cf742`
+  and the follow-up at `f09059a`. Second pilot done: founders exempt,
+  the organism-tick pair F = 0.80, P = 26 (mean check holds at 20.8%
+  against 21.1%) persists 10 of 10 to 50,000 with a median population
+  of 210 (band 189–253; 3 seeds below, so the band rule fails by one);
+  even F = 1.0, P = 21 persists 3 of 3 at a lower population. **Decision
+  (Fable, 01:25): E017 launches next session at F = 0.80, P = 26, 30
+  seeds**, with the pilot's band miss written into the §9
+  pre-registration as expected (an even slowdown lowers the population)
+  and the per-tick tax's extinction wave at 35,690–54,330 named as the
+  thing the 250,000-tick run will show or not. `e016_defence.py world
+  --arms tierra_taxL --jobs 16`, then the other stages.
 - E016 replay stage: running (std_t50 arm, the last); `replay.csv` and
   `replay_summary.md` appear under `runs/e016/` when it ends, and the
   record's §8.6 table is written from them. If the machine slept
