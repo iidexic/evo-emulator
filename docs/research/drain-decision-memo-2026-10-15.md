@@ -15,8 +15,10 @@ E016 asked whether a graded, survivable, lifelong cost of parasitism
 selects a defence in a world whose ancestor has a one-hop parasite.
 What it found (`e016-writeup-2026-10-15.md`):
 
-- The one defence, Tierra's relabelling, arises by mutation supply
-  with or without the cost; the cost raises its share by a third.
+- The one defence class, immunity to the label parasite (Tierra's
+  relabelling, a redundant label, or the loss of the label; record
+  §8.8), arises by mutation supply with or without the cost; the cost
+  raises its share by a third.
 - No tolerant defence in 150 runs.
 - The cost at N = 50 is near-sterilising for an entered template
   host in the harness (1 child against 119), survivable only for the

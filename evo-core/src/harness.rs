@@ -224,7 +224,9 @@ pub fn run_with_host(genome: &[u8], host: &[u8], ticks: u64, cfg: &Config) -> Ho
 // ---- T03: the single-mutant neighbourhood (`--neighbours HEX`) ---------------
 
 /// One single-byte mutant of a genome: the substitution of `byte` at `pos`
-/// (`kind` "sub") or the deletion of `pos` (`kind` "del", `byte` None).
+/// (`kind` "sub"), the deletion of `pos` (`kind` "del", `byte` None), or
+/// `byte` inserted before `pos` (`kind` "ins"; `pos` = the genome's length
+/// appends it).
 #[derive(Clone, Debug)]
 pub struct Mutant {
     pub pos: usize,
@@ -233,22 +235,46 @@ pub struct Mutant {
     pub genome: Vec<u8>,
 }
 
+/// Which single-byte mutants `mutants` makes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MutantSet {
+    /// Every substitution and deletion (T03 §2): the set of E015 stage 1
+    /// and E016's `nbhd_screen`.
+    SubDel,
+    /// Only the substitution by `pad` at each position
+    /// (`--neighbours-pad-only`, T05's knockout set).
+    PadOnly,
+    /// `SubDel` plus every insertion (`--neighbours-ins`, T11 §1).
+    WithIns,
+}
+
 /// The mutant set of `g`, in the order the file is written: position by
 /// position, at each position every substitution by a value other than
-/// `g[pos]` in ascending byte order (255), then the deletion of that byte.
-/// `pad_only` (`--neighbours-pad-only`, T05's knockout set): only the
-/// substitution by `pad` (byte 0) at each position, one row per position;
-/// where `g[pos]` is already 0 that row is the genome itself. A deletion
-/// that would leave no body (a one-byte `g`) is left out.
-pub fn mutants(g: &[u8], pad_only: bool) -> Vec<Mutant> {
+/// `g[pos]` in ascending byte order (255), then the deletion of that byte,
+/// then (`WithIns`) the 256 insertions of every byte value before it in
+/// ascending order; the 256 insertions after the last byte come last, so
+/// `WithIns` adds 256 x (len + 1) rows. An insertion of `g[pos]` before
+/// `pos` and one before `pos + 1` give the same body; both are kept.
+/// `PadOnly` (T05's knockout set): only the substitution by `pad` (byte
+/// 0) at each position, one row per position; where `g[pos]` is already 0
+/// that row is the genome itself. A deletion that would leave no body (a
+/// one-byte `g`) is left out.
+pub fn mutants(g: &[u8], set: MutantSet) -> Vec<Mutant> {
     let mut out = Vec::new();
+    let ins = |out: &mut Vec<Mutant>, pos: usize| {
+        for v in 0..=255u8 {
+            let mut m = g.to_vec();
+            m.insert(pos, v);
+            out.push(Mutant { pos, kind: "ins", byte: Some(v), genome: m });
+        }
+    };
     for pos in 0..g.len() {
         let mut sub = |v: u8| {
             let mut m = g.to_vec();
             m[pos] = v;
             out.push(Mutant { pos, kind: "sub", byte: Some(v), genome: m });
         };
-        if pad_only {
+        if set == MutantSet::PadOnly {
             sub(0);
             continue;
         }
@@ -262,6 +288,12 @@ pub fn mutants(g: &[u8], pad_only: bool) -> Vec<Mutant> {
             m.remove(pos);
             out.push(Mutant { pos, kind: "del", byte: None, genome: m });
         }
+        if set == MutantSet::WithIns {
+            ins(&mut out, pos);
+        }
+    }
+    if set == MutantSet::WithIns {
+        ins(&mut out, g.len());
     }
     out
 }
@@ -318,15 +350,15 @@ impl NeighbourRow {
     }
 }
 
-/// Classify every mutant of `g` (`mutants(g, pad_only)`): `run_alone_with`
+/// Classify every mutant of `g` (`mutants(g, set)`): `run_alone_with`
 /// for `ticks` ticks, and `run_with_host` with the mutant immediately before
 /// `host`, both quiet under `cfg`'s physics. The mutants are independent and
 /// run on `threads` threads (`std::thread::scope`), each run with its own
 /// `Sim`; each thread takes the next unclaimed mutant, and the rows come back
 /// in mutant order, so the result does not depend on the thread count.
-pub fn neighbours(g: &[u8], host: &[u8], ticks: u64, cfg: &Config, pad_only: bool, threads: usize) -> Vec<NeighbourRow> {
+pub fn neighbours(g: &[u8], host: &[u8], ticks: u64, cfg: &Config, set: MutantSet, threads: usize) -> Vec<NeighbourRow> {
     use std::sync::atomic::{AtomicUsize, Ordering};
-    let ms = mutants(g, pad_only);
+    let ms = mutants(g, set);
     let next = AtomicUsize::new(0);
     let threads = threads.max(1).min(ms.len().max(1));
     // Each thread returns (index, row) pairs; `scope` joins them all before
@@ -370,10 +402,19 @@ pub fn write_neighbours<W: Write>(w: &mut W, rows: &[NeighbourRow]) -> std::io::
 /// then the `parasite_jump` rows grouped by position: how many (and how
 /// many of them deletions), their entry offsets with counts, and the range
 /// of their exact copies before the host. The byte values are in the file.
+/// With insertions in the set, the counts by label are also given for the
+/// insertions alone, and each position's line says how many are insertions.
 pub fn neighbours_summary(rows: &[NeighbourRow]) -> String {
     let mut s = format!("mutants {}\n", rows.len());
     for l in LABELS {
         s += &format!("{l} {}\n", rows.iter().filter(|r| r.label == l).count());
+    }
+    let n_ins = rows.iter().filter(|r| r.mutant.kind == "ins").count();
+    if n_ins > 0 {
+        s += &format!("insertions {n_ins}\n");
+        for l in LABELS {
+            s += &format!("  ins {l} {}\n", rows.iter().filter(|r| r.mutant.kind == "ins" && r.label == l).count());
+        }
     }
     let jumps: Vec<&NeighbourRow> = rows.iter().filter(|r| r.label == "parasite_jump").collect();
     s += &format!("parasite_jump by pos ({} rows)\n", jumps.len());
@@ -390,8 +431,13 @@ pub fn neighbours_summary(rows: &[NeighbourRow]) -> String {
         let entries: Vec<String> = entries.iter().map(|(e, n)| format!("{e} x{n}")).collect();
         let lo = here.iter().map(|r| r.host.exact_births).min().unwrap_or(0);
         let hi = here.iter().map(|r| r.host.exact_births).max().unwrap_or(0);
+        let ins = if n_ins > 0 {
+            format!(", {} ins", here.iter().filter(|r| r.mutant.kind == "ins").count())
+        } else {
+            String::new()
+        };
         s += &format!(
-            "  pos {p}: {} rows ({dels} del); entry {}; exact before host {lo}-{hi}\n",
+            "  pos {p}: {} rows ({dels} del{ins}); entry {}; exact before host {lo}-{hi}\n",
             here.len(), entries.join(", ")
         );
     }

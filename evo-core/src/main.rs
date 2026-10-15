@@ -13,7 +13,7 @@
 //! evo-core --classify DIR [--harness-ticks N] [--classes-out NAME] [physics flags]
 //! evo-core --host HEX [--host-body HEX] [--host-pad] [--harness-ticks N] [physics flags]
 //! evo-core --neighbours HEX [--host-body HEX] [--harness-ticks N] [--neighbours-out FILE]
-//!          [--neighbours-pad-only] [--threads T] [physics flags]
+//!          [--neighbours-pad-only | --neighbours-ins] [--threads T] [physics flags]
 //! evo-core --disasm HEX
 //!
 //! --ancestor NAME (T03) picks the seeded ancestor: `std` (default, the
@@ -160,15 +160,21 @@
 //! --neighbours HEX (T03, E015) classifies every single-byte mutant of HEX:
 //! at each position each of the 255 substitutions, then the deletion (with
 //! --neighbours-pad-only, only the substitution by `pad`, byte 0, at each
-//! position: T05's knockout set). Each mutant runs alone in the quiet
-//! harness for --harness-ticks ticks (default 3,000) and immediately before
+//! position: T05's knockout set). --neighbours-ins (T11) adds after the
+//! deletion at each position the 256 insertions of every byte value before
+//! it, and the 256 after the last byte at the end (`kind` `ins`, `pos` the
+//! byte it goes before); it is ignored with --neighbours-pad-only, and off
+//! by default, so the files of T05, E015 and E016 are unchanged. Each
+//! mutant runs alone in the quiet harness for --harness-ticks ticks
+//! (default 3,000) and immediately before
 //! a host, which is HEX itself unless --host-body gives another body; the
 //! physics flags apply as for --host. One CSV row per mutant, in that order,
 //! to FILE (--neighbours-out; default neighbours.csv in the current
 //! directory): `pos,kind,byte,hex,raw_hash,func_hash,class_alone,
 //! births_alone,exact_alone,alive_alone,births_host,exact_host,host_copies,
 //! host_exact,alive_host,host_alive,executed,exec_foreign,entry_off,
-//! ticks_run,label` (`byte` empty for a deletion; `executed` through
+//! ticks_run,label` (`byte` empty for a deletion, the inserted value for
+//! an insertion; `executed` through
 //! `ticks_run` from the run before the host; the label rule is
 //! `harness::label`, docs/instrumentation.md). stdout gets the counts by
 //! label and the `parasite_jump` rows by position. --threads T (default:
@@ -201,6 +207,7 @@ fn main() {
     let mut neighbours: Option<String> = None;
     let mut neighbours_out = String::from("neighbours.csv");
     let mut neighbours_pad_only = false;
+    let mut neighbours_ins = false;
     let mut threads: Option<usize> = None;
     let mut kind = AncestorKind::Std;
     // --k defaults by ancestor (resolved after parsing).
@@ -242,6 +249,7 @@ fn main() {
             "--neighbours" => { neighbours = Some(next()); i += 1; }
             "--neighbours-out" => { neighbours_out = next(); i += 1; }
             "--neighbours-pad-only" => neighbours_pad_only = true,
+            "--neighbours-ins" => neighbours_ins = true,
             "--threads" => {
                 let t: usize = next().parse().expect("--threads T must be a whole number");
                 assert!(t > 0, "--threads must be at least 1");
@@ -357,7 +365,14 @@ fn main() {
         let h = host_body.map(|hx| parse_hex(&hx)).unwrap_or_else(|| g.clone());
         let t = threads.unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()));
         let t0 = std::time::Instant::now();
-        let rows = harness::neighbours(&g, &h, harness_ticks, &cfg, neighbours_pad_only, t);
+        let set = if neighbours_pad_only {
+            harness::MutantSet::PadOnly
+        } else if neighbours_ins {
+            harness::MutantSet::WithIns
+        } else {
+            harness::MutantSet::SubDel
+        };
+        let rows = harness::neighbours(&g, &h, harness_ticks, &cfg, set, t);
         let mut w = std::io::BufWriter::new(std::fs::File::create(&neighbours_out).expect("create neighbours file"));
         harness::write_neighbours(&mut w, &rows).expect("write neighbours file");
         w.flush().expect("write neighbours file");

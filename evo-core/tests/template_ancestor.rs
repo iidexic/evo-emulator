@@ -183,7 +183,7 @@ fn neighbours_of_the_std_ancestor_jumps_only_by_fixed_offsets() {
     // And at least one `parasite_fallthrough` row (E005's `pad` lineages).
     let g = ancestor(64, 16);
     let t = std::thread::available_parallelism().map_or(1, |n| n.get()).min(12);
-    let rows = harness::neighbours(&g, &g, 3000, &Config::default(), false, t);
+    let rows = harness::neighbours(&g, &g, 3000, &Config::default(), harness::MutantSet::SubDel, t);
     assert_eq!(rows.len(), 21 * 256);
     let count = |l: &str| rows.iter().filter(|r| r.label == l).count();
     assert!(count("parasite_fallthrough") >= 1);
