@@ -1,7 +1,19 @@
 # T11. Is there a closed defence for the template body? Insertions, own-neighbourhood parasites, designed candidates
 
 Status: specified 2026-10-15 (Fable, from E016 record §6 and §8.7 item
-4); not built. Builder: Opus. Argument: E016 found one defence, Tierra's
+4); built 2026-10-15 (Opus; §2 `ceda9e7`, §1 `03e2b19`, §3 `67c5ce3`,
+with files of §1 and §3 in `3c01fe3` and `253f73f`). §2's stop rule
+fired (the relabelled bodies close the label-flip class: 996 rows to 0
+in 28 of 34); on the decision taken then, §2 reports label-flip rows as
+the closure number with the old rule beside it, §1 was built with the
+pad test as found (the search is not exact-length, but `pad` is not a
+nop: beside L1 it changes nothing, inside L1 it breaks the label), and
+§3 was reduced to the eject, since evolution answered the closure
+question itself (the redundant label) and the longer-label and
+procedure-check candidates were no longer needed; E009b's six bytes do
+not work verbatim in the copy loop, so the eject is the nearest working
+one, seven bytes before `alloc C` (evo-core/tests/closed_defence.rs).
+Builder: Opus. Argument: E016 found one defence, Tierra's
 relabelling, which is immune to the registered probe and open in the
 evolutionary sense (the record says "every new label has its own
 one-hop parasite"). That sentence is an inference from the mechanism,
