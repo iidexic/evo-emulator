@@ -36,6 +36,49 @@ fn row(label: &str, r: &HostResult) {
     );
 }
 
+/// One harness pair run to the end (children culled each tick, nobody
+/// stopped early): `drainer` (if any) immediately before `host`, the host
+/// seeded with `host_e`, the drainer with 100 units. Returns (drainer
+/// births, host births, host alive, host death tick, drainer drain gain,
+/// drainer absorb gain), energies in units.
+fn pair(drainer: Option<&[u8]>, host: &[u8], c: &Config, host_e: i64, ticks: u64) -> (u32, u32, bool, Option<u64>, f64, f64) {
+    let c = evo_core::harness::quiet(c.clone());
+    let mut sim = Sim::new(c.clone());
+    let mid = c.world_size / 2;
+    let hid = sim.seed(mid, host, host_e, 0);
+    let did = drainer.map(|d| sim.seed(mid - d.len() as u32, d, 100 * MILLI, 0));
+    let keep: Vec<u32> = std::iter::once(hid).chain(did).collect();
+    let (mut db, mut hb, mut death) = (0, 0, None);
+    let (mut dg, mut ag) = (0, 0);
+    for t in 1..=ticks {
+        sim.run_tick();
+        for ev in sim.events.drain(..) {
+            match ev {
+                Event::Birth { executor, .. } if executor == hid => hb += 1,
+                Event::Birth { executor, .. } if Some(executor) == did => db += 1,
+                Event::Death { id, .. } if id == hid => death = Some(t),
+                _ => {}
+            }
+        }
+        sim.cull_except(&keep);
+        if let Some(o) = did.and_then(|d| sim.genome_of(d)) {
+            dg = o.stats.drain_gain_m;
+            ag = o.stats.absorb_gain_m;
+        }
+    }
+    (db, hb, death.is_none(), death, dg as f64 / 1e3, ag as f64 / 1e3)
+}
+
+fn sun(op: u8, pct: i64, loss: i64, sun: i64) -> Config {
+    let mut c = Config::default();
+    c.patch_income *= sun;
+    c.patch_cap *= sun;
+    c.drain_op = op;
+    c.drain_pct = pct;
+    c.drain_loss_pct = loss;
+    c
+}
+
 const HEAD: &str = "row                          | births  exact alive | host_x h_alv host_drnd | drain_gain absorb_gain  drains   fails ticks";
 
 fn main() {
@@ -92,6 +135,27 @@ fn main() {
                 );
                 println!("{p:>4} {l:>3} | {db:>14} {hb:>11} {:>10} {:>15} | {hd:>12.1} {dg:>10.1}",
                          death.is_none(), death.map_or("-".to_string(), |t| t.to_string()));
+            }
+        }
+        // Victims with slack (coordinator, 2026-10-15): the std ancestor at
+        // sun 1 and 2, the tierra ancestor at sun 4; P 5, 10, 25; L 50; op 23.
+        "slack" => {
+            let k: i8 = a.get(1).and_then(|t| t.parse().ok()).unwrap_or(120);
+            let d = drainer(&Isa::new(23), k);
+            let std = evo_core::sim::ancestor(64, 16);
+            println!("drainer K {k}, {} bytes; op 23, L 50; {ticks} ticks", d.len());
+            println!("victim       sun seed |  P | drn_births drn_alone | vic_births vic_alone vic_alive death | drain_gain absorb_gain share");
+            for (name, v, sn) in [("std K64", &std, 1i64), ("std K64", &std, 2), ("tierra K127", &host, 4)] {
+                let full = Config::default().store_cap_per_byte * v.len() as i64;
+                let drn_alone = run_alone_with(&d, ticks, &sun(23, 50, 50, sn)).exact_births;
+                for (seed_name, he) in [("100", 100 * MILLI), ("full", full)] {
+                    let (_, vic_alone, _, _, _, _) = pair(None, v, &sun(0, 50, 50, sn), he, ticks);
+                    for p in [5, 10, 25] {
+                        let (db, hb, alive, death, dg, ag) = pair(Some(&d), v, &sun(23, p, 50, sn), he, ticks);
+                        println!("{name:<12} {sn:>3} {seed_name:>4} | {p:>2} | {db:>10} {drn_alone:>9} | {hb:>10} {vic_alone:>9} {alive:>9} {:>5} | {dg:>10.1} {ag:>11.1} {:>5.3}",
+                                 death.map_or("-".to_string(), |t| t.to_string()), dg / (dg + ag));
+                    }
+                }
             }
         }
         "k" => {

@@ -9,8 +9,12 @@ merged; four deviations from §1, listed in §5). G1 and G2 run (§5):
 ancestor dies before its first child from P = 25 (from P = 10 in
 fact; seeded at its store cap it dies later, after 3–64 children);
 at P = 5 it keeps all 119 births but the drainer gains under
-2% of its income by `drain` and makes exactly its lone count. G3 not
-run. pseudo.py's `drain` and the `docs/instrumentation.md` rows not
+2% of its income by `drain` and makes exactly its lone count. G2 with
+victims that have slack (§5.4): the std ancestor survives P = 5 and 10
+with all its births at sun 1 and 2, dies at P = 25; the tierra
+ancestor at sun 4 is as at sun 2; the drainer makes its no-victim
+count (120) in all 18 rows, `drain` at most 3.2% of its income. G3 not
+run; the floor rule is discussed in §5.5, not built. pseudo.py's `drain` and the `docs/instrumentation.md` rows not
 done. Builder: Opus. Argument: PLAN §5.5 (the energy
 channel between organisms as the diagnostic for trophic levels),
 `drain-proposal-2026-10-12.md` (conditions 2–4; condition 1, store
@@ -258,3 +262,80 @@ the drainer makes 120 in every row.
 **G2 fails** at every (P, L) in the table, under both opcodes. Per §3
 the memo's branch C (scavenging) is next; `drain` stays as a flag.
 G3 not run.
+
+### 5.4 G2 with victims that have slack
+
+`examples/drain_gate.rs slack 120` (commit `T12: G2 with std at sun 1
+and 2, tierra at sun 4`). The same 26-byte drainer, K = 120 (A is the
+byte after its body, so no change for the std body), op 23, L = 50,
+3,000 quiet harness ticks, both run to the end. Victim seeded with the
+harness's 100 units or at its store cap (std 1,344, tierra 2,624).
+"Share" is `drain_gain_m` / (`drain_gain_m` + `absorb_gain_m`) of the
+drainer. Drainer alone: 120 exact births in every physics; std K = 64
+alone: 230; tierra K = 127 alone: 119.
+
+| victim | sun | seed | P | drainer | victim births | victim alive (death tick) | `drain_gain_m` | share |
+|---|---|---|---|---|---|---|---|---|
+| std | 1 | 100 | 5 | 120 | 230 | yes | 1,711.7 | 0.016 |
+| std | 1 | 100 | 10 | 120 | 230 | yes | 3,526.8 | 0.032 |
+| std | 1 | 100 | 25 | 120 | 2 | no (40) | 124.2 | 0.001 |
+| std | 1 | full | 5 | 120 | 230 | yes | 1,691.2 | 0.016 |
+| std | 1 | full | 10 | 120 | 230 | yes | 3,483.0 | 0.032 |
+| std | 1 | full | 25 | 120 | 28 | no (366) | 1,081.0 | 0.010 |
+| std | 2 | 100 | 5 | 120 | 230 | yes | 1,712.0 | 0.016 |
+| std | 2 | 100 | 10 | 120 | 230 | yes | 3,525.7 | 0.032 |
+| std | 2 | 100 | 25 | 120 | 2 | no (40) | 124.6 | 0.001 |
+| std | 2 | full | 5 | 120 | 230 | yes | 1,691.2 | 0.016 |
+| std | 2 | full | 10 | 120 | 230 | yes | 3,484.2 | 0.032 |
+| std | 2 | full | 25 | 120 | 30 | no (392) | 1,148.4 | 0.011 |
+| tierra | 4 | 100 | 5 | 120 | 119 | yes | 2,282.7 | 0.021 |
+| tierra | 4 | 100 | 10 | 120 | 2 | no (77) | 123.8 | 0.001 |
+| tierra | 4 | 100 | 25 | 120 | 0 | no (25) | 110.8 | 0.001 |
+| tierra | 4 | full | 5 | 120 | 119 | yes | 2,262.0 | 0.021 |
+| tierra | 4 | full | 10 | 120 | 67 | no (1,677) | 2,547.0 | 0.023 |
+| tierra | 4 | full | 25 | 120 | 15 | no (401) | 1,519.5 | 0.014 |
+
+(Energy in units.) Three readings:
+
+- **Sun does not change the harness.** A lone pair on a full pool
+  keeps it near full at any sun, so the proportional ration is about 8
+  per `absorb` at sun 1, 2 or 4: std rows at sun 1 and 2 agree, and
+  tierra at sun 4 repeats sun 2 (§5.3 and the full-store rows). Sun
+  gives margin only in a crowded world, which the harness is not. The
+  "double margin" arm did not double anything here.
+- **The victim's margin sets the survivable P.** The std body (margin
+  about 7% of income, +35.9 a 13-tick cycle) survives P = 10 with every
+  child and dies at 25; the tierra body (about 4%) survives 5 and dies
+  at 10. The store only delays the death.
+- **Drain does not pay this drainer against any victim.** Its births
+  are its no-victim count in all 18 rows; `drain` is at most 3.2% of
+  its income. The body is cycle-limited (its 120-round loop and copy
+  set its births; energy is not binding), so extra income buys
+  nothing. A drainer that pays would have to be energy-limited (a
+  shorter absorb loop topped up by drain); the K sweep in §5.3 found
+  none between K = 50 and 100 at P = 50. So: drain is survivable
+  against a body with slack at P up to its margin, and unprofitable
+  for this design at every P tested; the general case (an
+  energy-limited drainer at small P) is not settled by this table.
+
+### 5.5 What the floor rule should have been
+
+The floor in §1.2 (keep one tick's upkeep) is not the binding term,
+and no store floor can be: a victim loses up to P% of its income every
+turn, and if that exceeds its margin its store declines whatever the
+floor, which only sets when it dies (deviation 4: at a floor of
+exactly one upkeep, the victim pays it, has 0, cannot run an `absorb`,
+and dies the next tick). Raising the floor to the next upkeep plus one
+`absorb`'s cost removes that one-tick trap, so a floored body still
+absorbs once a turn while it is in its absorb loop, but it does not
+restore reproduction, and a body in its copy loop at the floor still
+starves. The rule that cannot kill is a take from income only, with
+the store untouched: drains may take at most P% of what the victim
+gained in its last turn and never leave it below the store it had
+before that turn's income (so a drain only ever removes part of a
+turn's net gain, and a turn that ended with a net loss yields
+nothing). Even that does not guarantee reproduction, since the
+victim banks absorb-phase surplus to pay for its copy phase; the
+guarantee, if one is wanted, is P below the ancestor's margin (std:
+P = 10 survives; tierra: P = 5), which E018's arms can choose from
+§5.4. Neither alternative floor was built or tested.
