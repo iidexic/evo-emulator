@@ -74,19 +74,22 @@ def deaths(entered: list[int], lost: list[int], age: list[int]) -> pl.DataFrame:
 
 
 def test_life_calibration_arithmetic_and_mean_check():
-    # Two entered deaths of 10 and 30 ticks losing 16,000 and 8,000 a tick, two unentered of 10 and 30: F = 1/2,
-    # mean rate (16,000 + 8,000) / 2 = 12,000, P = 37.5 -> 38; r = (160,000 + 240,000) / 80 = 5,000 a tick.
-    t50 = deaths([4, 1, 0, 0], [160_000, 240_000, 0, 0], [10, 30, 10, 30])
+    # Entered deaths of 10 and 50 ticks losing 16,000 and 8,000 a tick, unentered of 10 and 10: r = (160,000 +
+    # 400,000) / 80 = 7,000 a tick. Per organism-tick (the corrected rule): F = 60 / 80 = 0.75, P = 100 x 560,000 /
+    # (60 x 32,000) = 29.17 -> 29, F x P = 21.75% against 21.875%. Per death (the rule first given): F = 1/2,
+    # P = 100 x 12,000 / 32,000 = 37.5, F x P = 18.75%, -14%: entered bodies live longer.
+    t50 = deaths([4, 1, 0, 0], [160_000, 400_000, 0, 0], [10, 50, 10, 10])
     c = e.life_calibration(t50)
-    assert (c["F"], c["P_exact"], c["P"]) == (0.5, pytest.approx(37.5), 38)
-    assert c["r"] == 5_000 and c["target"] == pytest.approx(5_000 / 32_000)
-    assert c["mean"] == pytest.approx(0.5 * 0.38) and c["mean_rel"] == pytest.approx(0.19 / 0.15625 - 1)
-    assert not c["mean_check_ok"]                                                    # +21.6%
-    assert c["F_time"] == pytest.approx(0.5) and c["P_time_exact"] == pytest.approx(100 * 400_000 / (40 * 32_000))
-    assert c["F_time"] * c["P_time_exact"] / 100 == pytest.approx(c["target"])       # the time-weighted pair is exact
-    # Equal ages and rates: the count-weighted pair matches the mean.
-    even = e.life_calibration(deaths([1, 1, 0, 0], [80_000, 80_000, 0, 0], [10, 10, 10, 10]))
-    assert (even["P"], even["mean_check_ok"]) == (25, True)
+    assert (c["F"], c["P_exact"], c["P"]) == (0.75, pytest.approx(100 * 560_000 / (60 * 32_000)), 29)
+    assert c["r"] == 7_000 and c["target"] == pytest.approx(7_000 / 32_000)
+    assert c["mean_exact"] == pytest.approx(c["target"])                              # exact before rounding
+    assert c["mean"] == pytest.approx(0.75 * 0.29) and c["mean_check_ok"]               # -0.6%
+    assert (c["F_deaths"], c["P_deaths_exact"]) == (0.5, pytest.approx(37.5))
+    assert c["mean_deaths_rel"] == pytest.approx(0.1875 / 0.21875 - 1)
+    assert (c["mean_age_entered"], c["mean_age_unentered"]) == (30, 10)
+    # Rounding can fail the check: F = 1/3 of organism-ticks at P_exact 1.5 -> 2 is +33%.
+    off = e.life_calibration(deaths([1, 0, 0], [4_800, 0, 0], [10, 10, 10]))
+    assert (off["P"], off["mean_check_ok"]) == (2, False)
     with pytest.raises(SystemExit):
         e.life_calibration(deaths([0, 0], [0, 0], [5, 5]))                            # nobody entered
 

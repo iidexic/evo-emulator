@@ -38,8 +38,8 @@ numbers in the E016 record; the pilot in §4 checks it.)
 
 ## 2. Rule
 
-`--cycle-tax-lifelong F P`: at each organism's creation (seed, founder
-set, injection, division) one PRNG draw; with probability F the
+`--cycle-tax-lifelong F P`: at each organism's birth (division) and
+at each injection (`inject_due`) one PRNG draw; with probability F the
 organism is **taxed for life**: every tick, before it runs, `cap × P /
 100` milli-units are debited from its budget, exactly as the per-tick
 tax debits (`sim.rs`, the `cycle_tax_pct` block: the debit is
@@ -54,6 +54,13 @@ heritable tax would be selected against as a trait, which is not the
 control; being entered is not heritable either, it is where a child
 lands.)
 
+Founders never draw (amended 2026-10-15, after the first pilot): the
+founder is the one body that is not born next to anything, so nothing
+could enter it. `seed`, `seed_founders` and `inject` called directly
+create untaxed bodies. As first written the founder drew too, and at
+P = 66 a taxed founder died at tick 73 before its first child, which
+decided 4 of the first pilot's 10 seeds before the control could act.
+
 Physical reading, for the doc comment: a lifelong tax is a body that
 was born into a slow slot of the machine and stays there, the control
 for a body that was born next to a parasite and stays entered.
@@ -65,9 +72,10 @@ for a body that was born next to a parasite and stays entered.
 `meta.json` carries them. CLI `--cycle-tax-lifelong F P` with the
 range checks the other flags have (F in 0–1, P in 0–100).
 
-`Org` gains `pub taxed_for_life: bool`, set at creation in `seed`,
-`seed_founders`, `inject`, `inject_due` and at division, wherever an
-`Org` is built (grep `cycle_debt: 0` for every site). It is physics
+`Org` gains `pub taxed_for_life: bool`, false when `seed` builds the
+`Org` (the one site) and drawn by `Sim::draw_life_tax` for each child at
+division and each copy `inject_due` places (amended 2026-10-15; founders
+are untaxed). It is physics
 state: in the full-state snapshot (T04) and in `state_hash`, so a
 replay from a snapshot continues bit-identically (test this with the
 T04 continuation test pattern on a short lifelong-tax run). The PRNG
@@ -84,11 +92,27 @@ Against `tierra_t50`'s own numbers, over replicator-class deaths after
 tick 25,000, seeds 1–30 pooled (the values are in E016 `runs.csv`
 and `tax.json`; recompute them in the runner, do not copy them):
 
-- F = the entered share of replicator-class deaths in `tierra_t50`
-  (0.4299 in E016 §2's calibration note).
-- P = 100 × (mean `cycles_lost_m` per organism-tick among **entered**
-  replicator-class deaths) / 32,000 (E016 §8.3: 21,194 milli-units,
-  so about 66).
+- F = the share of organism-ticks spent in **entered** bodies: Σ `age`
+  of the entered replicator-class deaths over Σ `age` of all of them.
+- P = 100 × Σ `cycles_lost_m` of the entered / (their Σ `age` ×
+  32,000), the debit per tick of an entered body's life, to the nearest
+  whole percent.
+
+Corrected 2026-10-15 (the first pilot's calibration). As first written
+the rule matched per death: F = the entered share of deaths (0.4299)
+and P from the mean of `cycles_lost_m / age` over the entered (21,080
+milli-units, P = 66). That pair gives F × P = 28.4% of cap, 35% above
+the theft's 21.1%, because entered hosts live about five times longer
+than unentered ones (mean age 708 ticks against 133): 43% of the deaths
+hold 80% of the organism-ticks. The lifelong tax draws at birth,
+independent of lifespan, so a taxed body is expected to live as long as
+an untaxed one and F must be the share of time, not of deaths. With the
+E016 numbers (tierra_t50 seeds 1–30, replicator-class deaths after
+25,000): F = 3,764,424,123 / 4,705,804,390 = 0.79995; P = 100 ×
+31,718,765,563,000 / (3,764,424,123 × 32,000) = 26.33, rounded to 26;
+F × P = 20.80% against r / cap = 31,718,765,563,000 / 4,705,804,390 /
+32,000 = 21.06%, −1.3%. (An unentered death loses nothing, so F × P is
+exactly r / cap before rounding.)
 
 This differs from T02 §4.2's rule, which took F from the no-cost arm
 and r over all deaths; that rule matched the mean only. Record F, P and

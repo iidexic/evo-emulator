@@ -23,11 +23,10 @@ Arms (§2), sun S = 2 (resolved 2026-10-13), 30 seeds, 250,000 ticks,
 Every harness call (`--classify`, `--host`) gets the arm's physics flags
 (everything above but `--ancestor`; the harness has its noise off), except
 the lifelong tax (`harness_physics`): it is where a body was born, not what
-its genome is, and under the flag the harness bodies would be taxed or not
-by one draw from the harness's fixed seed (seed 1 happens to draw untaxed at
-F = 0.43); taxed for life at P = 66 the tierra ancestor dies alone before
-its first child, so every genome would class `dies`. tierra_taxL's harness is
-therefore tierra_n0's, as tierra_t50's `alone` is unentered.
+its genome is. The harness's bodies are seeded, and seeded bodies (founders)
+are never taxed, but their children draw, which at 0 < F < 1 moves the
+harness's shuffle order; without the flag tierra_taxL's harness is exactly
+tierra_n0's, as tierra_t50's `alone` is unentered.
 
 The probe parasite (§1). For `tierra`: the ancestor body with byte 18 (the
 first byte of L1, `nop1`) changed to `nop0`; its `searchf` then misses its
@@ -86,14 +85,15 @@ Stages (subcommands):
   entered share. Writes runs/e016/tax.json and prints F, r, P (record them
   in the experiment file before launching tierra_tax). An existing tax.json
   with other values is not overwritten without `--force` (and one with the
-  same values is left as it is). Then the lifelong tax (T10 §2.2), over
-  tierra_t50's same deaths: F = their entered share; P = 100 x (mean of
-  `cycles_lost_m / age` over the entered ones) / 32,000, rounded as above;
-  the mean check F x P against r / 32,000 (within 2%) is recorded and a
-  failure printed, not refused. Also kept: the time-weighted pair (F = the
-  entered deaths' share of all organism-ticks, P = their pooled `sum lost /
-  sum age`), whose product is r / 32,000 by construction. Writes
-  tax_life.json beside tax.json, with the same overwrite rule.
+  same values is left as it is). Then the lifelong tax (T10 §2.2 as
+  corrected 2026-10-15), over tierra_t50's same deaths, matched per
+  organism-tick: F = the entered deaths' share of all organism-ticks (sum
+  `age`), P = 100 x their sum `cycles_lost_m` / (their sum `age` x 32,000),
+  rounded as above; the mean check F x P against r / 32,000 (within 2%) is
+  recorded and a failure printed, not refused. The per-death pair the spec
+  first gave (F = the entered share of deaths, P from the mean of
+  `cycles_lost_m / age`) is kept beside. Writes tax_life.json beside
+  tax.json, with the same overwrite rule.
 - `pilot` (T10 §4): tierra_taxL, seeds 1-10, 50,000 ticks, no snapshots, at
   tax_life.json's F, P or `--life F P`, into
   <out>/tierra_taxL_pilot/F<F>_P<P>/tierra_taxL/s<seed>/ (classified and
@@ -102,13 +102,13 @@ Stages (subcommands):
   genome is replicator-class) averaged over the census ticks 25,000-50,000,
   against tierra_n0's band: the min and max over its seeds alive at 50,000
   of the same average. The gate: >= 8 of 10 persist inside the band.
-  The founder draws its lifelong tax too (T10 §2), and taxed at a high P it
-  dies before its first child (tick 73 at P = 66), so each row says whether
-  the founder drew taxed, and beside the registered gate the stage reads
-  E016 §5's rule (seeds that lose the founder are counted and excluded) on
-  the first 10 seeds with an untaxed founder; `--pilot-seeds N` runs seeds
-  1..N for those replacements. Writes pilot.csv and pilot.json there and
-  prints the table.
+  Each row says whether the founder was taxed (never, since founders are
+  exempt, T10 §2; the first pilots ran before that decision, when a taxed
+  founder died at tick 73 at P = 66), and beside the registered gate the
+  stage reads E016 §5's founder-loss exclusion on the first 10 seeds with an
+  untaxed founder. `--pilot-seeds N` runs seeds 1..N (fewer for a
+  comparison run), `--pilot-name` names the folder. Writes pilot.csv and
+  pilot.json there and prints the table.
 - `screen`: first the reachability baseline (§1, §3): every mutant of the
   E015 stage 1 neighbourhood files (runs/e015/nbhd/<ancestor>.csv, every
   substitution and deletion of the ancestor) through the defence rule under
@@ -702,38 +702,46 @@ def tax_calibration(n0: pl.DataFrame, t50: pl.DataFrame) -> dict:
 
 
 def life_calibration(t50: pl.DataFrame) -> dict:
-    """T10 §2.2 over `t50` (tierra_t50's replicator-class deaths after the
-    calibration tick: `age`, `exec_by_others`, `cycles_lost_m`): F = the
-    entered share (`exec_by_others` > 0); P = 100 x (mean of `cycles_lost_m /
-    age` over the entered deaths with `age` > 0) / cap, to the nearest whole
-    percent (halves up), clamped to 0-100, 0 refused. Mean check: F x P / 100
-    against r / cap, r = sum `cycles_lost_m` / sum `age` over all of `t50`
-    (E016's r), within LIFE_CHECK relative. Kept beside: the time-weighted
-    pair, F_time = the entered deaths' share of sum `age` and P_time = 100
-    sum `cycles_lost_m` / (sum `age` of the entered x cap); F_time x P_time
-    is r / cap by construction (an unentered death loses nothing)."""
+    """T10 §2.2 as corrected 2026-10-15, over `t50` (tierra_t50's
+    replicator-class deaths after the calibration tick: `age`,
+    `exec_by_others`, `cycles_lost_m`), matched per organism-tick: F = the
+    entered deaths' (`exec_by_others` > 0) share of all organism-ticks (sum
+    `age`); P = 100 x sum `cycles_lost_m` / (sum `age` of the entered x cap),
+    to the nearest whole percent (halves up), clamped to 0-100, 0 refused.
+    F x P / 100 is r / cap before rounding (an unentered death loses
+    nothing), r = sum `cycles_lost_m` / sum `age` over all of `t50` (E016's
+    r); the mean check compares the rounded pair, within LIFE_CHECK
+    relative. Kept for the record: the rule as first specified, matched per
+    death (F_deaths = the entered share of deaths, P_deaths from the mean of
+    `cycles_lost_m / age` over the entered), which overshoots because
+    entered hosts live about five times longer than the rest."""
     n = t50.height
     ent = t50.filter(pl.col("exec_by_others") > 0)
     if n == 0 or ent.height == 0:
         raise SystemExit(f"life calibration: tierra_t50 has {n} replicator-class deaths, {ent.height} entered")
-    pos = ent.filter(pl.col("age") > 0)
-    rate_sum = float((pos["cycles_lost_m"] / pos["age"]).sum())
-    mean_rate = rate_sum / pos.height
-    p_exact = 100 * mean_rate / CAP_M
+    lost, age = int(t50["cycles_lost_m"].sum()), int(t50["age"].sum())
+    lost_e, age_e = int(ent["cycles_lost_m"].sum()), int(ent["age"].sum())
+    if age_e == 0:
+        raise SystemExit("life calibration: the entered deaths have no age")
+    f = age_e / age
+    p_exact = 100 * lost_e / (age_e * CAP_M)
     p = min(100, max(0, math.floor(p_exact + 0.5)))
     if p == 0:
         raise SystemExit(f"life calibration: P = {p_exact:.3f} rounds to 0")
-    f = ent.height / n
-    lost, age = int(t50["cycles_lost_m"].sum()), int(t50["age"].sum())
-    lost_e, age_e = int(ent["cycles_lost_m"].sum()), int(ent["age"].sum())
     r = lost / age
     target = r / CAP_M
     rel = (f * p / 100) / target - 1
-    return dict(F=f, deaths_t50=n, entered_t50=ent.height, entered_age_pos=pos.height, rate_sum=rate_sum,
-                mean_rate_entered=mean_rate, cap_m=CAP_M, P_exact=p_exact, P=p, cycles_lost_m=lost, age=age,
+    pos = ent.filter(pl.col("age") > 0)
+    rate_sum = float((pos["cycles_lost_m"] / pos["age"]).sum())
+    mean_rate = rate_sum / pos.height
+    f_d, p_d = ent.height / n, 100 * mean_rate / CAP_M
+    return dict(F=f, P_exact=p_exact, P=p, deaths_t50=n, entered_t50=ent.height, cycles_lost_m=lost, age=age,
+                cycles_lost_m_entered=lost_e, age_entered=age_e, unentered_lost_m=lost - lost_e, cap_m=CAP_M,
                 r=r, target=target, mean=f * p / 100, mean_exact=f * p_exact / 100, mean_rel=rel,
-                mean_check_ok=abs(rel) <= LIFE_CHECK, cycles_lost_m_entered=lost_e, age_entered=age_e,
-                F_time=age_e / age, P_time_exact=100 * lost_e / (age_e * CAP_M), unentered_lost_m=lost - lost_e)
+                mean_check_ok=abs(rel) <= LIFE_CHECK, mean_age_entered=age_e / ent.height,
+                mean_age_unentered=(age - age_e) / (n - ent.height) if n > ent.height else None,
+                F_deaths=f_d, entered_age_pos=pos.height, rate_sum=rate_sum, mean_rate_entered=mean_rate,
+                P_deaths_exact=p_d, mean_deaths=f_d * p_d / 100, mean_deaths_rel=(f_d * p_d / 100) / target - 1)
 
 
 def write_calibration(p: Path, c: dict, force: bool, arm: str) -> None:
@@ -770,18 +778,17 @@ def run_calibrate(out: Path, seeds: list[int], ticks: int, force: bool) -> tuple
 
 
 def life_text(c: dict) -> str:
-    return (f"Lifelong tax calibration (T10 §2.2), tierra_t50 seeds {c['seeds'][0]}-{c['seeds'][-1]} pooled, "
-            f"replicator-class deaths after tick {c['after']:,}: F = {c['entered_t50']:,} / {c['deaths_t50']:,} entered "
-            f"= {c['F']!r}; mean of cycles_lost_m / age over the {c['entered_age_pos']:,} entered = "
-            f"{c['rate_sum']:,.1f} / {c['entered_age_pos']:,} = {c['mean_rate_entered']:,.1f} milli-units per tick; "
-            f"P = 100 x that / {c['cap_m']:,} = {c['P_exact']:.4f}, rounded P = {c['P']}. Mean check: F x P = "
-            f"{100 * c['mean']:.2f}% of cap (exact P: {100 * c['mean_exact']:.2f}%) against r / cap = "
-            f"{c['cycles_lost_m']:,} / {c['age']:,} / {c['cap_m']:,} = {100 * c['target']:.2f}%: "
-            f"{100 * c['mean_rel']:+.1f}%, {'within' if c['mean_check_ok'] else 'NOT within'} "
-            f"{100 * LIFE_CHECK:.0f}%. Time-weighted pair: F_time = {c['age_entered']:,} / {c['age']:,} = "
-            f"{c['F_time']:.4f} of organism-ticks in entered bodies, P_time = 100 x {c['cycles_lost_m_entered']:,} / "
-            f"({c['age_entered']:,} x {c['cap_m']:,}) = {c['P_time_exact']:.4f} (product r / cap). tierra_taxL runs "
-            f"with --cycle-tax-lifelong {c['F']!r} {c['P']}.")
+    return (f"Lifelong tax calibration (T10 §2.2, matched per organism-tick), tierra_t50 seeds {c['seeds'][0]}-"
+            f"{c['seeds'][-1]} pooled, replicator-class deaths after tick {c['after']:,}: F = {c['age_entered']:,} / "
+            f"{c['age']:,} organism-ticks in entered bodies = {c['F']!r} ({c['entered_t50']:,} of {c['deaths_t50']:,} "
+            f"deaths, mean age {c['mean_age_entered']:,.0f} against {c['mean_age_unentered']:,.0f}); P = 100 x "
+            f"{c['cycles_lost_m_entered']:,} / ({c['age_entered']:,} x {c['cap_m']:,}) = {c['P_exact']:.4f}, rounded "
+            f"P = {c['P']}. Mean check: F x P = {100 * c['mean']:.2f}% of cap against r / cap = {c['cycles_lost_m']:,} / "
+            f"{c['age']:,} / {c['cap_m']:,} = {100 * c['target']:.2f}%: {100 * c['mean_rel']:+.2f}%, "
+            f"{'within' if c['mean_check_ok'] else 'NOT within'} {100 * LIFE_CHECK:.0f}%. The per-death rule as first "
+            f"specified (F = {c['F_deaths']:.4f} of deaths, P = {c['P_deaths_exact']:.2f} from the mean of "
+            f"cycles_lost_m / age) gives {100 * c['mean_deaths']:.2f}% ({100 * c['mean_deaths_rel']:+.1f}%). "
+            f"tierra_taxL runs with --cycle-tax-lifelong {c['F']!r} {c['P']}.")
 
 
 def calib_text(c: dict) -> str:
@@ -1919,7 +1926,7 @@ def n0_band(out: Path, seeds: list[int], lo: int, hi: int) -> dict:
 
 
 def run_pilot(exe: Path, out: Path, life: tuple[int, float], n0_seeds: list[int], jobs: int, force: bool,
-              compress: bool, n_seeds: int = PILOT_SEEDS) -> dict:
+              compress: bool, n_seeds: int = PILOT_SEEDS, name: str | None = None) -> dict:
     """T10 §4: tierra_taxL at (P, F) = `life`, seeds 1-10, 50,000 ticks, no
     snapshots; per seed persistence and the replicator-class population over
     25,000-50,000 against tierra_n0's band; the gate is >= 8 of 10 inside.
@@ -1927,9 +1934,9 @@ def run_pilot(exe: Path, out: Path, life: tuple[int, float], n0_seeds: list[int]
     excluded): the first 10 seeds whose founder did not draw taxed, for which
     `n_seeds` > 10 runs replacement seeds."""
     p, f = life
-    root = out / "tierra_taxL_pilot" / f"F{f:.4f}_P{p}"
+    root = out / "tierra_taxL_pilot" / (name or f"F{f:.4f}_P{p}")
     tax = {"tierra_taxL": (p, f)}
-    seeds = list(range(1, max(n_seeds, PILOT_SEEDS) + 1))
+    seeds = list(range(1, n_seeds + 1))
     print(f"pilot: tierra_taxL --cycle-tax-lifelong {f!r} {p}, seeds 1-{seeds[-1]}, {PILOT_TICKS:,} ticks -> {root}",
           flush=True)
     with ThreadPoolExecutor(jobs) as ex:
@@ -2013,7 +2020,8 @@ def main() -> None:
                                                                           "fewer with --smoke only)")
     ap.add_argument("--life", nargs=2, metavar=("F", "P"), help="pilot: this F and P instead of tax_life.json's")
     ap.add_argument("--pilot-seeds", type=int, default=PILOT_SEEDS,
-                    help="pilot: seeds 1..N (10; more replace founder-loss seeds in the exclusion reading)")
+                    help="pilot: seeds 1..N (10; fewer for a comparison run, more for founder-loss replacements)")
+    ap.add_argument("--pilot-name", help="pilot: the run folder under tierra_taxL_pilot/ (default F<F>_P<P>)")
     a = ap.parse_args()
     for stream in (sys.stdout, sys.stderr):  # a Windows console may not encode the record's characters
         if hasattr(stream, "reconfigure"):
@@ -2063,7 +2071,8 @@ def main() -> None:
             raise SystemExit("pilot needs tax_life.json (`calibrate`) or --life F P")
         else:
             life = tax_of(tax, "tierra_taxL")
-        print(pilot_text(run_pilot(exe, out, life, seeds, a.jobs, a.force, not a.no_compress, a.pilot_seeds)))
+        print(pilot_text(run_pilot(exe, out, life, seeds, a.jobs, a.force, not a.no_compress, a.pilot_seeds,
+                                   a.pilot_name)))
         print(f"pilot: {time.time() - t_all:.0f} s")
         return
 
