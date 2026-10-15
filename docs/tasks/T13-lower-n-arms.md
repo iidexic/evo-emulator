@@ -1,8 +1,9 @@
 # T13. E016's premise at a cost the entered individual survives: `tierra_t10` and `tierra_t25`
 
 Status: specified 2026-10-15 (Fable; Derek accepted the memo's
-recommendation). Not built. Builder: Opus, after T10 has merged (both
-touch `e016_defence.py`'s arm list). Argument: E016 record §8.2 and
+recommendation). §1's curve run the same night (below): the arms are
+**N = 10 and N = 20**. Engine and runner not built. Builder: Opus,
+after T10 has merged (both touch `e016_defence.py`'s arm list). Argument: E016 record §8.2 and
 write-up §5.4: under `--cycle-theft-pct 50` the entered template
 ancestor makes 1 exact child in 3,000 harness ticks against 119
 alone. The literature's condition for an evolved defence is that the
@@ -21,6 +22,26 @@ curve. Pick the two arms as the N nearest to `b_probed` ≈ 0.75 × 119
 and ≈ 0.5 × 119 if they lie in 5–40; otherwise N = 10 and 25 as
 named, and say so. The point is an arm where the entered individual
 keeps half or three quarters of its rate.
+
+**Run 2026-10-15** (Fable, `evo-core --host PROBE --host-body ANCESTOR
+--harness-ticks 3000 --sun 2 [--cycle-theft-pct N]`, the E016 binary):
+
+| N | 0 | 5 | 10 | 15 | 20 | 25 | 30 | 40 | 50 |
+|---|---|---|---|---|---|---|---|---|---|
+| host exact births, probed | 119 | 115 | 107 | 101 | 94 | 34 | 7 | 2 | 1 |
+| of 119 | 1.00 | 0.97 | 0.90 | 0.85 | 0.79 | 0.29 | 0.06 | 0.02 | 0.01 |
+| host alive at 3,000 | yes | yes | yes | yes | yes | **no** | no | no | no |
+| probe exact births | 119 | 119 | 119 | 119 | 119 | 119 | 119 | 119 | 119 |
+
+The dose is graded to N = 20 (1 − N/100 within 0.01, as E014 found for
+the std body) and a cliff at N = 25: the host **dies** of upkeep
+inside 3,000 ticks with the probe resident, and from there the
+"entered individual" is killed, not slowed. E016's N = 50 is in the
+cliff regime. There is no N where the host keeps half its rate and
+lives; the nearest to three quarters is N = 20 (0.79). Arms: **N = 10
+(0.90, the rate E014 measured for std at N = 50) and N = 20 (0.79, the
+last graded point)**. The record's §9 pre-registration should say
+that the cliff, not the dose, is what the N = 50 arm tested.
 
 ## 2. Arms
 

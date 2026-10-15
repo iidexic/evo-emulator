@@ -633,3 +633,23 @@ any insertion-sized defence pays that length cost before it pays for
 itself. The negative on tolerant defences is a margin result as much
 as a supply result.
 
+### 8.10 The dose curve of the theft on the template body (2026-10-15)
+
+Run for T13 §1 with the E016 binary (the probe before the ancestor,
+3,000 harness ticks, `--sun 2`):
+
+| N | 0 | 5 | 10 | 15 | 20 | 25 | 30 | 40 | 50 |
+|---|---|---|---|---|---|---|---|---|---|
+| host exact births, probed | 119 | 115 | 107 | 101 | 94 | 34 | 7 | 2 | 1 |
+| of 119 | 1.00 | 0.97 | 0.90 | 0.85 | 0.79 | 0.29 | 0.06 | 0.02 | 0.01 |
+| host alive at 3,000 | yes | yes | yes | yes | yes | **no** | no | no | no |
+| probe exact births | 119 | 119 | 119 | 119 | 119 | 119 | 119 | 119 | 119 |
+
+Graded to N = 20 (0.97, 0.90, 0.85, 0.79 at 5, 10, 15, 20: 1 − N/100
+within 0.01, E014's law), then a cliff: at N = 25 the entered host
+dies of upkeep inside the run. §8.2's "1 exact child in 3,000 ticks"
+at N = 50 is this cliff, not a steep dose. H16's "graded, survivable"
+condition holds for the template body only at N ≤ 20; E016 tested the
+premise in the regime where an entered individual is killed. T13's
+arms are N = 10 and N = 20.
+
