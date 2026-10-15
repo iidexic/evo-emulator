@@ -2,6 +2,7 @@
 
     uv run --project analysis --with pytest pytest analysis/tests/test_measures.py
 """
+from functools import lru_cache
 from pathlib import Path
 from types import SimpleNamespace
 import gzip
@@ -15,13 +16,15 @@ import pytest
 
 ANALYSIS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ANALYSIS))
+sys.path.insert(0, str(ANALYSIS / "tests"))  # measures_ref
 
 from evo_run import Run, load
-from measures import (_euler, _tree, _tree_metrics, absorb_class, compute, evo_bin, is_meaningful,
-                      knockout, knockout_windows, merge_knockout, parse_args, qnn_series,
-                      read_neighbours, site_entropy, site_windows, sites_relation, spd_edge,
-                      spd_pairwise)
+from measures import (_euler, _persistence, _tree, _tree_metrics, absorb_class, compute, evo_bin,
+                      is_meaningful, knockout, knockout_windows, merge_knockout, parse_args,
+                      qnn_series, read_neighbours, site_entropy, site_windows, sites_relation,
+                      spd_edge, spd_pairwise)
 import measures_baseline
+import measures_ref
 
 # The E007 ancestor (absorb count 64 at byte 6, `lit A` at byte 5), two
 # variants with the count at 96 and 112, and one whose guard byte is no
@@ -562,3 +565,95 @@ def test_measures_baseline_on_a_tiny_synthetic_run(tmp_path):
     assert "| rep alive | parasite | entered |" in text
     assert pl.read_csv(out / "e007_series.csv").height == 3
     assert pl.read_csv(out / "e007_absorb_class_series.csv")["absorb_ge96_share"].to_list()[1] == 0.4
+
+
+# T09: the numpy tree functions against T05's loops (tests/measures_ref.py).
+FOREST_SEEDS = range(10)
+
+
+@lru_cache(maxsize=None)
+def forest(seed: int):
+    """A Run-like random forest (T09 §4.2): 2-4 founders from id 2, then ids
+    in sequence up to 20,000-50,000, each a birth from an earlier id (mostly
+    a recent one, so lines run deep) or, for a few hundred, an injected copy
+    with no births row. Births rows are shuffled; orgs rows over three
+    census ticks hold every founder and injected copy and samples of the
+    rest. Returns the run, T05's arrays for it, the founders, and the
+    founders with the injected copies."""
+    rng = np.random.default_rng(seed)
+    founders = int(rng.integers(2, 5))
+    size = int(rng.integers(20_000, 50_001))
+    first = 2 + founders
+    ids = np.arange(first, size)
+    injected = np.zeros(size, dtype=bool)
+    injected[rng.choice(ids, size=int(rng.integers(200, 400)), replace=False)] = True
+    if seed % 2:
+        injected[size - 1] = True  # the largest id has an orgs row only
+    # Lines 600-1,000 generations deep (11 lifting levels; E016's std run
+    # has 1,059 and 12).
+    recent = ids - rng.geometric(0.15, size=ids.size)
+    anywhere = 2 + (rng.random(ids.size) * (ids - 2)).astype(np.int64)
+    executor = np.maximum(2, np.where(rng.random(ids.size) < 0.99, recent, anywhere))
+    tick = ids // 10 + 1
+    born = ~injected[ids]
+    births = pl.DataFrame({"child": ids[born], "executor": executor[born], "tick": tick[born]}).sample(
+        fraction=1.0, shuffle=True, seed=seed)
+    parent = np.zeros(size, dtype=np.int64)
+    parent[ids[born]] = executor[born]
+    birth_tick = np.zeros(size, dtype=np.int64)
+    birth_tick[ids] = tick
+    roots = np.r_[np.arange(2, first), ids[~born]]
+    rows = [roots] + [rng.choice(ids, size=2_000, replace=False) for _ in range(3)]
+    org_ids = np.concatenate(rows)
+    org_tick = np.concatenate([np.full(r.size, 1_000 * (i + 1)) for i, r in enumerate(rows)])
+    orgs = pl.DataFrame({"tick": org_tick, "id": org_ids, "parent": parent[org_ids],
+                         "birth_tick": birth_tick[org_ids]})
+    run = SimpleNamespace(births=births, orgs=orgs)
+    r_parent, r_depth, r_born, r_up = measures_ref._tree(run)
+    r_tin, r_tout = measures_ref._euler(r_parent, r_depth)
+    return run, (r_parent, r_depth, r_born, r_up, r_tin, r_tout), np.arange(2, first), roots
+
+
+def test_tree_arrays_match_reference_on_random_forests():
+    for seed in FOREST_SEEDS:
+        run, (r_parent, r_depth, r_born, r_up, r_tin, r_tout), _, _ = forest(seed)
+        parent, depth, born, up = _tree(run)
+        assert np.array_equal(parent, r_parent) and np.array_equal(depth, r_depth)
+        assert np.array_equal(born, r_born)
+        assert len(up) == len(r_up) and all(np.array_equal(a, b) for a, b in zip(up, r_up))
+        tin, tout = _euler(parent, depth)
+        assert np.array_equal(tin, r_tin) and np.array_equal(tout, r_tout)
+        # A depth that is not the tree's own: _euler finds the levels itself.
+        tin0, tout0 = _euler(parent, np.zeros_like(depth))
+        assert np.array_equal(tin0, r_tin) and np.array_equal(tout0, r_tout)
+        assert np.array_equal(_persistence(run, depth), measures_ref._persistence(run, r_depth))
+
+
+def test_tree_metrics_match_reference_on_random_tip_sets():
+    rng = np.random.default_rng(4096)
+    for seed in FOREST_SEEDS:
+        run, (r_parent, r_depth, r_born, r_up, r_tin, r_tout), founders, roots = forest(seed)
+        parent, depth, born, up = _tree(run)
+        tin, tout = _euler(parent, depth)
+        organisms = np.arange(2, len(parent))
+        # A single lineage: the deepest id and its ancestors (each a living
+        # ancestor of the next), and every third of them.
+        x, chain = int(np.argmax(depth)), []
+        while x:
+            chain.append(x)
+            x = int(parent[x])
+        tip_sets = [np.zeros(0, dtype=np.int32), organisms[[rng.integers(organisms.size)]],
+                    np.array(chain), np.array(chain[::3]),
+                    founders, roots,  # roots: the founders and the injected copies
+                    rng.choice(organisms, size=500, replace=True)]  # repeated ids
+        tip_sets += [rng.choice(organisms, size=int(rng.integers(1, 3_001)), replace=False)
+                     for _ in range(5)]
+        for tips in tip_sets:
+            got = _tree_metrics(tips, depth, born, tin, tout, up)
+            want = measures_ref._tree_metrics(tips, r_depth, r_born, r_tin, r_tout, r_up)
+            assert got.keys() == want.keys()
+            for key, w in want.items():
+                if isinstance(w, float):
+                    assert got[key] == pytest.approx(w, rel=1e-9, abs=0), (seed, tips.size, key)
+                else:
+                    assert got[key] == w and type(got[key]) is type(w), (seed, tips.size, key)

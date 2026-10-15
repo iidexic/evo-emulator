@@ -133,6 +133,21 @@ FIRST_ID = 2  # evo-core's first organism id (sim.rs FIRST_ID)
 CLASS_COLUMNS = ("rep_alive", "parasite_share", "entered_share")
 
 
+def _jump(nxt: np.ndarray, weight: np.ndarray) -> np.ndarray:
+    """Pointer jumping: for every x, the sum of `weight` from x up to (not
+    including) the root it reaches by following `nxt`. Roots point at
+    themselves; O(n log depth) in numpy."""
+    nxt = nxt.astype(np.int64)
+    dist = weight.astype(np.int64)
+    for _ in range(64):
+        step = nxt[nxt]
+        if np.array_equal(step, nxt):
+            return dist
+        dist += dist[nxt]
+        nxt = step
+    raise ValueError("the parent array has a cycle")
+
+
 def _tree(run: Run):
     """Return dense parent/depth/tick arrays and binary-lifting ancestors."""
     b = run.births.select("child", "executor", "tick").sort("child")
@@ -141,21 +156,22 @@ def _tree(run: Run):
                  int(org["id"].max()) if org.height else 0)
     parent = np.zeros(max_id + 1, dtype=np.int32)
     born = np.zeros(max_id + 1, dtype=np.int32)
-    # Birth rows are in creation order (IDs increase), so each executor's
-    # generation is known when its child is visited.
-    depth = np.zeros(max_id + 1, dtype=np.int32)
+    has_birth = np.zeros(max_id + 1, dtype=bool)
     if b.height:
-        for child, executor, tick in b.iter_rows():
-            child, executor = int(child), int(executor)
-            parent[child] = executor
-            born[child] = int(tick)
-            depth[child] = depth[executor] + 1
+        child = b["child"].to_numpy()
+        parent[child] = b["executor"].to_numpy()
+        born[child] = b["tick"].to_numpy()
+        has_birth[child] = True
+    # Generation: one more than the executor's, 0 without a births row. Ids
+    # are issued in sequence (every executor's id is below its child's), so
+    # this is the depth of the births alone, before the orgs fill below.
+    ids = np.arange(max_id + 1, dtype=np.int32)
+    depth = _jump(np.where(has_birth, parent, ids), has_birth).astype(np.int32)
     if org.height:
-        for ident, par, tick in org.iter_rows():
-            ident = int(ident)
-            if ident > 0 and parent[ident] == 0:
-                parent[ident] = int(par)
-                born[ident] = int(tick)
+        ident = org["id"].to_numpy()
+        fill = (ident > 0) & (parent[ident] == 0)
+        parent[ident[fill]] = org["parent"].to_numpy()[fill]
+        born[ident[fill]] = org["birth_tick"].to_numpy()[fill]
     levels = max(1, int(depth.max()).bit_length() + 1)
     up = [parent]
     for _ in range(1, levels):
@@ -181,6 +197,33 @@ def _lca(a: int, b: int, depth: np.ndarray, up: list[np.ndarray]) -> int:
         if up[j][a] != up[j][b]:
             a, b = int(up[j][a]), int(up[j][b])
     return int(up[0][a])
+
+
+def _lca_many(a: np.ndarray, b: np.ndarray, depth: np.ndarray, up: list[np.ndarray]) -> np.ndarray:
+    """`_lca` over arrays of pairs at once (the same two phases)."""
+    a = np.asarray(a, dtype=np.int64)
+    b = np.asarray(b, dtype=np.int64)
+    zero = (a == 0) | (b == 0)
+    swap = depth[a] < depth[b]
+    a, b = np.where(swap, b, a), np.where(swap, a, b)
+    diff = (depth[a] - depth[b]).astype(np.int64)
+    for j, step in enumerate(up):
+        hop = ((diff >> j) & 1).astype(bool)
+        a[hop] = step[a[hop]]
+    for step in reversed(up):
+        sa, sb = step[a], step[b]
+        move = sa != sb
+        a[move], b[move] = sa[move], sb[move]
+    out = np.where(a == b, a, up[0][a])
+    out[zero] = 0
+    return out
+
+
+def _mrca(ids: np.ndarray, depth: np.ndarray, tin: np.ndarray, up: list[np.ndarray]) -> int:
+    """The LCA of a non-empty set of ids: that of its first and last in
+    Euler (preorder) order."""
+    t = tin[ids]
+    return _lca(int(ids[np.argmin(t)]), int(ids[np.argmax(t)]), depth, up)
 
 
 def spd_edge(tips: list[int] | np.ndarray, parent: np.ndarray,
@@ -218,118 +261,121 @@ def _tree_metrics(tips: np.ndarray, depth: np.ndarray, born: np.ndarray,
     if not n:
         return dict(mrca_id=0, mrca_gen=-1, mrca_tick=0, root_lines=0,
                     ancestor_count=0, mpd=None, spd=None, mean_ed=None)
-    mrca = int(tips[0])
-    for tip in tips[1:]:
-        mrca = _lca(mrca, int(tip), depth, up)
     if n == 1:
+        mrca = int(tips[0])
         return dict(mrca_id=mrca, mrca_gen=int(depth[mrca]) if mrca else -1,
                     mrca_tick=int(born[mrca]) if mrca else 0, root_lines=0,
                     ancestor_count=0, mpd=0.0, spd=0, mean_ed=0.0)
 
-    ordered = tips[np.argsort(tin[tips])]
-    nodes = list(map(int, ordered))
-    nodes.extend(_lca(int(a), int(b), depth, up) for a, b in zip(ordered[:-1], ordered[1:]))
-    nodes.append(0)
-    nodes = sorted(set(nodes), key=lambda x: int(tin[x]))
-    stack: list[int] = []
-    vparent: dict[int, int] = {}
-    children: dict[int, int] = {x: 0 for x in nodes}
-    for node in nodes:
-        while stack and not (tin[stack[-1]] <= tin[node] < tout[stack[-1]]):
-            stack.pop()
-        if stack:
-            vparent[node] = stack[-1]
-            children[stack[-1]] += 1
-        stack.append(node)
-    tip_set = set(map(int, tips))
-    counts = {x: (1 if x in tip_set else 0) for x in nodes}
-    spd = 0
-    eds = np.zeros(n, dtype=np.float64)
-    tip_pos = {int(t): i for i, t in enumerate(tips)}
+    by_tin = np.argsort(tin[tips], kind="stable")
+    ordered = tips[by_tin]
+    mrca = _lca(int(ordered[0]), int(ordered[-1]), depth, up)
+    # The virtual (induced) tree: tips, the LCAs of tips adjacent in Euler
+    # order, and the root, in Euler order; the parent of each node after the
+    # first is its LCA with the node before it.
+    nodes = np.unique(np.concatenate([ordered, _lca_many(ordered[:-1], ordered[1:], depth, up), [0]]))
+    nodes = nodes[np.argsort(tin[nodes], kind="stable")]
+    node_tin = tin[nodes]
+    vparent = _lca_many(nodes[:-1], nodes[1:], depth, up)
+    par = np.searchsorted(node_tin, tin[vparent])  # position in `nodes` of each node's parent
+    children = np.bincount(par, minlength=nodes.size)
+    # Descendant tips of each node: the tips in its Euler interval.
     ordered_tip_tin = tin[ordered]
-    ordered_eds = np.zeros(n, dtype=np.float64)
-    for node in sorted(nodes, key=lambda x: int(depth[x]), reverse=True):
-        k = counts[node]
-        par = vparent.get(node)
-        if par is not None and k:
-            length = (int(depth[node]) if node else -1) - (int(depth[par]) if par else -1)
-            spd += length * k * (n - k)
-            counts[par] += k
+    lo = np.searchsorted(ordered_tip_tin, node_tin, side="left")
+    hi = np.searchsorted(ordered_tip_tin, tout[nodes], side="left")
+    k = (hi - lo)[1:]
+    # Generations, the virtual root at -1; the edge from each node after the
+    # first to its parent.
+    gen = np.where(nodes != 0, depth[nodes], -1).astype(np.int64)
+    length = gen[1:] - gen[par]
+    spd = int((length * k * (n - k)).sum())
     # Internal nodes of the induced tree: its branch points, tips included
     # (a living organism whose living descendants run through two or more of
     # its children). A tip with one line of living descendants is a
     # unifurcation, stripped as any other.
-    ancestors = sum(1 for x in nodes if children[x] >= 2)
+    ancestors = int((children >= 2).sum())
     # Fair proportion over the original root paths, below the MRCA only (the
     # stem from the MRCA to the virtual root is shared by every tip and would
     # make ED grow with MRCA depth). On the virtual tree each edge represents
-    # a chain with constant descendant-tip count.
-    for node in nodes:
-        par = vparent.get(node)
-        if par is None or node == mrca:
-            continue
-        k = counts[node]
-        if not k:
-            continue
-        length = (int(depth[node]) if node else -1) - (int(depth[par]) if par else -1)
-        # Edges on a contracted path have equal descendant count, so their
-        # combined fair-proportion length is length / k.
-        # Attribute it to the descendant tips using their ancestor relation.
-        lo = int(np.searchsorted(ordered_tip_tin, tin[node], side="left"))
-        hi = int(np.searchsorted(ordered_tip_tin, tout[node], side="left"))
-        ordered_eds[lo:hi] += length / k
-    for i, tip in enumerate(ordered):
-        eds[tip_pos[int(tip)]] = ordered_eds[i]
+    # a chain with constant descendant-tip count, so their combined
+    # fair-proportion length is length / k, attributed to the descendant
+    # tips (Euler positions lo..hi) by a difference array.
+    mrca_pos = int(np.searchsorted(node_tin, tin[mrca]))
+    below = np.arange(1, nodes.size) != mrca_pos
+    share = length[below] / k[below]
+    delta = np.zeros(n + 1, dtype=np.float64)
+    np.add.at(delta, lo[1:][below], share)
+    np.add.at(delta, hi[1:][below], -share)
+    eds = np.empty(n, dtype=np.float64)
+    eds[by_tin] = np.cumsum(delta[:-1])
     pairs = n * (n - 1) // 2
     # Children of the MRCA with living descendants: on the virtual tree each
     # child of the MRCA stands for one original child's line.
     return dict(mrca_id=mrca, mrca_gen=int(depth[mrca]) if mrca else -1,
-                mrca_tick=int(born[mrca]) if mrca else 0, root_lines=int(children[mrca]),
-                ancestor_count=int(ancestors), spd=int(spd), mpd=float(spd / pairs),
+                mrca_tick=int(born[mrca]) if mrca else 0, root_lines=int(children[mrca_pos]),
+                ancestor_count=ancestors, spd=spd, mpd=float(spd / pairs),
                 mean_ed=float(eds.mean()))
 
 
+def _levels(parent: np.ndarray, depth: np.ndarray) -> np.ndarray:
+    """Each id's distance below the root 0 along `parent`: `depth` + 1 when
+    `depth` is the tree's own (founders at 0), else by pointer jumping."""
+    lvl = depth.astype(np.int64) + 1
+    lvl[0] = 0
+    if np.array_equal(lvl[1:], lvl[parent[1:]] + 1):
+        return lvl
+    weight = np.ones(len(parent), dtype=np.int64)
+    weight[0] = 0
+    nxt = parent.copy()
+    nxt[0] = 0
+    return _jump(nxt, weight)
+
+
 def _euler(parent: np.ndarray, depth: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Euler entry/exit intervals for ancestry checks in the virtual tree."""
+    """Euler entry/exit intervals for ancestry checks in the virtual tree:
+    the preorder of a depth-first walk from the root 0 that visits children
+    in id order, `tout` = `tin` + subtree size."""
     size = len(parent)
-    counts = np.bincount(parent[1:], minlength=size).astype(np.int64)
-    offsets = np.empty(size + 1, dtype=np.int64)
-    offsets[0] = 0
-    np.cumsum(counts, out=offsets[1:])
-    children = np.empty(max(0, size - 1), dtype=np.int32)
-    cursor = offsets[:-1].copy()
-    for child in range(1, size):
-        p = int(parent[child])
-        children[cursor[p]] = child
-        cursor[p] += 1
-    tin = np.zeros(size, dtype=np.int32)
-    tout = np.zeros(size, dtype=np.int32)
-    clock = 0
-    stack: list[tuple[int, int]] = [(0, 0)]
-    while stack:
-        node, idx = stack[-1]
-        if idx == 0:
-            tin[node] = clock
-            clock += 1
-        lo, hi = int(offsets[node]), int(offsets[node + 1])
-        if lo + idx < hi:
-            child = int(children[lo + idx])
-            stack[-1] = (node, idx + 1)
-            stack.append((child, 0))
-        else:
-            tout[node] = clock
-            stack.pop()
-    return tin, tout
+    lvl = _levels(parent, depth)
+    top = int(lvl.max())
+    # Ids by level (radix sort on a narrow key), level l at bounds[l]..bounds[l + 1].
+    key = lvl.astype(np.int16) if top < 2 ** 15 else lvl
+    by_level = np.argsort(key, kind="stable")
+    bounds = np.searchsorted(lvl[by_level], np.arange(top + 2))
+    sub = np.ones(size, dtype=np.int64)
+    for lv in range(top, 0, -1):
+        at = by_level[bounds[lv]:bounds[lv + 1]]
+        np.add.at(sub, parent[at], sub[at])
+    # Offset of each child within its parent's interval: the sizes of its
+    # earlier siblings (lower ids).
+    kids = np.argsort(parent[1:], kind="stable") + 1
+    s = sub[kids]
+    before = np.cumsum(s) - s
+    first = np.flatnonzero(np.r_[True, parent[kids[1:]] != parent[kids[:-1]]]) if kids.size else kids
+    offset = np.zeros(size, dtype=np.int64)
+    offset[kids] = before - np.repeat(before[first], np.diff(np.r_[first, kids.size]))
+    tin = np.zeros(size, dtype=np.int64)
+    for lv in range(1, top + 1):
+        at = by_level[bounds[lv]:bounds[lv + 1]]
+        tin[at] = tin[parent[at]] + 1 + offset[at]
+    return tin.astype(np.int32), (tin + sub).astype(np.int32)
 
 
 def _persistence(run: Run, depth: np.ndarray) -> np.ndarray:
     """Maximum descendant generation for each organism id."""
     max_desc = depth.copy()
-    b = run.births.select("child", "executor").sort("child", descending=True)
-    for child, executor in b.iter_rows():
-        child, executor = int(child), int(executor)
-        if max_desc[child] > max_desc[executor]:
-            max_desc[executor] = max_desc[child]
+    if not run.births.height:
+        return max_desc
+    child = run.births["child"].to_numpy()
+    executor = run.births["executor"].to_numpy()
+    # Bottom up by the child's generation: every executor is one generation
+    # above its child, so a child's maximum is final before it is passed up.
+    lvl = depth[child]
+    order = np.argsort(lvl, kind="stable")
+    bounds = np.searchsorted(lvl[order], np.arange(int(lvl.max()) + 2))
+    for lv in range(len(bounds) - 2, 0, -1):
+        at = order[bounds[lv]:bounds[lv + 1]]
+        np.maximum.at(max_desc, executor[at], max_desc[child[at]])
     return max_desc
 
 
@@ -486,18 +532,31 @@ def _series(run: Run, every: int, depths: tuple[int, ...],
     injected = _injected(run, parent, gen, up)
     any_injected = bool(injected.any())
     org = run.orgs
-    hashmap = dict(run.genomes.select("raw_hash", "func_hash").iter_rows())
-    classes = dict(run.classes.select("raw_hash", "class").iter_rows()) if run.classes is not None else {}
     parasites = _parasite_genomes(run)
     if run.classes is not None:
         org = run.class_of(org, "birth_hash", "birth_class")
     if parasites is not None:
         org = org.with_columns(is_parasite=pl.col("birth_hash").is_in(sorted(parasites)))
+    # Per orgs row: the MODES component (func_hash of the birth genome) as an
+    # integer code, -1 without one, and whether the birth hash is
+    # replicator-class. A hash listed twice takes its last row.
+    funcs = run.genomes.select("raw_hash", "func_hash").unique("raw_hash", keep="last", maintain_order=True)
+    codes = funcs.select("func_hash").drop_nulls().unique(maintain_order=True).with_row_index("code")
+    funcs = funcs.join(codes, on="func_hash", how="left", maintain_order="left")
+    lookup = lambda old, new, default, dtype: pl.col("birth_hash").replace_strict(
+        old, new, default=default, return_dtype=dtype).fill_null(default)
+    org = org.with_columns(_code=lookup(funcs["raw_hash"], funcs["code"].cast(pl.Int64).fill_null(-1),
+                                        -1, pl.Int64))
+    if run.classes is not None:
+        cls = run.classes.select("raw_hash", "class").unique("raw_hash", keep="last", maintain_order=True)
+        org = org.with_columns(_rep=lookup(cls["raw_hash"], cls["class"] == "replicator", False, pl.Boolean))
     rows = []
     org_by_tick = {int(k[0] if isinstance(k, tuple) else k): v
                    for k, v in org.partition_by("tick", as_dict=True).items()}
-    seen_components: dict[int, set[str]] = {d: set() for d in depths}
-    previous_modes: dict[int, set[str]] = {d: set() for d in depths}
+    # Components seen so far and those of the previous census, per depth.
+    seen = {d: np.zeros(codes.height, dtype=bool) for d in depths}
+    previous = {d: np.zeros(codes.height, dtype=bool) for d in depths}
+    previous_codes = {d: np.zeros(0, dtype=np.int64) for d in depths}
     # A depth deeper than any generation the run reached is censored at every
     # census; its MODES columns are left empty.
     applies = {d: max_depth >= d for d in depths}
@@ -518,29 +577,14 @@ def _series(run: Run, every: int, depths: tuple[int, ...],
             sweep_mrca = tm["mrca_id"]
             if any_injected and injected[tips].any():
                 own = tips[~injected[tips]]
-                sweep_mrca = None
-                if own.size:
-                    sweep_mrca = int(own[0])
-                    for tip in own[1:]:
-                        sweep_mrca = _lca(sweep_mrca, int(tip), gen, up)
+                sweep_mrca = _mrca(own, gen, tin, up) if own.size else None
             if sweep_mrca is not None:
                 mrca_changed = previous_mrca is not None and sweep_mrca != previous_mrca
                 previous_mrca = sweep_mrca
-        hashes = alive["birth_hash"].to_list()
-        tips_list = alive["id"].to_list()
-        component_bodies = []
-        persistent_components = {d: [] for d in depths}
-        for ident, h in zip(tips_list, hashes):
-            c = hashmap.get(h)
-            component_bodies.append(c)
-            if c is None:
-                continue
-            for d in depths:
-                if max_desc[int(ident)] >= gen[int(ident)] + d:
-                    persistent_components[d].append(c)
+        code = alive["_code"].to_numpy()
+        tip_gen, tip_desc = gen[tips], max_desc[tips]
         row = dict(qnn[tick], pop=alive.height,
-                   rep_alive=(sum(classes.get(h) == "replicator" for h in hashes)
-                              if run.classes is not None else None),
+                   rep_alive=int(alive["_rep"].sum()) if run.classes is not None else None,
                    len_med=float(alive["len"].median()) if alive.height else None,
                    mrca_gen=tm["mrca_gen"] if tm else None, mrca_tick=tm["mrca_tick"] if tm else None,
                    mrca_changed=mrca_changed,
@@ -549,21 +593,24 @@ def _series(run: Run, every: int, depths: tuple[int, ...],
                    mpd=tm["mpd"] if tm else None, spd=tm["spd"] if tm else None,
                    mean_ed=tm["mean_ed"] if tm else None,
                    parasite_share=None, entered_share=None)
-        top_gen = max((int(gen[int(i)]) for i in tips_list), default=0)
+        top_gen = int(tip_gen.max()) if tips.size else 0
         for d in depths:
-            f = set(persistent_components[d])
-            counts = {}
-            for c in persistent_components[d]:
-                counts[c] = counts.get(c, 0) + 1
-            n = sum(counts.values())
+            # Components of the bodies persistent at d, in census row order.
+            persistent = code[(code >= 0) & (tip_desc >= tip_gen + d)]
+            comps, first, counts = np.unique(persistent, return_index=True, return_counts=True)
+            n = int(persistent.size)
             if applies[d]:
-                row[f"change_{d}"] = len(f - previous_modes[d])
-                row[f"novelty_{d}"] = len(f - seen_components[d])
-                row[f"ecology_{d}"] = -sum((v / n) * math.log2(v / n) for v in counts.values()) if n else 0.0
+                row[f"change_{d}"] = int((~previous[d][comps]).sum())
+                row[f"novelty_{d}"] = int((~seen[d][comps]).sum())
+                # Summed in order of first appearance, as a dict count would be.
+                counts = counts[np.argsort(first, kind="stable")].tolist()
+                row[f"ecology_{d}"] = -sum((v / n) * math.log2(v / n) for v in counts) if n else 0.0
             else:
                 row[f"change_{d}"] = row[f"novelty_{d}"] = row[f"ecology_{d}"] = None
-            seen_components[d] |= f
-            previous_modes[d] = f
+            seen[d][comps] = True
+            previous[d][previous_codes[d]] = False
+            previous[d][comps] = True
+            previous_codes[d] = comps
             # Held true once set: persistence cannot be known from here on.
             censored[d] = censored[d] or max_depth < top_gen + d
             row[f"modes_censored_{d}"] = censored[d]

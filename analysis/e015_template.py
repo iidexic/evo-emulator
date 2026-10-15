@@ -539,13 +539,19 @@ def parasite_genomes(run) -> tuple[set[str], pl.DataFrame]:
     cand = set(per_g["raw_hash"].to_list())
     if not cand:
         return set(), per_g
-    depth: dict[tuple[str, int], int] = {}
-    best = {h: 0 for h in cand}
-    for h, child, ex in exact.filter(pl.col("raw_hash").is_in(list(cand))).sort("tick", "child") \
-            .select("raw_hash", "child", "executor").iter_rows():
-        d = depth.get((h, ex), 0) + 1
-        depth[(h, child)] = d
-        best[h] = max(best[h], d)
+    # Exact-birth generation depth (E005's generation_depth): the longest
+    # chain of exact births of h whose executor was itself born by an exact
+    # birth of h, as a tree depth over those links (T09 §5).
+    from measures import _jump
+    rows = exact.filter(pl.col("raw_hash").is_in(list(cand))).select("raw_hash", "child", "executor") \
+        .with_row_index("i")
+    link = rows.join(rows.select("raw_hash", pl.col("child").alias("executor"), pl.col("i").alias("up")),
+                     on=["raw_hash", "executor"], how="left", maintain_order="left")
+    m = rows.height
+    nxt = np.append(link["up"].fill_null(m).to_numpy().astype(np.int64), m)  # row m: the root
+    chain = _jump(nxt, (np.arange(m + 1) < m).astype(np.int64))[:m]
+    best = dict(rows.with_columns(d=pl.Series(chain)).group_by("raw_hash")
+                .agg(pl.col("d").max()).iter_rows())
     final = int(run.orgs["tick"].max()) if run.orgs.height else -1
     cols = ["birth_hash", "executed", "exec_foreign", "offspring"]
     carriers = pl.concat([run.deaths.select(cols), run.orgs.filter(pl.col("tick") == final).select(cols)]) \
