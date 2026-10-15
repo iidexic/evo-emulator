@@ -21,6 +21,8 @@ before the runs, as always.
 | [T09](T09-measures-vectorise.md) | `measures.py`: the per-id and per-census Python loops (`_tree`, `_euler`, `_persistence`, `_tree_metrics`, `_series` body) in numpy, output identical | T05 | built 2026-10-15 (Opus, `8e251c6`): output equal to T05's build on E007 s1 and E016 std_t50/s21, tierra_n0/s1 (ints bitwise, floats within 1.6e-14); `_series` 17.5 s → 3.8 s and `analyse_run` 23.8 s → 11.8 s on the E016 std run (tierra 10.9 → 2.8 s, 15.2 → 8.0 s; E007 8.8 → 2.0 s); §5 (E015's `parasite_genomes` depth) done too; 68 tests |
 | [T10](T10-lifelong-tax-control.md) | a survivable matched control: `--cycle-tax-lifelong F P` drawn at birth, E017 arm `tierra_taxL`, pilot gate | T02 | specified 2026-10-15 (Fable), not built |
 | [T11](T11-closed-defence-screen.md) | closed defence for the template body: insertions in `--neighbours`, own-neighbourhood parasites of the relabelled genomes, three designed candidates | T03, E016 screen | specified 2026-10-15 (Fable), not built |
+| [T12](T12-drain-income-take.md) | `drain` in the narrow form: an income take that cannot kill, opcode 23 or 25 by flag, harness gate G1–G3 before E018 | nothing | specified 2026-10-15 (Fable), not built |
+| [T13](T13-lower-n-arms.md) | E016 arms at a cost the entered individual survives (`tierra_t10`, `tierra_t25` or the harness-picked N), 60 runs | T10 merged | specified 2026-10-15 (Fable), not built |
 
 ## Order
 

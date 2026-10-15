@@ -798,6 +798,20 @@ the reserve check in 8.5 removed that ground, since the cap binds for
 a fifth of active hosts. Whether to bring the sweep back is open; it
 needs a `--store-cap` flag, which the CLI does not have.)
 
+**Decided 2026-10-15** (memo `docs/research/drain-decision-memo-2026-10-15.md`,
+Derek accepted its §4): finish E016 regardless (T10's lifelong-tax
+control as E017; T11's closure screen, whose §2 already showed the
+immune class is mostly de-labelled or redundantly labelled bodies,
+E016 record §8.8; T13's lower-N arms so the premise is tested where
+the entered individual survives; the replay table; the write-up,
+draft 1 in `docs/research/e016-writeup-2026-10-15.md`). In parallel,
+`drain` in the narrow form, gated in the harness before any world run
+(T12: an income take capped so it cannot kill, opcode one flip from
+`absorb` as the primary arm and four flips as the second, gates G1–G3;
+E018 is pre-registered only if the gate passes). If the gate fails,
+scavenging (the memo's branch C) is next. T07 (line B0) runs now on
+idle CPU; line B proper waits for the engine time.
+
 ### 8.4 Line B — seedless emergence, rule by rule
 
 Nobody has added physics rules one at a time to a random-soup
