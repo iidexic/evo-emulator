@@ -24,6 +24,26 @@ before the runs, as always.
 | [T12](T12-drain-income-take.md) | `drain` in the narrow form: an income take that cannot kill, opcode 23 or 25 by flag, harness gate G1–G3 before E018 | nothing | specified 2026-10-15 (Fable), not built |
 | [T13](T13-lower-n-arms.md) | E016 arms at a cost the entered individual survives (`tierra_t10`, `tierra_t20`, picked from the harness dose curve), 60 runs | T10 merged (done 64cf742) | specified 2026-10-15 (Fable), curve run; not built |
 
+## Open merges and hand-off (2026-10-15, written at 01:20 before the machine slept)
+
+- Branch `worktree-agent-af767620b674b761b` (T12 drain engine and gate,
+  commits `724f91d`, `fab7793`, `e219988`, plus a second G2 pass if it
+  finished): **not merged**. It and the merged T10 both bump the
+  full-state snapshot to version 2 with different new fields, so the
+  merge needs one combined version-2 layout (or version 3) and both
+  round-trip tests re-run. Flag off is bit-identical in both.
+- Branch `worktree-agent-a4532956e0fedf8ee` (T10): merged at `64cf742`;
+  its second pilot (founders exempt, F = 0.80, P = 26, and F = 1.0,
+  P = 21) was running at 01:20; merge the follow-up commits when they
+  exist.
+- E016 replay stage: running (std_t50 arm, the last); `replay.csv` and
+  `replay_summary.md` appear under `runs/e016/` when it ends, and the
+  record's §8.6 table is written from them. If the machine slept
+  mid-run, relaunch `e016_defence.py replay --jobs 16`; the resume
+  handles zero-filled files since `a5aad36`.
+- T13 (lower-N arms) builds next: `physics()` generalised to
+  `tierra_t<N>`, arms `tierra_t10` and `tierra_t20`.
+
 ## Order
 
 T01 is done (fails; see below). Now, in parallel where hands allow:
