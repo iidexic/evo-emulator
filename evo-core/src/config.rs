@@ -91,6 +91,31 @@ pub struct Config {
     /// Probability per organism per tick that the cycle tax applies.
     /// 1.0 (default) taxes every organism every tick with no PRNG draw.
     pub cycle_tax_frac: f64,
+    /// `drain` (T12): the opcode slot it decodes from, 23 (one bit from
+    /// `absorb`) or 25 (four bits); 0 (default) leaves the slot `pad`, and
+    /// the world is bit-identical to one without the flag. When organism X
+    /// runs `drain`, the living other owner of the byte at A (within
+    /// locality of IP) loses `take` and X gains `take` less `drain_loss_pct`
+    /// percent of it; the rest dissipates. `take` is at most `drain_pct`
+    /// percent of the victim's `absorb` gain over its previous turn, less
+    /// what drains took since (`Org::drain_left_m`), never more than leaves
+    /// the victim its next upkeep, and never more than X's room below its
+    /// store cap. Costs `cost_absorb`.
+    ///
+    /// Energy is matter and is conserved; `absorb` is photosynthesis from a
+    /// dilute pool, `drain` taking from a neighbour's recent intake, with
+    /// loss, as every trophic step loses most of what it moves. That the
+    /// victim keeps its next upkeep is not biology: it is the condition
+    /// under which every published defence evolved (the victim keeps
+    /// reproducing, more slowly), written into the physics so that E018
+    /// tests the premise and not a predation cliff (E008).
+    pub drain_op: u8,
+    /// Percent 0-100 of the victim's previous-turn `absorb` income that
+    /// drains may take from it before its next turn (default 50).
+    pub drain_pct: i64,
+    /// Percent 0-100 of each take that dissipates instead of reaching the
+    /// drainer (default 50).
+    pub drain_loss_pct: i64,
 
     // Costs (milli-units)
     pub cost_simple: i64,
@@ -125,6 +150,7 @@ impl Config {
             store_cap_per_byte, cap_c0, cap_c1, write_protection, alloc_far,
             legacy_pending_range, absorb_proportional, self_owner, charge_owner,
             charge_owner_pct, transfer_pct, cycle_theft_pct, cycle_tax_pct, cycle_tax_frac,
+            drain_op, drain_pct, drain_loss_pct,
             cost_simple, cost_load, cost_store, cost_copy, cost_search_base,
             cost_search_per16, cost_alloc_base, cost_alloc_per_byte, cost_divide,
             cost_absorb, p_write_flip, q_slip, p_bit_rot, p_debris_decay,
@@ -154,6 +180,10 @@ impl Config {
             ("cycle_theft_pct", cycle_theft_pct.to_string()),
             ("cycle_tax_pct", cycle_tax_pct.to_string()),
             ("cycle_tax_frac", format!("{cycle_tax_frac:?}")),
+            // T12. Runs and snapshots before it have no keys; they are drain_op 0.
+            ("drain_op", drain_op.to_string()),
+            ("drain_pct", drain_pct.to_string()),
+            ("drain_loss_pct", drain_loss_pct.to_string()),
             ("cost_simple", cost_simple.to_string()),
             ("cost_load", cost_load.to_string()),
             ("cost_store", cost_store.to_string()),
@@ -221,6 +251,9 @@ impl Default for Config {
             cycle_theft_pct: 0,
             cycle_tax_pct: 0,
             cycle_tax_frac: 1.0,
+            drain_op: 0,
+            drain_pct: 50,
+            drain_loss_pct: 50,
             cost_simple: MILLI,
             cost_load: 2 * MILLI,
             cost_store: 2 * MILLI,

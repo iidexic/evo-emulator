@@ -10,7 +10,7 @@
 //!   `&mut Org` while also mutating `self.world`.
 
 use crate::config::{Config, MILLI};
-use crate::isa::{decode, reg_of, Op};
+use crate::isa::{reg_of, Isa, Op};
 use crate::rng::Rng;
 use std::io::{self, Read, Write};
 
@@ -108,6 +108,19 @@ pub struct OrgStats {
     /// `exec_foreign`, counted whatever the flags. Summed over all
     /// organisms the two agree.
     pub exec_by_others: u64,
+    /// Energy taken from this organism by other organisms' `drain` (T12),
+    /// the whole take, before the loss. 0 without `drain_op`.
+    pub drained_m: i64,
+    /// Energy this organism gained by `drain` (T12): the takes less the
+    /// dissipated share. Summed over a world, the sum of `drained_m` less
+    /// the sum of `drain_gain_m` is what drains dissipated (in
+    /// `Sim::energy_out`).
+    pub drain_gain_m: i64,
+    /// `drain` instructions this organism executed, failed ones included.
+    pub drains: u64,
+    /// Of those, the ones that took nothing: no living other owner at A
+    /// within locality, or a take of 0 (fail flag set in both cases).
+    pub drains_fail: u64,
 }
 
 impl OrgStats {
@@ -144,15 +157,19 @@ impl OrgStats {
             cycles_taken_m: 0,
             cycles_taxed_m: 0,
             exec_by_others: 0,
+            drained_m: 0,
+            drain_gain_m: 0,
+            drains: 0,
+            drains_fail: 0,
         }
     }
 
     /// CSV column names, in the order `csv_row` writes them.
-    pub const CSV_HEADER: &'static str = "born_with_m,executed,absorbs,absorb_gain_m,absorb_short,absorb_capped,copies,reads_foreign,exec_foreign,exec_unowned,writes_blocked,range_faults,allocs_ok,allocs_fail,divides_ok,divides_fail,endowed_m,spent_m,upkeep_m,starved_ticks,last_divide_tick,max_energy_m,paid_for_others_m,paid_by_others_m,gained_from_others_m,writes_foreign,overwritten,cycles_lost_m,cycles_taken_m,cycles_taxed_m,exec_by_others";
+    pub const CSV_HEADER: &'static str = "born_with_m,executed,absorbs,absorb_gain_m,absorb_short,absorb_capped,copies,reads_foreign,exec_foreign,exec_unowned,writes_blocked,range_faults,allocs_ok,allocs_fail,divides_ok,divides_fail,endowed_m,spent_m,upkeep_m,starved_ticks,last_divide_tick,max_energy_m,paid_for_others_m,paid_by_others_m,gained_from_others_m,writes_foreign,overwritten,cycles_lost_m,cycles_taken_m,cycles_taxed_m,exec_by_others,drained_m,drain_gain_m,drains,drains_fail";
 
     pub fn csv_row(&self) -> String {
         format!(
-            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
             self.born_with_m, self.executed, self.absorbs, self.absorb_gain_m,
             self.absorb_short, self.absorb_capped, self.copies, self.reads_foreign,
             self.exec_foreign, self.exec_unowned, self.writes_blocked, self.range_faults,
@@ -161,12 +178,12 @@ impl OrgStats {
             self.last_divide_tick, self.max_energy_m, self.paid_for_others_m,
             self.paid_by_others_m, self.gained_from_others_m, self.writes_foreign,
             self.overwritten, self.cycles_lost_m, self.cycles_taken_m, self.cycles_taxed_m,
-            self.exec_by_others,
+            self.exec_by_others, self.drained_m, self.drain_gain_m, self.drains, self.drains_fail,
         )
     }
 
     /// Number of fields, the length of `to_words`.
-    pub const WORDS: usize = 31;
+    pub const WORDS: usize = 35;
 
     /// Every field in `CSV_HEADER` order as 64 bits (an `i64` as its two's
     /// complement), for snapshots (T04). The destructuring has no `..`, so
@@ -179,7 +196,7 @@ impl OrgStats {
             allocs_fail, divides_ok, divides_fail, endowed_m, spent_m, upkeep_m, starved_ticks,
             last_divide_tick, max_energy_m, paid_for_others_m, paid_by_others_m,
             gained_from_others_m, writes_foreign, overwritten, cycles_lost_m, cycles_taken_m,
-            cycles_taxed_m, exec_by_others,
+            cycles_taxed_m, exec_by_others, drained_m, drain_gain_m, drains, drains_fail,
         } = *self;
         [
             born_with_m as u64, executed, absorbs, absorb_gain_m as u64, absorb_short, absorb_capped,
@@ -188,7 +205,8 @@ impl OrgStats {
             upkeep_m as u64, starved_ticks, last_divide_tick as u64, max_energy_m as u64,
             paid_for_others_m as u64, paid_by_others_m as u64, gained_from_others_m as u64,
             writes_foreign, overwritten, cycles_lost_m as u64, cycles_taken_m as u64,
-            cycles_taxed_m as u64, exec_by_others,
+            cycles_taxed_m as u64, exec_by_others, drained_m as u64, drain_gain_m as u64, drains,
+            drains_fail,
         ]
     }
 
@@ -226,6 +244,10 @@ impl OrgStats {
             cycles_taken_m: w[28] as i64,
             cycles_taxed_m: w[29] as i64,
             exec_by_others: w[30],
+            drained_m: w[31] as i64,
+            drain_gain_m: w[32] as i64,
+            drains: w[33],
+            drains_fail: w[34],
         }
     }
 }
@@ -311,6 +333,18 @@ pub struct Org {
     /// the rest carries over). 0 at birth. Part of the physics, so it is
     /// in `state_hash`.
     pub cycle_debt: i64,
+    /// `drain` (T12), physics state (in `state_hash` when `drain_op` is set;
+    /// always in the snapshot; all 0 and untouched otherwise).
+    /// `income_tick_m`: this organism's `absorb` gain since the start of its
+    /// current turn. At the start of each of its turns (before upkeep) it
+    /// rolls into `income_prev_m`, and `drain_left_m` is reset to
+    /// `income_prev_m * drain_pct / 100`: what drains may take from it
+    /// before its next turn, all drainers together; every take comes off
+    /// it. 0 at birth, so a body that absorbed nothing last turn yields
+    /// nothing.
+    pub income_tick_m: i64,
+    pub income_prev_m: i64,
+    pub drain_left_m: i64,
     /// Where this organism first ran another living organism's byte (T03):
     /// set by `step` the first time it executes a byte owned by another
     /// living organism (body or pending region), to the IP's offset from
@@ -331,6 +365,8 @@ pub struct Patch {
 
 pub struct Sim {
     pub cfg: Config,
+    /// The opcode table, built from `cfg.drain_op` (T12) in `Sim::new`.
+    pub isa: Isa,
     pub rng: Rng,
     pub bytes: Vec<u8>,
     pub owner: Vec<u32>,
@@ -378,7 +414,10 @@ impl Sim {
         );
         let n = cfg.world_size as usize;
         let np = (n + cfg.patch_size as usize - 1) / cfg.patch_size as usize;
+        assert!((0..=100).contains(&cfg.drain_pct) && (0..=100).contains(&cfg.drain_loss_pct),
+                "drain_pct and drain_loss_pct must be 0-100");
         Sim {
+            isa: Isa::new(cfg.drain_op),
             rng: Rng::new(cfg.seed),
             bytes: vec![0; n],
             owner: vec![FREE; n],
@@ -507,6 +546,9 @@ impl Sim {
             parent,
             stats: OrgStats::new(energy),
             cycle_debt: 0,
+            income_tick_m: 0,
+            income_prev_m: 0,
+            drain_left_m: 0,
             first_foreign_off: None,
         });
         id
@@ -686,7 +728,7 @@ impl Sim {
         let cfg_cost_simple = self.cfg.cost_simple;
         let ip = self.orgs[i].ip;
         let byte = self.bytes[ip as usize];
-        let (op, m) = decode(byte);
+        let (op, m) = self.isa.decode(byte);
         let r = reg_of(m);
         let base = match op {
             Op::Load => self.cfg.cost_load,
@@ -695,7 +737,8 @@ impl Sim {
             Op::Searchf | Op::Searchb => self.cfg.cost_search_base,
             Op::Alloc => self.cfg.cost_alloc_base,
             Op::Divide => self.cfg.cost_divide,
-            Op::Absorb => self.cfg.cost_absorb,
+            // T12: the same price as `absorb`; the difference is the yield.
+            Op::Absorb | Op::Drain => self.cfg.cost_absorb,
             _ => cfg_cost_simple,
         };
         let own = self.owner[ip as usize];
@@ -783,7 +826,7 @@ impl Sim {
             Op::Skipz | Op::Skipnz => {
                 let z = self.orgs[i].regs[r] == 0;
                 if z == (op == Op::Skipz) {
-                    let (nop, _) = decode(self.bytes[next as usize]);
+                    let (nop, _) = self.isa.decode(self.bytes[next as usize]);
                     new_ip = self.wrap(next + nop.len());
                 }
             }
@@ -862,7 +905,7 @@ impl Sim {
                 let mut tmpl: Vec<bool> = Vec::new();
                 let mut p = next;
                 loop {
-                    let (o, _) = decode(self.bytes[p as usize]);
+                    let (o, _) = self.isa.decode(self.bytes[p as usize]);
                     if !o.is_nop() || tmpl.len() as u32 >= self.cfg.locality {
                         break;
                     }
@@ -884,7 +927,7 @@ impl Sim {
                         scanned = k + 1;
                         let mut ok = true;
                         for (j, &bit) in tmpl.iter().enumerate() {
-                            let (o, _) = decode(self.bytes[self.wrap(cand + j as u32) as usize]);
+                            let (o, _) = self.isa.decode(self.bytes[self.wrap(cand + j as u32) as usize]);
                             // complement: nop0 in template matches nop1 in target
                             let want = if bit { Op::Nop0 } else { Op::Nop1 };
                             if o != want {
@@ -1030,10 +1073,14 @@ impl Sim {
                 let take = avail.min(room);
                 self.patches[p].pool -= take;
                 self.patches[p].absorbed += take;
+                let drain_on = self.isa.drain_op != 0;
                 let o = &mut self.orgs[i];
                 o.energy += take;
                 o.stats.absorbs += 1;
                 o.stats.absorb_gain_m += take;
+                if drain_on {
+                    o.income_tick_m += take;
+                }
                 o.stats.max_energy_m = o.stats.max_energy_m.max(o.energy);
                 // Short: the pool gave less than a full ration (under the
                 // proportional rule, any pool below the cap). Capped: the
@@ -1044,6 +1091,53 @@ impl Sim {
                     } else {
                         o.stats.absorb_short += 1;
                     }
+                }
+            }
+            // T12: take from the recent intake of the living other owner of
+            // the byte at A, within locality of IP. The victim's window
+            // (`drain_left_m`, a share of its last turn's `absorb` gain)
+            // caps what all drains together take from it per turn; it keeps
+            // its next upkeep (body and pending region, what `run_tick` will
+            // charge); the drainer takes no more than its room below its
+            // store cap (measured before it pays, as `absorb` does). Of the
+            // take, `drain_loss_pct` percent dissipates (`energy_out`), the
+            // rest reaches the drainer. Moves energy, not bytes: write
+            // protection does not apply. No PRNG draw.
+            Op::Drain => {
+                self.orgs[i].stats.drains += 1;
+                let a = self.wrap(self.orgs[i].regs[0]);
+                let own_a = self.owner[a as usize];
+                let victim = if own_a >= FIRST_ID && own_a != self.orgs[i].id && self.in_range(ip, a) {
+                    self.org_index(own_a).filter(|&j| self.orgs[j].alive)
+                } else {
+                    None
+                };
+                let mut took = false;
+                if let Some(j) = victim {
+                    let v = &self.orgs[j];
+                    let owned = v.len + v.pending.map_or(0, |(_, l)| l);
+                    let keep = owned as i64 * self.cfg.upkeep_per_byte;
+                    let cap = self.cfg.store_cap_per_byte * self.orgs[i].len as i64;
+                    let room = (cap - self.orgs[i].energy).max(0);
+                    let take = v.drain_left_m.min(v.energy - keep).min(room).max(0);
+                    if take > 0 {
+                        let lost = take * self.cfg.drain_loss_pct / 100;
+                        let gain = take - lost;
+                        let v = &mut self.orgs[j];
+                        v.energy -= take;
+                        v.drain_left_m -= take;
+                        v.stats.drained_m += take;
+                        let o = &mut self.orgs[i];
+                        o.energy += gain;
+                        o.stats.drain_gain_m += gain;
+                        o.stats.max_energy_m = o.stats.max_energy_m.max(o.energy);
+                        self.energy_out += lost;
+                        took = true;
+                    }
+                }
+                if !took {
+                    self.orgs[i].flag = true;
+                    self.orgs[i].stats.drains_fail += 1;
                 }
             }
         }
@@ -1154,7 +1248,7 @@ impl Sim {
             len: o.len,
             pending_len: o.pending.map_or(0, |(_, l)| l),
             ip_off: self.ip_off(o),
-            op_at_ip: decode(self.bytes[o.ip as usize]).0,
+            op_at_ip: self.isa.decode(self.bytes[o.ip as usize]).0,
             energy: o.energy,
             pool: self.patches[self.patch_of(o.start)].pool,
             birth_hash: o.genome_hash,
@@ -1216,7 +1310,15 @@ impl Sim {
         let n_before = self.orgs.len();
         let mut order: Vec<usize> = (0..n_before).filter(|&i| self.orgs[i].alive).collect();
         self.rng.shuffle(&mut order);
+        let drain_on = self.isa.drain_op != 0;
+        let drain_pct = self.cfg.drain_pct;
         for i in order {
+            // T12: the start of this organism's turn rolls its income window.
+            if drain_on {
+                let o = &mut self.orgs[i];
+                o.income_prev_m = std::mem::take(&mut o.income_tick_m);
+                o.drain_left_m = o.income_prev_m * drain_pct / 100;
+            }
             let o = &self.orgs[i];
             let owned = o.len + o.pending.map(|(_, l)| l).unwrap_or(0);
             let upkeep = owned as i64 * self.cfg.upkeep_per_byte;
@@ -1357,6 +1459,12 @@ impl Sim {
             h.u64(o.pending_source.map_or(u64::MAX, |(s, _)| s as u64));
             h.u64(o.alive as u64);
             h.u64(o.cycle_debt as u64);
+            // T12: only in a drain world, so every hash pinned before it holds.
+            if self.isa.drain_op != 0 {
+                h.u64(o.income_tick_m as u64);
+                h.u64(o.income_prev_m as u64);
+                h.u64(o.drain_left_m as u64);
+            }
         }
         h.0
     }
@@ -1384,6 +1492,12 @@ impl Fnv {
 /// that differ only in bits the decoder ignores.
 pub fn func_hash(bytes: &[u8]) -> u64 {
     fnv1a(&crate::isa::canonical(bytes))
+}
+
+/// `func_hash` in a world with `isa`'s table (T12: a drain slot is kept).
+/// Equal to `func_hash` under `Isa::BASE`.
+pub fn func_hash_in(isa: &Isa, bytes: &[u8]) -> u64 {
+    fnv1a(&isa.canonical(bytes))
 }
 
 // ---- founders ---------------------------------------------------------------
@@ -1453,7 +1567,15 @@ pub const STATE_MAGIC: &[u8; 8] = b"EVOSTATE";
 /// version; the loader refuses every version but its own. `save_state`
 /// destructures each of those types without `..`, so adding a field there
 /// fails to compile until it is written (and this number raised).
-pub const STATE_VERSION: u32 = 1;
+pub const STATE_VERSION: u32 = 2;
+
+/// The version before T12 (no `drain` keys in the config text, no drain
+/// fields in an organism, 31 counter words). `load_state` still reads it,
+/// as a world with `drain_op` 0.
+pub const STATE_VERSION_V1: u32 = 1;
+
+/// Config keys a version-1 snapshot lacks (T12).
+const V1_MISSING: [&str; 3] = ["drain_op", "drain_pct", "drain_loss_pct"];
 
 /// `Config::fields()` as the snapshot's config text: one `name=value\n`
 /// line per field, in order.
@@ -1468,10 +1590,18 @@ fn bad(msg: impl Into<String>) -> io::Error {
 /// Compare a snapshot's config text with `cfg` field by field, in order,
 /// skipping `seed` (a replay may run under another seed). Returns the
 /// file's seed, or an error naming the first field that differs.
-fn check_config(text: &str, cfg: &Config) -> io::Result<u64> {
+fn check_config(text: &str, cfg: &Config, version: u32) -> io::Result<u64> {
     let mut lines = text.lines();
     let mut seed = None;
     for (name, given) in cfg.fields() {
+        // A version-1 file predates `drain` (T12): it has no drain keys and
+        // is a world with the slot `pad`, which this run must be too.
+        if version == STATE_VERSION_V1 && V1_MISSING.contains(&name) {
+            if cfg.drain_op != 0 {
+                return Err(bad(format!("snapshot config differs at drain_op: the file (version 1) has no drain, this run {}", cfg.drain_op)));
+            }
+            continue;
+        }
         let line = lines.next().ok_or_else(|| bad(format!("snapshot config differs at {name}: not in the file")))?;
         let (fname, fv) = line.split_once('=').ok_or_else(|| bad(format!("snapshot config line {line:?} has no '='")))?;
         if fname != name {
@@ -1559,7 +1689,7 @@ impl Sim {
     pub fn save_state(&self, w: &mut impl Write) -> io::Result<()> {
         // No `..` in these patterns: a new field must be handled here.
         let Sim {
-            cfg, rng, bytes, owner, patches, orgs, index: _, retired_executed, retired_absorb_gain_m,
+            cfg, isa: _, rng, bytes, owner, patches, orgs, index: _, retired_executed, retired_absorb_gain_m,
             tick, events: _, next_id, energy_in, energy_out, energy_overflow,
         } = self;
         let mut o = Out(Vec::with_capacity(bytes.len() * 5 + orgs.len() * 420 + 4096));
@@ -1595,7 +1725,7 @@ impl Sim {
             let Org {
                 id, regs, ip, flag, energy, start, len, pending, pending_source, pending_errors,
                 pending_slips, alive, birth_tick, offspring, genome_hash, genome, parent, stats,
-                cycle_debt, first_foreign_off,
+                cycle_debt, income_tick_m, income_prev_m, drain_left_m, first_foreign_off,
             } = org;
             o.u32(*id);
             for &r in regs {
@@ -1622,6 +1752,9 @@ impl Sim {
             o.u64(*genome_hash);
             o.u32(*parent);
             o.i64(*cycle_debt);
+            o.i64(*income_tick_m);
+            o.i64(*income_prev_m);
+            o.i64(*drain_left_m);
             o.u8(first_foreign_off.is_some() as u8);
             o.u32(first_foreign_off.unwrap_or(0));
             o.u32(genome.len() as u32);
@@ -1650,13 +1783,14 @@ impl Sim {
             return Err(bad("not a snapshot file (no EVOSTATE magic)"));
         }
         let version = p.u32()?;
-        if version != STATE_VERSION {
-            return Err(bad(format!("snapshot format version {version}; this build reads {STATE_VERSION}")));
+        if version != STATE_VERSION && version != STATE_VERSION_V1 {
+            return Err(bad(format!("snapshot format version {version}; this build reads {STATE_VERSION} and {STATE_VERSION_V1}")));
         }
+        let v2 = version == STATE_VERSION;
         let cfg_len = p.u32()? as usize;
         let text = std::str::from_utf8(p.take(cfg_len)?).map_err(|_| bad("snapshot config text is not UTF-8"))?;
         let mut cfg = cfg;
-        cfg.seed = check_config(text, &cfg)?;
+        cfg.seed = check_config(text, &cfg, version)?;
         let mut sim = Sim::new(cfg);
         sim.tick = p.u64()?;
         sim.rng = Rng::from_state([p.u64()?, p.u64()?, p.u64()?, p.u64()?]);
@@ -1711,6 +1845,8 @@ impl Sim {
             let genome_hash = p.u64()?;
             let parent = p.u32()?;
             let cycle_debt = p.i64()?;
+            let (income_tick_m, income_prev_m, drain_left_m) =
+                if v2 { (p.i64()?, p.i64()?, p.i64()?) } else { (0, 0, 0) };
             let has_off = p.bool()?;
             let off = p.u32()?;
             let glen = p.u32()?;
@@ -1718,8 +1854,11 @@ impl Sim {
                 return Err(bad(format!("snapshot organism {id} has a {glen}-byte genome in a {n}-byte world")));
             }
             let genome = p.take(glen as usize)?.to_vec();
+            // A version-1 organism has the first 31 words; the drain counters
+            // (T12) start at 0.
             let mut words = [0u64; OrgStats::WORDS];
-            for word in words.iter_mut() {
+            let nwords = if v2 { OrgStats::WORDS } else { 31 };
+            for word in words.iter_mut().take(nwords) {
                 *word = p.u64()?;
             }
             let slot = id.checked_sub(FIRST_ID).map(|s| s as usize).filter(|&s| s < issued);
@@ -1751,6 +1890,9 @@ impl Sim {
                 parent,
                 stats: OrgStats::from_words(words),
                 cycle_debt,
+                income_tick_m,
+                income_prev_m,
+                drain_left_m,
                 first_foreign_off: has_off.then_some(off),
             });
         }
@@ -2634,6 +2776,118 @@ alloc C
         assert!(sim.orgs[0].flag);
     }
 
+    /// T12 unit setup: an 8-byte host of `zero D` at 2000 (quiet, `drain`
+    /// at 23, P = 50, L = 50) with an open window of 20 units, and a
+    /// one-byte `drain` at 1000 with 10 units. Returns the sim and the ids
+    /// (host, drainer); the drainer is `orgs[1]`.
+    fn drain_pair() -> (Sim, u32, u32) {
+        let mut cfg = Config::default();
+        quiet(&mut cfg);
+        cfg.drain_op = 23;
+        let mut sim = Sim::new(cfg);
+        let body = crate::isa::assemble(&"zero D\n".repeat(8)).unwrap();
+        let host = sim.seed(2000, &body, 100 * MILLI, 0);
+        let g = sim.isa.assemble("drain\n").unwrap();
+        let drn = sim.seed(1900, &g, 10 * MILLI, 0);
+        sim.orgs[0].drain_left_m = 20 * MILLI;
+        (sim, host, drn)
+    }
+
+    #[test]
+    fn drain_takes_the_window_and_keeps_the_victims_upkeep() {
+        // One `drain` with A on the host: take = min(window, store less the
+        // host's upkeep, the drainer's room); half dissipates. The window
+        // closes as it is used; the host keeps its upkeep; the drainer
+        // takes no more than it has room for.
+        let ca = Config::default().cost_absorb;
+        let (mut sim, _, _) = drain_pair();
+        let cap = sim.cfg.cap_c0;
+        let out = sim.energy_out;
+        sim.orgs[1].regs[0] = 2003;
+        assert_eq!(sim.step(1, cap), Some(ca));
+        assert!(!sim.orgs[1].flag);
+        assert_eq!(sim.orgs[0].energy, 80 * MILLI);
+        assert_eq!(sim.orgs[0].drain_left_m, 0);
+        assert_eq!(sim.orgs[0].stats.drained_m, 20 * MILLI);
+        assert_eq!(sim.orgs[1].energy, 10 * MILLI + 10 * MILLI - ca);
+        assert_eq!(sim.orgs[1].stats.drain_gain_m, 10 * MILLI);
+        assert_eq!(sim.energy_out, out + 10 * MILLI + ca);
+        // The window is spent: the next drain takes nothing.
+        sim.orgs[1].ip = 1900;
+        assert_eq!(sim.step(1, cap), Some(ca));
+        assert!(sim.orgs[1].flag);
+        assert_eq!(sim.orgs[0].energy, 80 * MILLI);
+        assert_eq!((sim.orgs[1].stats.drains, sim.orgs[1].stats.drains_fail), (2, 1));
+        // Cannot kill: with 3 units above its upkeep the host gives 3.
+        let upkeep = 8 * sim.cfg.upkeep_per_byte;
+        sim.orgs[0].drain_left_m = 20 * MILLI;
+        sim.orgs[0].energy = upkeep + 3 * MILLI;
+        sim.orgs[1].ip = 1900;
+        sim.orgs[1].flag = false;
+        sim.step(1, cap);
+        assert_eq!(sim.orgs[0].energy, upkeep);
+        assert_eq!(sim.orgs[0].drain_left_m, 17 * MILLI);
+        // A pending region's upkeep is kept too.
+        sim.orgs[0].energy = upkeep + 3 * MILLI;
+        sim.orgs[0].pending = Some((3000, 10));
+        sim.orgs[1].ip = 1900;
+        sim.step(1, cap);
+        assert_eq!(sim.orgs[0].energy, upkeep + 3 * MILLI - (3 * MILLI - 10 * sim.cfg.upkeep_per_byte));
+        sim.orgs[0].pending = None;
+        // The drainer's room: 64 units cap for one byte.
+        sim.orgs[0].energy = 100 * MILLI;
+        sim.orgs[0].drain_left_m = 20 * MILLI;
+        sim.orgs[1].energy = 64 * MILLI - 2 * MILLI;
+        sim.orgs[1].ip = 1900;
+        sim.step(1, cap);
+        assert_eq!(sim.orgs[0].energy, 98 * MILLI, "the take is capped by the drainer's room");
+        assert_eq!(sim.orgs[1].energy, 64 * MILLI - 2 * MILLI + MILLI - ca);
+    }
+
+    #[test]
+    fn drain_needs_a_living_other_owner() {
+        // T12 test 4: `drain` with A on its own body, out of locality (a
+        // living owner's byte 513 away), on debris, on free memory, on a
+        // byte whose owner is dead but not yet retired, and retired: the
+        // fail flag is set, the drainer pays its cost and gains nothing, no
+        // one else's store moves, and `drains_fail` counts each.
+        let ca = Config::default().cost_absorb;
+        let (mut sim, host, drn) = drain_pair();
+        let cap = sim.cfg.cap_c0;
+        let check = |sim: &mut Sim, a: u32, what: &str| {
+            let k = sim.org_index(drn).unwrap();
+            let host_e = sim.org_index(host).map(|j| sim.orgs[j].energy);
+            let (e, fails, out) = (sim.orgs[k].energy, sim.orgs[k].stats.drains_fail, sim.energy_out);
+            sim.orgs[k].ip = 1900;
+            sim.orgs[k].flag = false;
+            sim.orgs[k].regs[0] = a;
+            assert_eq!(sim.step(k, cap), Some(ca), "{what}");
+            assert!(sim.orgs[k].flag, "{what}: no fail flag");
+            assert_eq!(sim.orgs[k].energy, e - ca, "{what}");
+            assert_eq!(sim.orgs[k].stats.drains_fail, fails + 1, "{what}");
+            assert_eq!(sim.orgs[k].stats.drain_gain_m, 0, "{what}");
+            assert_eq!(sim.energy_out, out + ca, "{what}");
+            assert_eq!(sim.org_index(host).map(|j| sim.orgs[j].energy), host_e, "{what}");
+        };
+        check(&mut sim, 1900, "own body");
+        sim.owner[1900 + 513] = host;
+        check(&mut sim, 1900 + 513, "living owner out of locality");
+        sim.owner[1900 + 513] = FREE;
+        sim.owner[1700] = DEBRIS;
+        check(&mut sim, 1700, "debris");
+        check(&mut sim, 1800, "free byte");
+        // Kill the host: its bytes become debris.
+        sim.cull_all_but(drn);
+        check(&mut sim, 2003, "dead host's body (debris)");
+        sim.owner[2004] = host;
+        check(&mut sim, 2004, "dead owner, not retired");
+        sim.retire();
+        sim.owner[2005] = host;
+        check(&mut sim, 2005, "retired owner");
+        let k = sim.org_index(drn).unwrap();
+        assert_eq!(sim.orgs[k].stats.drains, 7);
+    }
+
     #[test]
     fn loafer_dies_of_upkeep() {
         let mut cfg = Config::default();
@@ -2773,8 +3027,8 @@ alloc C
         f[0] = b'X';
         assert!(err(&f, &cfg).unwrap().contains("magic"));
         let mut f = file.clone();
-        f[8] = 2;
-        assert!(err(&f, &cfg).unwrap().contains("version 2"));
+        f[8] = 9;
+        assert!(err(&f, &cfg).unwrap().contains("version 9"));
         assert!(err(&file[..file.len() - 1], &cfg).unwrap().contains("truncated"));
         let mut f = file.clone();
         f.push(0);

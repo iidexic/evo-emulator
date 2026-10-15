@@ -12,8 +12,8 @@
 //!   `!void`; the `?` operator returns early on error like Zig's `try`.
 
 use crate::config::Config;
-use crate::isa::disasm_at;
-use crate::sim::{fnv1a, func_hash, Event, OrgStats, Sim};
+use crate::isa::Isa;
+use crate::sim::{fnv1a, func_hash_in, Event, OrgStats, Sim};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
@@ -111,10 +111,15 @@ pub fn hex(h: u64) -> String {
 }
 
 pub fn disasm(bytes: &[u8]) -> String {
+    disasm_in(&Isa::BASE, bytes)
+}
+
+/// `disasm` under a world's opcode table (T12: `drain` at its slot).
+pub fn disasm_in(isa: &Isa, bytes: &[u8]) -> String {
     let mut parts = Vec::new();
     let mut i = 0;
     while i < bytes.len() {
-        let (t, l) = disasm_at(bytes, i);
+        let (t, l) = isa.disasm_at(bytes, i);
         parts.push(t);
         i += l;
     }
@@ -245,7 +250,7 @@ impl Recorder {
             }
             per_patch[sim.patch_of(o.start)] += 1;
             let pending_len = o.pending.map_or(0, |(_, l)| l);
-            let op = crate::isa::decode(sim.bytes[o.ip as usize]).0;
+            let op = sim.isa.decode(sim.bytes[o.ip as usize]).0;
             writeln!(
                 self.orgs,
                 "{t},{},{},{},{},{},{pending_len},{},{},{},{},{},{},{}",
@@ -370,8 +375,8 @@ impl Recorder {
             writeln!(
                 g,
                 "{},{},{},{},{},{},{},{bytes_hex},{}",
-                hex(*h), hex(func_hash(&r.bytes)), r.bytes.len(), r.first_tick, r.first_id,
-                r.origin, hex(r.parent_hash), disasm(&r.bytes)
+                hex(*h), hex(func_hash_in(&sim.isa, &r.bytes)), r.bytes.len(), r.first_tick, r.first_id,
+                r.origin, hex(r.parent_hash), disasm_in(&sim.isa, &r.bytes)
             )?;
         }
         g.flush()?;

@@ -3,7 +3,8 @@
 //! by test (`--classify`), not by reading their disassembly.
 
 use crate::config::{Config, MILLI};
-use crate::sim::{fnv1a, func_hash, Event, Sim, FIRST_ID};
+use crate::isa::Isa;
+use crate::sim::{fnv1a, func_hash_in, Event, Sim, FIRST_ID};
 use std::io::Write;
 
 #[derive(Clone, Debug)]
@@ -151,6 +152,17 @@ pub struct HostResult {
     /// if it never did. 0 is the fall-through entry (running off its own
     /// end into the host's byte 0); anything else is a jump or a search.
     pub entry_off: i64,
+    /// `drain` (T12), milli-units: what the genome gained by `drain` and by
+    /// `absorb`, what the host lost to drains (as last seen alive), and the
+    /// genome's `drain` count and failed drains. 0 without `drain_op`.
+    pub drain_gain_m: i64,
+    pub absorb_gain_m: i64,
+    pub host_drained_m: i64,
+    pub drains: u64,
+    pub drains_fail: u64,
+    /// Deaths of the host by upkeep in the run (0 or 1: the harness stops
+    /// counting it once dead).
+    pub host_upkeep_deaths: u32,
 }
 
 /// Run `genome` immediately before `host` under `cfg`'s physics, noise off,
@@ -178,6 +190,12 @@ pub fn run_with_host(genome: &[u8], host: &[u8], ticks: u64, cfg: &Config) -> Ho
         cycles_taken_m: 0,
         host_cycles_lost_m: 0,
         entry_off: -1,
+        drain_gain_m: 0,
+        absorb_gain_m: 0,
+        host_drained_m: 0,
+        drains: 0,
+        drains_fail: 0,
+        host_upkeep_deaths: 0,
     };
     for t in 0..ticks {
         sim.run_tick();
@@ -185,8 +203,14 @@ pub fn run_with_host(genome: &[u8], host: &[u8], ticks: u64, cfg: &Config) -> Ho
         // it dies.
         if let Some(h) = sim.genome_of(host_id) {
             r.host_cycles_lost_m = h.stats.cycles_lost_m;
+            r.host_drained_m = h.stats.drained_m;
         }
         for ev in sim.events.drain(..) {
+            if let Event::Death { id, cause: crate::sim::DeathCause::Upkeep, .. } = ev {
+                if id == host_id {
+                    r.host_upkeep_deaths += 1;
+                }
+            }
             if let Event::Birth { executor, genome_hash, .. } = ev {
                 if executor == me_id {
                     r.births += 1;
@@ -215,6 +239,10 @@ pub fn run_with_host(genome: &[u8], host: &[u8], ticks: u64, cfg: &Config) -> Ho
     r.executed = me_org.stats.executed;
     r.exec_foreign = me_org.stats.exec_foreign;
     r.cycles_taken_m = me_org.stats.cycles_taken_m;
+    r.drain_gain_m = me_org.stats.drain_gain_m;
+    r.absorb_gain_m = me_org.stats.absorb_gain_m;
+    r.drains = me_org.stats.drains;
+    r.drains_fail = me_org.stats.drains_fail;
     r.entry_off = me_org.first_foreign_off.map_or(-1, i64::from);
     // `kill` zeroes a dead organism's store.
     r.host_energy = sim.genome_of(host_id).map_or(0, |o| o.energy);
@@ -324,6 +352,8 @@ pub const LABELS: [&str; 7] =
 /// One row of `neighbours.csv`.
 #[derive(Clone, Debug)]
 pub struct NeighbourRow {
+    /// The world's opcode table (T12), for `func_hash`.
+    pub isa: Isa,
     pub mutant: Mutant,
     pub alone: HarnessResult,
     pub host: HostResult,
@@ -342,7 +372,7 @@ impl NeighbourRow {
         format!(
             "{},{},{},{hex},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
             m.pos, m.kind, m.byte.map_or(String::new(), |b| b.to_string()),
-            crate::record::hex(fnv1a(&m.genome)), crate::record::hex(func_hash(&m.genome)),
+            crate::record::hex(fnv1a(&m.genome)), crate::record::hex(func_hash_in(&self.isa, &m.genome)),
             a.class(), a.births, a.exact_births, a.alive,
             h.births, h.exact_births, h.host_copies, h.host_exact_births, h.alive, h.host_alive,
             h.executed, h.exec_foreign, h.entry_off, h.ticks_run, self.label
@@ -359,6 +389,7 @@ impl NeighbourRow {
 pub fn neighbours(g: &[u8], host: &[u8], ticks: u64, cfg: &Config, set: MutantSet, threads: usize) -> Vec<NeighbourRow> {
     use std::sync::atomic::{AtomicUsize, Ordering};
     let ms = mutants(g, set);
+    let isa = Isa::new(cfg.drain_op);
     let next = AtomicUsize::new(0);
     let threads = threads.max(1).min(ms.len().max(1));
     // Each thread returns (index, row) pairs; `scope` joins them all before
@@ -377,7 +408,7 @@ pub fn neighbours(g: &[u8], host: &[u8], ticks: u64, cfg: &Config, set: MutantSe
                         let alone = run_alone_with(&m.genome, ticks, cfg);
                         let with = run_with_host(&m.genome, host, ticks, cfg);
                         let label = label(&alone, &with);
-                        got.push((i, NeighbourRow { mutant: m.clone(), alone, host: with, label }));
+                        got.push((i, NeighbourRow { isa, mutant: m.clone(), alone, host: with, label }));
                     }
                     got
                 })

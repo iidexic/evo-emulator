@@ -41,6 +41,11 @@ pub enum Op {
     Copy = 24,
     Alloc = 26,
     Divide = 28,
+    /// `drain` (T12): no fixed slot. It decodes only in a world whose
+    /// `Config::drain_op` names a slot (23 or 25), through that world's
+    /// `Isa`; the discriminant is outside the 5-bit space, so the base table
+    /// never yields it and `encode` must go through `Isa::encode`.
+    Drain = 32,
 }
 
 pub const OP_COUNT: usize = 25;
@@ -62,14 +67,65 @@ const TABLE: [Op; 32] = {
     t
 };
 
+/// Decode with the base table (no `drain`): every world before T12, and
+/// any world with `drain_op` 0.
 #[inline]
 pub fn decode(byte: u8) -> (Op, u8) {
     (TABLE[(byte & 0x1F) as usize], byte >> 5)
 }
 
+/// Encode one of the fixed ops. `Op::Drain` has no fixed slot: use
+/// `Isa::encode`.
 #[inline]
 pub fn encode(op: Op, modifier: u8) -> u8 {
+    debug_assert!(op != Op::Drain, "encode(Drain): use Isa::encode");
     (op as u8) | ((modifier & 7) << 5)
+}
+
+/// Slots `drain` may take (T12 §1.5): 23 is one bit from `absorb` (22),
+/// 25 four bits.
+pub const DRAIN_OPS: [u8; 2] = [23, 25];
+
+/// The opcode table of one world (T12): the base table, plus `drain` at
+/// `drain_op` when that is non-zero. Built once per `Sim` (`Sim::isa`), so
+/// decoding stays one array lookup. Rust note: a small `Copy` struct, like
+/// a Zig struct passed by value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Isa {
+    table: [Op; 32],
+    pub drain_op: u8,
+}
+
+impl Isa {
+    /// The base table: no `drain`.
+    pub const BASE: Isa = Isa { table: TABLE, drain_op: 0 };
+
+    /// The table with `drain` at `drain_op` (0: the base table). Panics on
+    /// any other slot than 0, 23 or 25.
+    pub fn new(drain_op: u8) -> Isa {
+        let mut isa = Isa::BASE;
+        if drain_op != 0 {
+            assert!(DRAIN_OPS.contains(&drain_op), "drain_op must be 0, 23 or 25, not {drain_op}");
+            isa.table[drain_op as usize] = Op::Drain;
+            isa.drain_op = drain_op;
+        }
+        isa
+    }
+
+    #[inline]
+    pub fn decode(&self, byte: u8) -> (Op, u8) {
+        (self.table[(byte & 0x1F) as usize], byte >> 5)
+    }
+
+    #[inline]
+    pub fn encode(&self, op: Op, modifier: u8) -> u8 {
+        if op == Op::Drain {
+            assert!(self.drain_op != 0, "drain has no opcode in this world (drain_op 0)");
+            self.drain_op | ((modifier & 7) << 5)
+        } else {
+            encode(op, modifier)
+        }
+    }
 }
 
 /// Register index 0..4 (A, B, C, D) from a modifier.
@@ -103,13 +159,21 @@ impl Op {
             Op::Zero => "zero", Op::Lit => "lit", Op::Swap => "swap", Op::Self_ => "self",
             Op::Load => "load", Op::Store => "store", Op::Absorb => "absorb",
             Op::Copy => "copy", Op::Alloc => "alloc", Op::Divide => "divide",
+            Op::Drain => "drain",
         }
     }
 }
 
 /// Tiny assembler for hand-written genomes and tests. One instruction per
 /// element: `"self"`, `"swap B"`, `"lit D -4"`, `"self 2"` (modifier).
+/// Base table: `drain` is refused (`Isa::assemble` takes it).
 pub fn assemble(src: &str) -> Result<Vec<u8>, String> {
+    Isa::BASE.assemble(src)
+}
+
+impl Isa {
+    /// `assemble` in this world: `drain` encodes at `drain_op`.
+    pub fn assemble(&self, src: &str) -> Result<Vec<u8>, String> {
     let mut out = Vec::new();
     for line in src.lines() {
         let line = line.split(';').next().unwrap().trim();
@@ -118,15 +182,22 @@ pub fn assemble(src: &str) -> Result<Vec<u8>, String> {
         }
         let mut parts = line.split_whitespace();
         let name = parts.next().unwrap();
-        let op = ALL.iter().copied().find(|o| o.name() == name)
-            .ok_or_else(|| format!("unknown op {name:?}"))?;
+        let op = if name == "drain" {
+            if self.drain_op == 0 {
+                return Err("drain has no opcode without a drain_op".to_string());
+            }
+            Op::Drain
+        } else {
+            ALL.iter().copied().find(|o| o.name() == name)
+                .ok_or_else(|| format!("unknown op {name:?}"))?
+        };
         let arg = parts.next();
         let modifier = match arg {
             Some("A") => 0, Some("B") => 1, Some("C") => 2, Some("D") => 3,
             Some(n) => n.parse::<u8>().map_err(|e| format!("{line}: {e}"))?,
             None => 0,
         };
-        out.push(encode(op, modifier));
+        out.push(self.encode(op, modifier));
         if op == Op::Lit {
             let v: i32 = parts.next().ok_or(format!("{line}: lit needs a value"))?
                 .parse().map_err(|e| format!("{line}: {e}"))?;
@@ -137,6 +208,7 @@ pub fn assemble(src: &str) -> Result<Vec<u8>, String> {
         }
     }
     Ok(out)
+    }
 }
 
 pub const ALL: [Op; OP_COUNT] = [
@@ -161,10 +233,17 @@ pub fn uses_reg(op: Op) -> bool {
 /// `min(mod, 2)`, other ops get modifier 0, unassigned opcodes become `pad`,
 /// and a `lit` operand byte is kept verbatim.
 pub fn canonical(bytes: &[u8]) -> Vec<u8> {
+    Isa::BASE.canonical(bytes)
+}
+
+impl Isa {
+    /// `canonical` in this world: under a `drain_op` the drain slot is kept
+    /// (modifier 0), not turned into `pad`.
+    pub fn canonical(&self, bytes: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
-        let (op, m) = decode(bytes[i]);
+        let (op, m) = self.decode(bytes[i]);
         let cm = if uses_reg(op) {
             m & 3
         } else if op == Op::Self_ {
@@ -172,7 +251,7 @@ pub fn canonical(bytes: &[u8]) -> Vec<u8> {
         } else {
             0
         };
-        out.push(encode(op, cm));
+        out.push(self.encode(op, cm));
         if op == Op::Lit && i + 1 < bytes.len() {
             out.push(bytes[i + 1]);
             i += 1;
@@ -180,11 +259,18 @@ pub fn canonical(bytes: &[u8]) -> Vec<u8> {
         i += 1;
     }
     out
+    }
 }
 
 /// Disassemble one instruction at `bytes[i]`. Returns text and length.
 pub fn disasm_at(bytes: &[u8], i: usize) -> (String, usize) {
-    let (op, m) = decode(bytes[i]);
+    Isa::BASE.disasm_at(bytes, i)
+}
+
+impl Isa {
+    /// `disasm_at` in this world (`drain` at `drain_op`).
+    pub fn disasm_at(&self, bytes: &[u8], i: usize) -> (String, usize) {
+    let (op, m) = self.decode(bytes[i]);
     let regname = ["A", "B", "C", "D"][reg_of(m)];
     match op {
         Op::Lit => {
@@ -196,6 +282,7 @@ pub fn disasm_at(bytes: &[u8], i: usize) -> (String, usize) {
         | Op::Jmpa | Op::Alloc | Op::Divide => (format!("{} {regname}", op.name()), 1),
         Op::Self_ => (format!("self {}", m), 1),
         _ => (op.name().to_string(), 1),
+    }
     }
 }
 

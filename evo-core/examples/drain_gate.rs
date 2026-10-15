@@ -1,0 +1,92 @@
+//! T12 §3, the harness gate for `drain` (docs/tasks/T12-drain-income-take.md):
+//! G1 (the tierra ancestor with its `absorb` flipped to `drain`) and G2 (the
+//! designed drainer of tests/drain.rs) before the tierra ancestor under
+//! `tierra_n0`'s physics (`--sun 2`, the fixed edge), 3,000 harness ticks.
+//!
+//! cargo run --release --example drain_gate [g1|g2|k K] [ticks]
+
+use evo_core::config::Config;
+use evo_core::harness::{run_alone_with, run_with_host, HostResult};
+use evo_core::isa::Isa;
+use evo_core::sim::{ancestor_t, ANCESTOR_T_K};
+
+fn drainer(isa: &Isa, k: i8) -> Vec<u8> {
+    isa.assemble(&format!(
+        "self\nadd B\nlit C {k}\nlit D -5\ndrain\nabsorb\ndec C\nskipz C\njmpr D\nself\nswap B\nswap C\nalloc C\nlit D -4\ncopy\ndec C\nskipz C\njmpr D\nlit A 16\ndivide A\nself\njmpa A\n"
+    ))
+    .unwrap()
+}
+
+fn cfg(op: u8, pct: i64, loss: i64) -> Config {
+    let mut c = Config::default();
+    c.patch_income *= 2;
+    c.patch_cap *= 2;
+    c.drain_op = op;
+    c.drain_pct = pct;
+    c.drain_loss_pct = loss;
+    c
+}
+
+fn row(label: &str, r: &HostResult) {
+    println!(
+        "{label:<28} | {:>6} {:>6} {:>5} | {:>6} {:>5} {:>8.1} | {:>10.1} {:>10.1} {:>7} {:>7} {:>5}",
+        r.births, r.exact_births, r.alive, r.host_exact_births, r.host_alive, r.host_drained_m as f64 / 1e3,
+        r.drain_gain_m as f64 / 1e3, r.absorb_gain_m as f64 / 1e3, r.drains, r.drains_fail, r.ticks_run
+    );
+}
+
+const HEAD: &str = "row                          | births  exact alive | host_x h_alv host_drnd | drain_gain absorb_gain  drains   fails ticks";
+
+fn main() {
+    let a: Vec<String> = std::env::args().skip(1).collect();
+    let what = a.first().map(String::as_str).unwrap_or("g2");
+    let ticks: u64 = 3000;
+    let host = ancestor_t(ANCESTOR_T_K, 16);
+    let alone = run_alone_with(&host, ticks, &cfg(0, 50, 50));
+    println!("tierra ancestor alone, sun 2: {} exact births in {ticks} ticks", alone.exact_births);
+    match what {
+        "g1" => {
+            let mut m = host.clone();
+            m[8] ^= 1;
+            println!("G1 mutant: byte 8 {:02x} -> {:02x}; {}", host[8], m[8], evo_core::record::disasm_in(&Isa::new(23), &m));
+            println!("{HEAD}");
+            for op in [0u8, 23, 25] {
+                let r = run_with_host(&m, &host, ticks, &cfg(op, 50, 50));
+                row(&format!("flip before anc, op {op}"), &r);
+                let s = run_alone_with(&m, ticks, &cfg(op, 50, 50));
+                println!("  alone op {op}: class {} births {} exact {} alive {}", s.class(), s.births, s.exact_births, s.alive);
+            }
+        }
+        "k" => {
+            let k: i8 = a.get(1).and_then(|t| t.parse().ok()).unwrap_or(40);
+            println!("{HEAD}");
+            for kk in [k] {
+                let isa = Isa::new(23);
+                let d = drainer(&isa, kk);
+                for (p, l) in [(5, 50), (10, 50), (25, 50), (50, 50)] {
+                    let r = run_with_host(&d, &host, ticks, &cfg(23, p, l));
+                    row(&format!("K {kk} P {p} L {l}"), &r);
+                }
+                let s = run_alone_with(&d, ticks, &cfg(23, 50, 50));
+                println!("  alone: class {} exact {} alive {}", s.class(), s.exact_births, s.alive);
+            }
+        }
+        _ => {
+            let k: i8 = a.get(1).and_then(|t| t.parse().ok()).unwrap_or(120);
+            println!("designed drainer K {k}, {} bytes", drainer(&Isa::new(23), k).len());
+            println!("{HEAD}");
+            for op in [23u8, 25] {
+                let isa = Isa::new(op);
+                let d = drainer(&isa, k);
+                let off = run_with_host(&d, &host, ticks, &cfg(0, 50, 50));
+                row(&format!("op {op} flag off (drain=pad)"), &off);
+                for p in [25, 50, 100] {
+                    for l in [0, 50, 90] {
+                        let r = run_with_host(&d, &host, ticks, &cfg(op, p, l));
+                        row(&format!("op {op} P {p:>3} L {l:>2}"), &r);
+                    }
+                }
+            }
+        }
+    }
+}

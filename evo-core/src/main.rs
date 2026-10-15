@@ -8,6 +8,7 @@
 //!          [--locality N] [--out DIR] [--census N] [--sun N] [--rot P]
 //!          [--self-owner] [--charge-owner] [--charge-owner-pct N] [--transfer-pct N]
 //!          [--cycle-theft-pct N] [--cycle-tax-pct P] [--cycle-tax-frac F]
+//!          [--drain-op 23|25] [--drain-pct P] [--drain-loss-pct L]
 //!          [--world-e001] [--founder HEX:COUNT]... [--inject TICK:HEX:COUNT]...
 //!          [--state-every N] [--replay-from FILE]
 //! evo-core --classify DIR [--harness-ticks N] [--classes-out NAME] [physics flags]
@@ -85,6 +86,19 @@
 //! (after upkeep, in the shuffled order). The three flags combine with each
 //! other and with any energy rule; nothing is refused.
 //!
+//! --drain-op 23|25 (T12; default off, the slot stays `pad` and the run is
+//! bit-identical to no flag) decodes that opcode slot as `drain`: 23 is one
+//! bit from `absorb` (22), 25 four bits. `drain` targets the living other
+//! owner of the byte at A within locality of IP (otherwise it sets the flag
+//! and only costs its energy, `cost_absorb`). It takes at most
+//! --drain-pct P percent (0-100, default 50) of the victim's `absorb` gain
+//! over its previous turn, all drains of that turn together; never more
+//! than leaves the victim its next upkeep; never more than the drainer's
+//! room below its store cap. --drain-loss-pct L percent (0-100, default
+//! 50) of each take dissipates, the drainer gains the rest. Energy is
+//! matter: `drain` takes from a neighbour's recent intake, with loss.
+//! --drain-pct and --drain-loss-pct do nothing without --drain-op.
+//!
 //! --founder HEX:COUNT (repeatable, E009a) seeds COUNT copies of the genome
 //! HEX, 100 units each, instead of the one ancestor. All copies from all
 //! --founder flags are placed in the order given (first flag's copies
@@ -142,11 +156,14 @@
 //! --host HEX runs the genome given as hex immediately before the ancestor
 //! (two-genome harness, E005) and prints a CSV header and one row:
 //! `len,births,exact_births,host_copies,host_exact_births,alive,host_alive,
-//! executed,exec_foreign,ticks_run,stopped_early,entry_off`: the genome's
+//! executed,exec_foreign,ticks_run,stopped_early,entry_off,drain_gain_m,
+//! absorb_gain_m,host_drained_m,drains,drains_fail,host_energy_m`: the genome's
 //! births and exact births, the host copies it made, the host's exact
 //! births, who is alive, the genome's foreign-execution share, how many
 //! ticks ran, and where it first ran a host byte (offset from the host's
-//! start, -1 if never; T03).
+//! start, -1 if never; T03); then (T12) the genome's gain by `drain` and by
+//! `absorb`, what the host lost to drains, the genome's drains and failed
+//! drains, and the host's final store (0 if dead), in milli-units.
 //! The harness stops when the genome dies, so `stopped_early` = true means
 //! fewer than --harness-ticks ticks were simulated and the counts cover only
 //! `ticks_run` ticks (E007: not evidence of a resistant host). Physics flags
@@ -224,6 +241,7 @@ fn main() {
     let mut state_every: Option<u64> = None;
     let mut replay_from: Option<String> = None;
     let mut seed_given: Option<u64> = None;
+    let mut disasm_hex: Option<String> = None;
     let mut i = 0;
     while i < args.len() {
         let next = || args.get(i + 1).expect("missing value").clone();
@@ -287,7 +305,8 @@ fn main() {
                 i += 1;
             }
             // Disassemble hex bytes and exit: for reading world.bin from Python.
-            "--disasm" => { println!("{}", evo_core::record::disasm(&parse_hex(&next()))); return; }
+            // Under --drain-op (anywhere on the line) `drain` shows at its slot.
+            "--disasm" => { disasm_hex = Some(next()); i += 1; }
             "--host-pad" => host_pad = true,
             "--k" => { k = Some(next().parse().unwrap()); i += 1; }
             "--e" => { e = next().parse().unwrap(); i += 1; }
@@ -329,11 +348,36 @@ fn main() {
                 assert!((0.0..=1.0).contains(&cfg.cycle_tax_frac), "--cycle-tax-frac must be 0-1");
                 i += 1;
             }
+            "--drain-op" => {
+                let v: u8 = next().parse().expect("--drain-op wants 23 or 25");
+                if !evo_core::isa::DRAIN_OPS.contains(&v) {
+                    eprintln!("error: --drain-op wants 23 or 25, not {v}");
+                    std::process::exit(2);
+                }
+                cfg.drain_op = v;
+                i += 1;
+            }
+            "--drain-pct" => {
+                cfg.drain_pct = next().parse().expect("--drain-pct P must be a whole number");
+                assert!((0..=100).contains(&cfg.drain_pct), "--drain-pct must be 0-100");
+                i += 1;
+            }
+            "--drain-loss-pct" => {
+                cfg.drain_loss_pct = next().parse().expect("--drain-loss-pct L must be a whole number");
+                assert!((0..=100).contains(&cfg.drain_loss_pct), "--drain-loss-pct must be 0-100");
+                i += 1;
+            }
             "--world-e001" => {}
             "--no-protect" => cfg.write_protection = false,
             other => { eprintln!("unknown arg {other}"); std::process::exit(2); }
         }
         i += 1;
+    }
+
+    if let Some(hex) = disasm_hex {
+        let isa = evo_core::isa::Isa::new(cfg.drain_op);
+        println!("{}", evo_core::record::disasm_in(&isa, &parse_hex(&hex)));
+        return;
     }
 
     // The transfer (E010) and the owner-pays rules (E008, E009) are
@@ -389,12 +433,13 @@ fn main() {
         let h = host_body.map(|hx| parse_hex(&hx)).unwrap_or_else(|| kind.body(k, e));
         let r = harness::run_with_host(&g, &h, harness_ticks, &cfg);
         println!(
-            "len,births,exact_births,host_copies,host_exact_births,alive,host_alive,executed,exec_foreign,ticks_run,stopped_early,entry_off"
+            "len,births,exact_births,host_copies,host_exact_births,alive,host_alive,executed,exec_foreign,ticks_run,stopped_early,entry_off,drain_gain_m,absorb_gain_m,host_drained_m,drains,drains_fail,host_energy_m"
         );
         println!(
-            "{},{},{},{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
             g.len(), r.births, r.exact_births, r.host_copies, r.host_exact_births, r.alive,
-            r.host_alive, r.executed, r.exec_foreign, r.ticks_run, r.stopped_early, r.entry_off
+            r.host_alive, r.executed, r.exec_foreign, r.ticks_run, r.stopped_early, r.entry_off,
+            r.drain_gain_m, r.absorb_gain_m, r.host_drained_m, r.drains, r.drains_fail, r.host_energy
         );
         return;
     }
@@ -552,7 +597,7 @@ fn main() {
     // Top genotypes with disassembly.
     for (h, count, len) in sim.census().into_iter().take(5) {
         let o = sim.orgs.iter().find(|o| o.alive && o.genome_hash == h).unwrap();
-        eprintln!("# {count:6} x len {len:3} [{h:016x}] {}", evo_core::record::disasm(&o.genome));
+        eprintln!("# {count:6} x len {len:3} [{h:016x}] {}", evo_core::record::disasm_in(&sim.isa, &o.genome));
     }
 }
 
