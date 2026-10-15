@@ -444,6 +444,202 @@ pub fn neighbours_summary(rows: &[NeighbourRow]) -> String {
     s
 }
 
+// ---- T07: replicator density by uniform sampling (`--density LEN:N`) ---------
+
+/// The ring a density body is tested in (T07 §1): 8,192 bytes in 16
+/// patches of 512. A lone body never reaches past its locality radius
+/// (512 by default), so the world beyond it only costs time.
+pub const DENSITY_WORLD: u32 = 8192;
+pub const DENSITY_PATCH: u32 = 512;
+
+/// `cfg` in the density world: world size `DENSITY_WORLD`, patch size
+/// `DENSITY_PATCH`, per-patch income and cap rescaled as `--patch` does so
+/// energy per byte is `cfg`'s; every other field as given. Under the
+/// default physics (patches of 512) only the world size changes.
+pub fn density_config(cfg: &Config) -> Config {
+    let mut c = cfg.clone();
+    let base = c.patch_size as i64;
+    c.patch_income = c.patch_income * DENSITY_PATCH as i64 / base;
+    c.patch_cap = c.patch_cap * DENSITY_PATCH as i64 / base;
+    c.patch_size = DENSITY_PATCH;
+    c.world_size = DENSITY_WORLD;
+    c
+}
+
+/// Where a density run's bodies come from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DensitySource {
+    /// Uniform sampling (`--density`): body i is draws i * len to
+    /// (i + 1) * len - 1 of `Rng::new(seed).below(256)`, taken in order, so
+    /// a larger N extends the sample without changing its first bodies.
+    Uniform { seed: u64 },
+    /// Every body of the length (`--enumerate`): body i is i written in base
+    /// 256, most significant byte first, so the bodies are in lexicographic
+    /// order. Needs `len` <= 7 and `n` <= 256^len.
+    Every,
+}
+
+/// What a density run tests (T07 §1).
+#[derive(Clone, Debug)]
+pub struct DensitySpec {
+    pub len: usize,
+    pub n: u64,
+    /// Harness ticks per body (the run stops early on death).
+    pub ticks: u64,
+    pub source: DensitySource,
+    /// Test hook: body 0 is drawn as usual, so the rest of the sample does
+    /// not move, and is then replaced by these bytes (of any length).
+    pub plant: Option<Vec<u8>>,
+    /// Test hook: keep every body's row, not only those that are neither
+    /// `dies` nor `loafer`.
+    pub keep_all: bool,
+}
+
+/// One tested body: its index in the sample, its bytes, its harness run.
+#[derive(Clone, Debug)]
+pub struct DensityRow {
+    pub index: u64,
+    pub genome: Vec<u8>,
+    pub result: HarnessResult,
+}
+
+/// The classes in the order the density summary prints them
+/// (`HarnessResult::class`).
+pub const CLASSES: [&str; 5] = ["replicator", "one_shot", "inexact", "loafer", "dies"];
+
+#[derive(Clone, Debug)]
+pub struct DensityResult {
+    /// Bodies per class, in `CLASSES` order; they sum to `n`.
+    pub counts: [u64; 5],
+    /// The kept rows (every body that is neither `dies` nor `loafer`, or
+    /// every body with `keep_all`), in sample order.
+    pub rows: Vec<DensityRow>,
+}
+
+/// `--density-out`'s header; `index` is the body's place in the sample.
+pub const DENSITY_HEADER: &str = "index,hex,class,births,exact_births,first_birth_tick,executed";
+/// The stdout header of `--density` and `--enumerate`.
+pub const DENSITY_SUMMARY_HEADER: &str = "len,n,ticks,replicator,one_shot,inexact,loafer,dies,seconds";
+
+/// Bodies a thread claims at a time.
+const DENSITY_CHUNK: u64 = 256;
+
+impl DensityRow {
+    /// The CSV row (columns as `DENSITY_HEADER`).
+    pub fn csv_row(&self) -> String {
+        let r = &self.result;
+        let hex: String = self.genome.iter().map(|b| format!("{b:02x}")).collect();
+        format!("{},{hex},{},{},{},{},{}", self.index, r.class(), r.births, r.exact_births, r.first_birth_tick, r.executed)
+    }
+}
+
+/// Test `spec.n` bodies of `spec.len` bytes, each alone in the quiet
+/// harness (`run_alone_with`: noise off, 100 units of seed energy,
+/// children removed every tick) for `spec.ticks` ticks in the density
+/// world (`density_config(cfg)`), and count them by class.
+///
+/// Threads as `neighbours`: each of `threads` threads claims the next
+/// chunk of `DENSITY_CHUNK` bodies under a lock, and for uniform sampling
+/// draws the chunk's bytes from the one shared PRNG while it holds the
+/// lock, so chunks are drawn in sample order and body i is the same at any
+/// thread count. Kept rows are sorted by index at the end, so the result
+/// does not depend on the thread count.
+pub fn density(spec: &DensitySpec, cfg: &Config, threads: usize) -> DensityResult {
+    use std::sync::Mutex;
+    let len = spec.len;
+    assert!(len > 0 && spec.n > 0, "a density run needs LEN >= 1 and N >= 1");
+    if spec.source == DensitySource::Every {
+        assert!(len <= 7 && spec.n <= 1u64 << (8 * len), "enumeration needs LEN <= 7 and N <= 256^LEN");
+    }
+    let cfg = density_config(cfg);
+    // The next unclaimed body and the PRNG positioned at its first byte.
+    let seed = match spec.source {
+        DensitySource::Uniform { seed } => seed,
+        DensitySource::Every => 0,
+    };
+    let draw = Mutex::new((0u64, crate::rng::Rng::new(seed)));
+    let chunks = (spec.n + DENSITY_CHUNK - 1) / DENSITY_CHUNK;
+    let threads = threads.max(1).min(chunks.min(usize::MAX as u64) as usize);
+    let parts: Vec<([u64; 5], Vec<DensityRow>)> = std::thread::scope(|s| {
+        let handles: Vec<_> = (0..threads)
+            .map(|_| {
+                s.spawn(|| {
+                    let mut counts = [0u64; 5];
+                    let mut kept = Vec::new();
+                    let mut buf: Vec<u8> = Vec::new();
+                    loop {
+                        // Claim a chunk; the lock is released at the end of
+                        // this block, before any body runs.
+                        let first = {
+                            let mut g = draw.lock().expect("density lock poisoned");
+                            let (next, rng) = &mut *g;
+                            if *next >= spec.n {
+                                break;
+                            }
+                            let k = DENSITY_CHUNK.min(spec.n - *next);
+                            buf.clear();
+                            match spec.source {
+                                DensitySource::Uniform { .. } => {
+                                    buf.extend((0..k * len as u64).map(|_| rng.below(256) as u8));
+                                }
+                                DensitySource::Every => {
+                                    for i in *next..*next + k {
+                                        buf.extend((0..len).rev().map(|d| (i >> (8 * d)) as u8));
+                                    }
+                                }
+                            }
+                            let first = *next;
+                            *next += k;
+                            first
+                        };
+                        for (j, body) in buf.chunks(len).enumerate() {
+                            let index = first + j as u64;
+                            let g: &[u8] = match &spec.plant {
+                                Some(p) if index == 0 => p,
+                                _ => body,
+                            };
+                            let r = run_alone_with(g, spec.ticks, &cfg);
+                            let c = CLASSES.iter().position(|&x| x == r.class()).expect("class not in CLASSES");
+                            counts[c] += 1;
+                            // CLASSES[3..] are `loafer` and `dies`.
+                            if spec.keep_all || c < 3 {
+                                kept.push(DensityRow { index, genome: g.to_vec(), result: r });
+                            }
+                        }
+                    }
+                    (counts, kept)
+                })
+            })
+            .collect();
+        handles.into_iter().map(|h| h.join().expect("density thread panicked")).collect()
+    });
+    let mut counts = [0u64; 5];
+    let mut rows = Vec::new();
+    for (c, k) in parts {
+        for (a, b) in counts.iter_mut().zip(c) {
+            *a += b;
+        }
+        rows.extend(k);
+    }
+    rows.sort_by_key(|r| r.index);
+    DensityResult { counts, rows }
+}
+
+/// Write `rows` as the `--density-out` file (header, then one row each).
+pub fn write_density<W: Write>(w: &mut W, rows: &[DensityRow]) -> std::io::Result<()> {
+    writeln!(w, "{DENSITY_HEADER}")?;
+    for r in rows {
+        writeln!(w, "{}", r.csv_row())?;
+    }
+    Ok(())
+}
+
+/// The stdout row (columns as `DENSITY_SUMMARY_HEADER`).
+pub fn density_summary(spec: &DensitySpec, res: &DensityResult, seconds: f64) -> String {
+    let c = res.counts;
+    format!("{},{},{},{},{},{},{},{},{seconds:.2}", spec.len, spec.n, spec.ticks, c[0], c[1], c[2], c[3], c[4])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

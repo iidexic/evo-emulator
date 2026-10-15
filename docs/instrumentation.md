@@ -487,6 +487,45 @@ the table's order), and the `parasite_jump` rows grouped by position:
 rows, deletions among them, entry offsets with counts, and the range of
 `exact_host`.
 
+## Density (`--density LEN:N`, `--enumerate LEN`)
+
+Added 2026-10-15 (T07, line B step B0; `harness::density`). How rare is
+a self-replicator among random bodies:
+
+    evo-core --density LEN:N [--density-ticks T] [--density-out FILE]
+             [--threads K] [--seed S] [physics flags]
+    evo-core --enumerate LEN [--density-ticks T] [--density-out FILE]
+             [--threads K] [physics flags]
+
+`--density`: body i (from 0) is draws i x LEN to (i + 1) x LEN - 1 of
+`Rng::new(S).below(256)` taken in order, S from `--seed` (default 1),
+so the first n bodies of a larger N are the same. `--enumerate LEN`
+(LEN 1-3) tests every body of LEN bytes instead, 256^LEN of them, body i
+being i in base 256 with the most significant byte first.
+
+Each body runs alone in the quiet harness (`run_alone_with`: noise off,
+100 units of seed energy, children removed every tick) for
+`--density-ticks` ticks (default 1,000; stopped on death) in a ring of
+8,192 bytes in 16 patches of 512 (`harness::density_config`: per-patch
+income and cap rescaled as `--patch` does, every other physics flag as
+given; under the default physics the lone 21-byte ancestor's run is the
+same as in the full world, tested). Classes as the classifier's table
+above. Threads as `--neighbours`: chunks of 256 bodies claimed in
+sample order, so the counts and the file are the same at any `--threads`
+(tested).
+
+stdout: `len,n,ticks,replicator,one_shot,inexact,loafer,dies,seconds`
+(one header, one row; `seconds` is wall time). stderr: the index and hex
+of every replicator, and the time per body.
+
+`--density-out FILE`: one row per body that is neither `dies` nor
+`loafer`, in sample order:
+
+`index,hex,class,births,exact_births,first_birth_tick,executed`
+
+`index` is the body's place in the sample (for `--density`, with LEN and
+S it regenerates the body); the rest are the classifier's columns.
+
 ## Analysis (`analysis/`)
 
 - `evo_run.py`: `load(run_dir)` returns polars frames for every file above
