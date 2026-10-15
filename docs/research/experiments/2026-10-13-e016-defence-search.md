@@ -599,3 +599,37 @@ this world has. The record's claim that no closed defence exists one
 substitution away stands (the neighbourhood screen); the claim that
 none arose does not.
 
+### 8.9 Reachability of a tolerant defence (T11 §1 and §3, 2026-10-15)
+
+Insertions added to `--neighbours` (`--neighbours-ins`, commit
+`03e2b19`; the substitution and deletion rows reproduce the earlier
+files exactly) and screened as §1's neighbourhood was
+(`e016_defence.py screen --nbhd-ins`, `runs/e016/nbhd_screen_*_ins.csv`):
+
+| ancestor / arm | kind | mutants | replicator alone | immune | tolerant | complete |
+|---|---|---|---|---|---|---|
+| tierra / tierra_n0 | ins | 10,752 | 4,810 | 0 | 0 | 0 |
+| | sub + del | 10,496 | 1,609 | 0 | 0 | 0 |
+| std / std_n0 | ins | 5,632 | 2,744 | 6 | 0 | 6 (structural) |
+| | sub + del | 5,376 | 462 | 22 | 0 | 22 |
+
+No single insertion, substitution or deletion of the template body is
+complete by either test. Of the tierra ancestor's 829 `parasite_jump`
+insertions, 752 sit inside L1: an insertion into the label opens it
+as a flip does.
+
+The designed eject (commit `67c5ce3`): E009b's six bytes cannot sit in
+this copy loop (they read 0 only at a body's byte 0, so the host
+ejects itself and makes 0 children). The nearest working eject is
+seven bytes inserted before `alloc C` (`self 1 ; sub B ; lit D 25 ;
+sub D ; skipz A ; jmpa D`): the 48-byte body makes 2 exact children in
+3,000 harness ticks against the ancestor's 119, and **seven inert
+bytes in the same place cost the same**, so the loss is the length,
+not the check. At K = 127 (the largest `lit` value) and sun 2 the
+template body has no energy margin for seven more bytes of upkeep.
+Reachability statement for §8.7 item 2: the nearest tolerant defence
+is seven insertions away and costs 98% of the ancestor's rate, and
+any insertion-sized defence pays that length cost before it pays for
+itself. The negative on tolerant defences is a margin result as much
+as a supply result.
+
