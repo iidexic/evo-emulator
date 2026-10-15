@@ -1,7 +1,13 @@
 # T10. A survivable matched control: the lifelong cycle tax
 
 Status: specified 2026-10-15 (Fable, from E016 record §8.1 and §8.7
-item 2); not built. Builder: Opus. Argument: E016's random per-tick tax
+item 2); built 2026-10-15 (Opus; `749f8ae` engine and tests, `3272adf`
+runner and calibration; §7 below). The §2.2 mean check **fails** (F =
+0.4299, P = 66: F × P = 28.4% of cap against 21.1%), and the §4 pilot
+gate **fails as registered** at both pairs (6 and 7 of 10 inside
+tierra_n0's band), every miss but one a founder that drew taxed and died
+before its first child; with E016 §5's founder-loss exclusion both hold
+(9 of 10). The 30 seeds are not launched. Builder: Opus. Argument: E016's random per-tick tax
 at the calibrated rate (P = 88, F = 0.2398) killed 25 of 30 seeds where
 the targeted theft killed none, so the one control H16 has cannot be
 read. This task gives the control the shape of the treatment, so that
@@ -156,3 +162,63 @@ population; test count and commit ids; the T10 row in
 `docs/tasks/README.md` and the Status line here updated. Do not launch
 the 30-seed arm: that is a decision after the pilot, taken with the
 E016 write-up.
+
+## 7. Build report (2026-10-15)
+
+Engine as §2 (`--cycle-tax-lifelong F P`, `Org::taxed_for_life` drawn in
+`Sim::seed`, which every creation goes through; F = 1 taxes with no
+draw, as the per-tick tax at F = 1). Two additions §2 did not ask for:
+`taxed_for_life` enters `state_hash` only when set, so a world with no
+taxed body keeps its old hash (T08's pinned hashes hold); and the
+snapshot format is version 2 while version 1 files (every E016
+snapshot) are still read, as the world with no lifelong tax, since
+otherwise a rebuilt binary could replay none of them. §5's five tests
+pass, plus the version 1 read; `cargo test` 77 before, 82 after.
+Test 2 measured 115 of 230 lone exact births (0.500); test 3 31,611 of
+62,417 deaths taxed (0.506).
+
+The harness runs untaxed (`harness_physics` in the runner): under the
+flag the harness bodies draw from the harness's fixed seed (seed 1 draws
+untaxed at F = 0.43, seed 2 taxed), and the tierra ancestor taxed for
+life at P = 66 dies alone at tick 73 with no child, so a taxed harness
+would class every genome `dies`. tierra_taxL's harness is tierra_n0's,
+as tierra_t50's `alone` is unentered.
+
+**Calibration (§2.2)**, tierra_t50 seeds 1–30, replicator-class deaths
+after 25,000 (`runs/e016/tierra_taxL_pilot/tax_life.json`): F =
+5,319,020 / 12,371,784 = 0.4299; mean `cycles_lost_m / age` over the
+entered deaths = 112,124,844,706.8 / 5,319,020 = 21,080.0 milli-units,
+P = 65.87, rounded to 66; r = 31,718,765,563,000 / 4,705,804,390 =
+6,740.35, as `tax.json`. Mean check: F × P = 28.38% of cap against r /
+cap = 21.06%, **+34.7%**, outside 2%. §1's "0.43 × 66% ≈ 21%" is the slip:
+it is 28%. The entered deaths hold 80.0% of the organism-ticks (mean age
+708 ticks against 133 unentered), so the count share times the
+per-death mean is not the per-tick mean. The time-weighted pair, F =
+0.8000 of organism-ticks in entered bodies and P = 26.33 (their pooled
+Σ lost / Σ age), multiplies to r / cap by construction; it is recorded
+beside and was not piloted.
+
+**Pilot (§4)**, 50,000 ticks, `runs/e016/tierra_taxL_pilot/` (per pair
+`pilot.csv`, `pilot.json`). tierra_n0's band (replicator-class census
+bodies, mean over ticks 25,000–50,000, its 29 persisting seeds): 189–253,
+median 230. The founder draws too, and at P = 66 or 88 a taxed founder
+dies at tick 73 or 79 with no child.
+
+| pair | seeds 1–10 persisted | inside the band (gate ≥ 8) | founders taxed in 1–10 | founder untaxed: persisted | first 10 of those inside the band | taxed share of rep. deaths | realised debit / cap |
+|---|---|---|---|---|---|---|---|
+| F 0.4299, P 66 (calibrated) | 6 | 6: fails | s2, s4, s5, s9 | 13 of 13 (seeds 1–20) | 9 (s17 at 254) | 42.6–43.4% | 5.3–6.7% |
+| F 0.2398, P 88 (E016's numbers) | 8 | 7: fails (s1 at 259) | s2, s9 (and s11) | 12 of 12 (seeds 1–15) | 9 (s1 at 259) | 23.8–24.3% | 0.5–0.8% |
+
+Reading, for the decision (not taken here): once the founder is
+untaxed, the lifelong shape persists in every seed at both pairs, with a
+replicator-class population inside or just above tierra_n0's band, so
+§1's inference holds as far as survival goes. But the debit it realises
+in the world is not the theft's: a body taxed at 66% or 88% for life is
+sterile and dies young, so the tax removes F of the births rather than
+slowing them, and the per-organism-tick debit is 6% or 0.7% of cap
+against the theft's 21.1%. Matched on the share of deaths, not on the
+mean. Two things to settle before E017: whether founders (and injected
+bodies) should draw at all, since no parasite can enter a body before
+one exists, or be counted out under E016 §5; and which pair is the
+control (the calibrated one, E016's, or the time-weighted one, which
+slows 80% of bodies by 26% and may fail as the per-tick tax did).
