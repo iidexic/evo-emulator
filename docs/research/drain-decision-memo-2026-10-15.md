@@ -207,6 +207,23 @@ labels) before the control is readable. T10 says whether the
 one-third effect is real; until then every further theft arm is
 reading an uncontrolled number.
 
+### 4.1 Addendum, the same night
+
+T12 was built and gated within hours (branch
+`worktree-agent-af767620b674b761b`, spec §5). Gate G2 **fails for the
+tierra body at sun 2 at every P and L**: a 10% income take kills the
+victim even from a full store, because the body is at break-even and
+the spec's floor (one tick's upkeep) leaves it unable to afford its
+next `absorb`; at P = 5 the victim lives and the take is 1.7% of the
+drainer's income, so draining buys nothing. The same margin that made
+the seven-byte eject unaffordable (E016 record §8.9) makes the victim
+unfarmable. A second G2 pass against bodies with slack (the std
+ancestor at sun 1, where hosts bank 600 units; tierra at sun 4) is
+running; if drain pays and the victim lives there, E018 runs on the
+std body in the standard world (H2's home) rather than on tierra at
+sun 2, and if not, branch C (scavenging) is next as §4 says. Either
+way the engine piece is built and flag-off bit-identical.
+
 ## 5. What Derek decides
 
 1. A (narrow `drain` gate) in parallel with B's two weeks: yes or no.
