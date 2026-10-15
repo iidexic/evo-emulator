@@ -218,11 +218,22 @@ next `absorb`; at P = 5 the victim lives and the take is 1.7% of the
 drainer's income, so draining buys nothing. The same margin that made
 the seven-byte eject unaffordable (E016 record §8.9) makes the victim
 unfarmable. A second G2 pass against bodies with slack (the std
-ancestor at sun 1, where hosts bank 600 units; tierra at sun 4) is
-running; if drain pays and the victim lives there, E018 runs on the
-std body in the standard world (H2's home) rather than on tierra at
-sun 2, and if not, branch C (scavenging) is next as §4 says. Either
-way the engine piece is built and flag-off bit-identical.
+ancestor at sun 1 and 2; tierra at sun 4; commit `f42c9b8`, spec
+§5.4) gave the same answer and the reason: in the two-body harness the
+pool stays near full, every `absorb` yields its full 8 units at any
+sun, and the drainer's births are set by its cycle length, not by
+energy, so a drain worth 1.6–3.2% of its income buys nothing, and a
+victim lives only while P is below its margin (std about 7%, tierra
+about 4%). Sun added no margin because sun only matters in a crowded
+world. So the gate as built does not test the world's condition,
+where the ration is short (95.6% break-even for tierra) and energy
+does bind. Before branch C, G2 has to be rerun with a depleted pool
+(a harness flag that pins the patch pool at a fraction of its cap, or
+a crowded harness: the victim and drainer among a dozen absorbers),
+and with a drainer that is energy-limited (a short absorb loop topped
+up by `drain`). That is a half-day; the engine piece is built and
+flag-off bit-identical. If drain does not pay even where energy
+binds, branch C (scavenging) is next as §4 says.
 
 ## 5. What Derek decides
 
