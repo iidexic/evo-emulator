@@ -831,7 +831,13 @@ epochs, takeover in 45 of 100; the original 40% at 2^-12.
   ancestor-neighbourhood counts of E015. If evo's density is orders
   of magnitude below BFF's 7.1 × 10^-11 per 64-byte program, seedless
   emergence on the ring is out of reach without an ISA change, and
-  that is known before the GPU is touched.
+  that is known before the GPU is touched. **Done 2026-10-15** (T07,
+  record `experiments/2026-10-15-b0-density.md`): no replicator and no
+  one-shot in 1.26 × 10^8 uniform bodies, bound 1.84 × 10^-7 per body
+  at LEN ≤ 32, 3.4 orders above BFF's figure, which a zero count
+  cannot reach; inexact copiers 1–4%. B1 and B2 go through the cubff
+  fork as planned; B3 (evo's ISA in a soup) is deferred, not ruled out,
+  since the U control is a floor and not the soup's rate.
 - **B1.** Reproduce Dušek on the local GPU (RTX 4070 SUPER, 12 GB;
   cubff fork `koutefra/bff-replicator-discovery`, regimes as flags),
   20 seeds first.
