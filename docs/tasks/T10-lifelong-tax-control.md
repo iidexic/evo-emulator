@@ -2,12 +2,13 @@
 
 Status: specified 2026-10-15 (Fable, from E016 record §8.1 and §8.7
 item 2); built 2026-10-15 (Opus; `749f8ae` engine and tests, `3272adf`
-runner and calibration; §7 below). The §2.2 mean check **fails** (F =
-0.4299, P = 66: F × P = 28.4% of cap against 21.1%), and the §4 pilot
-gate **fails as registered** at both pairs (6 and 7 of 10 inside
-tierra_n0's band), every miss but one a founder that drew taxed and died
-before its first child; with E016 §5's founder-loss exclusion both hold
-(9 of 10). The 30 seeds are not launched. Builder: Opus. Argument: E016's random per-tick tax
+runner and calibration; founders exempt `8ef2f7f`, calibration per
+organism-tick `e72de6b`; §7 below). Calibrated F = 0.79995, P = 26:
+mean check holds (F × P 20.80% of cap against 21.06%). Pilot at that
+pair, founders exempt (§7.2): persists **10 of 10**, but only **7 of
+10** inside tierra_n0's band (s2 118, s5 184, s8 183 against 189–253):
+gate **fails by one seed**, realised debit 17.3–19.3% of cap. The 30
+seeds are not launched; a decision. Builder: Opus. Argument: E016's random per-tick tax
 at the calibrated rate (P = 88, F = 0.2398) killed 25 of 30 seeds where
 the targeted theft killed none, so the one control H16 has cannot be
 read. This task gives the control the shape of the treatment, so that
@@ -246,3 +247,35 @@ bodies) should draw at all, since no parasite can enter a body before
 one exists, or be counted out under E016 §5; and which pair is the
 control (the calibrated one, E016's, or the time-weighted one, which
 slows 80% of bodies by 26% and may fail as the per-tick tax did).
+
+### 7.2 Second pilot: founders exempt, the organism-tick pair (2026-10-15)
+
+Decisions after the first pilot (coordinator): founders never draw
+(§2, `8ef2f7f`), and the control pair is the one matched per
+organism-tick (§2.2, `e72de6b`): F = 0.7999533790651251, P = 26. Same
+pilot, 10 seeds, 50,000 ticks, `runs/e016/tierra_taxL_pilot/f80p26/`;
+and 3 seeds at F = 1, P = 21 (every body taxed, the per-tick tax's mean
+in lifelong form), `f100p21/`, for the "any shape" comparison. Band
+and debit measured as in §7 (tierra_n0 band 189–253, median 230; debit
+= Σ `cycles_taxed_m` / Σ `age` / 32,000 over replicator-class deaths
+after 25,000).
+
+| pair | persisted to 50,000 | replicator-class population, mean 25,000–50,000 | inside the band | taxed share of rep. deaths | realised debit / cap |
+|---|---|---|---|---|---|
+| F 0.80, P 26 (10 seeds) | 10 of 10 | 118–233, median 210 | 7 (s2 118, s5 184, s8 183 below) | 79.6–80.2% | 17.3–19.3% |
+| F 1.0, P 21 (3 seeds) | 3 of 3 | 104, 107, 161 | 0 | 100% | 20.9% |
+| first pilot, F 0.43, P 66, untaxed founders | 13 of 13 | 204–254 | 9 of 10 | 42.6–43.4% | 5.3–6.7% |
+| first pilot, F 0.24, P 88, untaxed founders | 12 of 12 | 221–259 | 9 of 10 | 23.8–24.3% | 0.5–0.8% |
+
+Reading: no shape of this mean kills the population in 50,000 ticks
+(13 of 13 at the two organism-tick-matched rows), so §1's inference
+that the per-tick tax killed by spreading the cost evenly does not
+survive as stated: the lifelong all-bodies form at 21% persists. What
+the shape changes is the population: the more evenly the slowdown is
+spread, the lower the replicator-class population (F = 1: about half
+of tierra_n0's; F = 0.8: a median 210, 9% under n0's 230 and three
+seeds below the band; the sterile-minority forms sit at n0's level
+because they barely debit at all). The registered gate fails by one
+seed at the chosen pair. 21 of the per-tick tax's 25 extinctions came
+between 35,690 and 54,330 (E016 §8.1), at the end of this window, so 50,000 ticks
+does not show whether these pairs survive to 250,000.
