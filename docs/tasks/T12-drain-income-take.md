@@ -2,7 +2,15 @@
 
 Status: specified 2026-10-15 (Fable; Derek accepted the memo's
 recommendation the same night: `docs/research/drain-decision-memo-2026-10-15.md`
-§4). Not built. Builder: Opus. Argument: PLAN §5.5 (the energy
+§4). Built 2026-10-15 (Opus, engine commit `724f91d`, gate G1/G2 in
+the commit after it; branch `worktree-agent-af767620b674b761b`, not
+merged; four deviations from §1, listed in §5). G1 and G2 run (§5):
+**G2 fails** at every tabled (P, L) under both opcodes: the drained
+ancestor dies before its first child from P = 25 (from P = 10 in
+fact); at P = 5 it keeps all 119 births but the drainer gains under
+2% of its income by `drain` and makes exactly its lone count. G3 not
+run. pseudo.py's `drain` and the `docs/instrumentation.md` rows not
+done. Builder: Opus. Argument: PLAN §5.5 (the energy
 channel between organisms as the diagnostic for trophic levels),
 `drain-proposal-2026-10-12.md` (conditions 2–4; condition 1, store
 depth, is dropped per synthesis §3.3 and T01), `literature.md` §7.5
@@ -166,3 +174,81 @@ never, and the neighbourhood count is the reported reason.
 Test count and commit ids; the G1 numbers; the G2 table over (P, L)
 and both opcodes; the G3 counts; the T12 row in `docs/tasks/README.md`
 and this Status line. Do not pre-register or launch E018.
+
+## 5. As built, and the gate (2026-10-15, Opus)
+
+### 5.1 Deviations from §1
+
+1. **The P% cap is per victim per turn, not per instruction.** Read
+   literally, §1.2's `take` applies to each `drain`, so a drain loop
+   takes P% of the victim's income on every instruction, several
+   times a tick, which is the predation the memo's "capped at a
+   fraction of what the victim absorbed that tick" rules out. As
+   built, `Org::drain_left_m` opens at `income_prev_m × P / 100` when
+   the victim's turn starts (the roll) and every take, by any
+   drainer, comes off it. A single take still never exceeds
+   `income_prev_m × P / 100` (test 2's bound).
+2. The kept upkeep counts the victim's pending region, which
+   `run_tick` charges; §1.2 says `upkeep_per_byte × len`.
+3. Dissipation goes to `Sim::energy_out`, as E010's transfer loss
+   does; no patch column. Over a world it is Σ `drained_m` − Σ
+   `drain_gain_m`, and test 3 checks it against Σ take × L / 100.
+4. **The cannot-kill clause does not keep the victim alive.** A
+   victim drained to its floor pays its upkeep, has 0 left, cannot
+   pay for one `absorb`, and dies of upkeep the next tick. The clause
+   guarantees one tick, not survival; survival needs P below the
+   victim's margin. Test 2 runs at P = 5 for that reason.
+
+Also: the opcode table is built once per `Sim` (`isa::Isa`, `Sim::isa`;
+decoding is one lookup); snapshot format 2, the loader still reads
+format 1 as `drain_op` 0; `--host` prints six more columns
+(`drain_gain_m,absorb_gain_m,host_drained_m,drains,drains_fail,host_energy_m`).
+
+### 5.2 G1, the one-flip drainer
+
+`examples/drain_gate.rs g1`. The tierra ancestor alone at sun 2: 119
+exact births in 3,000 ticks. With byte 8 flipped (`absorb` 0x16 to
+0x17) and placed before the ancestor: 0 births, dead at tick 4 under
+op 23, 25 and with the flag off (it has no income: its seed 100 units
+last three ticks of the loop). Under op 23 it ran 21 drains, all
+failed (A holds the loop counter, 127 down, an address 32,000 bytes
+from its IP), `drain_gain_m` 0. The ancestor is unaffected (alive;
+the harness stops when the intruder dies). As expected: the bare flip
+drains nothing; the question moves to G3.
+
+### 5.3 G2, the designed drainer
+
+`examples/drain_gate.rs g2 120`. The drainer (tests/drain.rs
+`drainer`, 26 bytes): `self ; add B` puts A on the byte after its
+body, then K rounds of `drain ; absorb ; dec C ; skipz C ; jmpr D`,
+then the 21-byte ancestor's copy procedure (E = 16). At K = 120,
+before the tierra ancestor, sun 2, 3,000 ticks; op 23 and op 25 give
+identical rows (the body is assembled at its slot):
+
+| P | L | drainer births | ancestor births (alone 119) | `host_drained_m` | `drain_gain_m` | `absorb_gain_m` |
+|---|---|---|---|---|---|---|
+| off | – | 120 | 119 | 0 | 0 | 109,051.8 |
+| 25 | 0 / 50 / 90 | 120 | 0 (dead) | 221.2 | 221.2 / 110.6 / 22.1 | 108,830–109,030 |
+| 50 | 0 / 50 / 90 | 120 | 0 (dead) | 442.5 | 442.5 / 221.2 / 44.2 | 108,609–109,008 |
+| 100 | 0 / 50 / 90 | 120 | 0 (dead) | 281.7 | 281.7 / 140.9 / 28.2 | 108,770–109,024 |
+| 5 | 50 | 120 | 119 | 4,556.9 | 2,278.5 | 106,773.3 |
+| 10 | 50 | 120 | 2 (dead) | 247.1 | 123.6 | 108,928.2 |
+
+(Energy in units.) The drainer's births are its lone count (120) in
+every row: it is energy-saturated on `absorb` and its cycle time sets
+its births, so the take buys nothing. The ancestor, seeded with 100
+units, is drained to its floor in its first cycle and dies before its
+first child at every P from 10; its margin is about 4% of its income
+(the T03 budget, +37.9 a cycle). Shorter loops do not help: at K = 50
+to 80 the drainer cannot pay for itself alone and dies within 120
+ticks with 1–6 children, draining at most 315 units; at K = 100 it
+makes 136 with or without a victim (136 alone), the ancestor 119 at
+P = 5 and dead from P = 10. That row meets the pass rule's letter
+(+14%, victim at 100%) and not its sense: the 14% is the shorter body,
+the drain gives 1.7% of its income.
+
+**G2 fails** at every (P, L) in the table, under both opcodes. Per §3
+the memo's branch C (scavenging) is next; `drain` stays as a flag.
+Not measured: a host seeded at its store cap rather than with 100
+units (the first-cycle death may be the harness's seed, not the rule),
+and G3.
