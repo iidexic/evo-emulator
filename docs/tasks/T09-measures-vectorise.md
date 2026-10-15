@@ -1,7 +1,13 @@
 # T09. `measures.py`: the per-id and per-census loops in numpy
 
 Status: specified 2026-10-14 (Fable, from a profile of E016's `analyse`
-stage); not built. Builder: Opus. Argument: E016's `analyse` stage spends
+stage); built 2026-10-15 by Opus (commit `8e251c6`, §5 included):
+output equal to the old build's on the three §4 runs (E007 as
+`runs/lod/e007/s1`, the copy with genomes.csv), ints bitwise and floats
+within 1.6e-14 (`mean_ed`, the difference array); `_series` 17.5 s →
+3.8 s and `analyse_run` 23.8 s → 11.8 s on E016 std_t50/s21, 10.9 →
+2.8 s and 15.2 → 8.0 s on tierra_n0/s1, 8.8 → 2.0 s on E007; 68 tests.
+Builder: Opus. Argument: E016's `analyse` stage spends
 about 70% of its time per run in T05's `measures.compute`, and that time is
 in Python loops over organism ids and over the tips of each census, not in
 polars or numpy. The numbers are correct (T05's review and tests) and

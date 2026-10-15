@@ -10,7 +10,8 @@ result, so §4's criteria are rewritten below (amendment 2026-10-13)
 and the README's "shakedown fails" branch is not taken. The §4.1
 fixes went to two follow-up builds, both done (the knockout loop and
 the class columns in the second; sites on E007 in §3.1); criterion 3
-waits for E012/E013 data. Argument: synthesis finding
+waits for E012/E013 data. Loops vectorised in T09 (`8e251c6`),
+numbers unchanged. Argument: synthesis finding
 9 and §3.5, PLAN §8.5, `literature.md` §3.3, §3.4, §7 ("Measures").
 Line C; built and run on E007, E012 and E013 before E014 is run, so
 the first use of the measures is on known runs. Python only, except
