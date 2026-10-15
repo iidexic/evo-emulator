@@ -29,8 +29,11 @@ What it found (`e016-writeup-2026-10-15.md`):
   under the cost, thousands of relabelling origins per run, the
   class's lineages turning over in thousands of ticks. That is more
   turnover and more interaction than any earlier arm. It is not more
-  complexity: body length is fixed at 41, and nothing was selected
-  that was not a label.
+  complexity: what was selected is a label change, a redundant label,
+  or the loss of the label and the search with it (bodies of 32–36
+  bytes, 40% of the immune class's births; T11 §2, record §8.8). The
+  world's answer to a parasite by search is to stop being searchable,
+  which is the efficient-replicator endpoint by another route.
 
 So the two-channel world (code and placement, now with a cost in
 time) does the thing the literature says such worlds do: a parasite,
