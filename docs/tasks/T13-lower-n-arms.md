@@ -1,4 +1,4 @@
-# T13. E016's premise at a cost the entered individual survives: `tierra_t10` and `tierra_t25`
+# T13. E016's premise at a cost the entered individual survives: `tierra_t10` and `tierra_t20`
 
 Status: specified 2026-10-15 (Fable; Derek accepted the memo's
 recommendation). §1's curve run the same night (below): the arms are
