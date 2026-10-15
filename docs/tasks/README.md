@@ -31,7 +31,9 @@ before the runs, as always.
   finished): **not merged**. It and the merged T10 both bump the
   full-state snapshot to version 2 with different new fields, so the
   merge needs one combined version-2 layout (or version 3) and both
-  round-trip tests re-run. Flag off is bit-identical in both.
+  round-trip tests re-run. Flag off is bit-identical in both. A trial
+  merge at 01:20 gave 18 conflict hunks (sim.rs 12, config.rs 4,
+  main.rs 2) and was aborted; budget an hour with the tests.
 - Branch `worktree-agent-a4532956e0fedf8ee` (T10): merged at `64cf742`
   and the follow-up at `f09059a`. Second pilot done: founders exempt,
   the organism-tick pair F = 0.80, P = 26 (mean check holds at 20.8%
