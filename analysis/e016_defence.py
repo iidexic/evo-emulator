@@ -84,7 +84,12 @@ Stages (subcommands):
   substitution and deletion of the ancestor) through the defence rule under
   each selected arm's flags of that ancestor (tierra_tax only once tax.json
   exists); writes runs/e016/nbhd_screen_<ancestor>.csv (one row per mutant
-  per arm) and prints the counts by mechanism. Then every finished world
+  per arm) and prints the counts by mechanism. With `--nbhd-ins` (T11 §1)
+  only this baseline runs, on the neighbourhoods with insertions instead
+  (runs/e016/nbhd_ins/<ancestor>.csv, written with `--neighbours-ins` at
+  the default physics if missing; arms tierra_n0 and std_n0 by default), to
+  runs/e016/nbhd_screen_<ancestor>_ins.csv, counts by kind too. Then
+  every finished world
   run of the selected arms: candidates are the replicator-class
   (classes.csv) `func_hash`es with >= 0.5% of a 25,000-tick window's exact
   births (all exact births in the window, any class, as the denominator) in
@@ -187,6 +192,7 @@ checked against e015_template.HEX before any engine stage.
 Usage (from the repo root):
 
     uv run --project analysis analysis/e016_defence.py screen        # nbhd baseline first
+    uv run --project analysis analysis/e016_defence.py screen --nbhd-ins --jobs 12   # T11 §1
     uv run --project analysis analysis/e016_defence.py world --jobs 24
     uv run --project analysis analysis/e016_defence.py calibrate
     uv run --project analysis analysis/e016_defence.py world --arms tierra_tax --jobs 24
@@ -226,6 +232,7 @@ from evo_run import HASH_COLS, ROOT, Run, csv_path, gunzip_verified, gzip_verifi
 
 OUT = ROOT / "runs" / "e016"
 NBHD = ROOT / "runs" / "e015" / "nbhd"
+NBHD_INS = OUT / "nbhd_ins"  # T11 §1: the neighbourhoods with insertions (`screen --nbhd-ins`)
 SUN = 2  # §2, resolved 2026-10-13
 TICKS = 250_000
 SEEDS = 30
@@ -815,19 +822,41 @@ def screen_counts(df: pl.DataFrame) -> dict:
                 first_complete_tick=first(comp), first_structural_tick=first(st), first_parameter_tick=first(pa))
 
 
+def nbhd_ins_file(exe: Path, src: Path, anc: str, ticks: int, threads: int) -> None:
+    """T11 §1: write `anc`'s neighbourhood with insertions (`--neighbours
+    --neighbours-ins`: every substitution, deletion and insertion, the
+    ancestor its own host) to `src`, at the default physics as E015 stage 1
+    wrote the substitution files; the binary's summary goes to src.stdout."""
+    src.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [str(exe), "--neighbours", HEX[anc], "--neighbours-ins", "--harness-ticks", str(ticks),
+           "--threads", str(threads), "--neighbours-out", str(src)]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        raise SystemExit(f"{exe} --neighbours-ins: exit {r.returncode} (a binary before T11 §1?): "
+                         f"{(r.stderr or r.stdout).strip().splitlines()[-1:]}")
+    src.with_suffix(".stdout").write_text(r.stdout, encoding="utf-8", newline="")
+    print(f"nbhd ins {anc}: {r.stderr.strip()}", flush=True)
+
+
 def nbhd_screen(exe: Path, out: Path, arms: list[str], tax: Tax | None, ticks: int, jobs: int, force: bool,
-                nbhd: Path = NBHD) -> None:
-    """The reachability baseline (§1, §3): every mutant in E015's stage 1 files."""
+                nbhd: Path = NBHD, ins: bool = False) -> None:
+    """The reachability baseline (§1, §3): every mutant in E015's stage 1
+    files. `ins` (T11 §1, `--nbhd-ins`): every mutant of the neighbourhood
+    with insertions instead (nbhd/<ancestor>.csv, written by
+    `nbhd_ins_file` if missing), to nbhd_screen_<ancestor>_ins.csv, counts
+    by kind (`sub`, `del`, `ins`) as well."""
     out.mkdir(parents=True, exist_ok=True)
     for anc in ("tierra", "std"):
         src = nbhd / f"{anc}.csv"
         todo_arms = [a for a in arms if base(a) == anc and (a != "tierra_tax" or tax is not None)]
         if not todo_arms:
             continue
+        if ins and not src.exists():
+            nbhd_ins_file(exe, src, anc, ticks, jobs)
         if not src.exists():
             print(f"nbhd screen {anc}: {src} not found (E015 stage 1); skipped", flush=True)
             continue
-        dst = out / f"nbhd_screen_{anc}.csv"
+        dst = out / f"nbhd_screen_{anc}{'_ins' if ins else ''}.csv"
         old = pl.read_csv(dst, infer_schema=False) if dst.exists() and not force else None
         done = set(old["arm"].unique().to_list()) if old is not None else set()
         nb = t05.read_neighbours(src).select("pos", "kind", "byte", "hex", "raw_hash", "func_hash",
@@ -849,22 +878,27 @@ def nbhd_screen(exe: Path, out: Path, arms: list[str], tax: Tax | None, ticks: i
             if old is not None:
                 new = pl.concat([old, new.cast({c: pl.Utf8 for c in new.columns})], how="vertical_relaxed")
             new.write_csv(dst)
-        for line in nbhd_counts(pl.read_csv(dst, infer_schema=False), anc):
+        for line in nbhd_counts(pl.read_csv(dst, infer_schema=False), anc, by_kind=ins):
             print(line, flush=True)
 
 
-def nbhd_counts(df: pl.DataFrame, anc: str) -> list[str]:
-    """One line per arm of a nbhd_screen file (read as text)."""
+def nbhd_counts(df: pl.DataFrame, anc: str, by_kind: bool = False) -> list[str]:
+    """One line per arm of a nbhd_screen file (read as text); `by_kind`
+    adds one per arm and mutation kind."""
     lines = []
     for arm in sorted(df["arm"].unique().to_list()):
-        x = df.filter(pl.col("arm") == arm)
-        imm, tol = x["immune"] == "true", x["tolerant"] == "true"
-        comp = x.filter(imm | tol)
-        rep = int((x["class_alone"] == "replicator").sum())
-        st = int((comp["mechanism"] == "structural").sum())
-        lines.append(f"nbhd screen {anc} {arm}: {x.height:,} mutants, {rep:,} replicator-class alone; immune "
-                     f"{int(imm.sum())}, tolerant {int(tol.sum())}, complete {comp.height} (structural {st}, "
-                     f"parameter {comp.height - st})")
+        parts = [("", df.filter(pl.col("arm") == arm))]
+        if by_kind:
+            parts += [(f" {k}", df.filter((pl.col("arm") == arm) & (pl.col("kind") == k)))
+                      for k in ("sub", "del", "ins")]
+        for kind, x in parts:
+            imm, tol = x["immune"] == "true", x["tolerant"] == "true"
+            comp = x.filter(imm | tol)
+            rep = int((x["class_alone"] == "replicator").sum())
+            st = int((comp["mechanism"] == "structural").sum())
+            lines.append(f"nbhd screen {anc} {arm}{kind}: {x.height:,} mutants, {rep:,} replicator-class alone; "
+                         f"immune {int(imm.sum())}, tolerant {int(tol.sum())}, complete {comp.height} (structural "
+                         f"{st}, parameter {comp.height - st})")
     return lines
 
 
@@ -1675,7 +1709,11 @@ def main() -> None:
     ap.add_argument("--no-compress", action="store_true")
     ap.add_argument("--no-measures", action="store_true", help="analyse: skip T05's measures")
     ap.add_argument("--no-nbhd", action="store_true", help="screen: skip the neighbourhood baseline")
-    ap.add_argument("--nbhd-dir", type=Path, default=NBHD, help="screen: E015 stage 1 files")
+    ap.add_argument("--nbhd-dir", type=Path, help="screen: E015 stage 1 files (default runs/e015/nbhd; with "
+                                                  "--nbhd-ins runs/e016/nbhd_ins)")
+    ap.add_argument("--nbhd-ins", action="store_true",
+                    help="screen: only the neighbourhood screen, on the sets with insertions (T11 §1; default "
+                         "arms tierra_n0, std_n0); the world runs are not screened")
     ap.add_argument("--smoke", action="store_true", help="a smoke run: allows --no-snapshots and other --ticks; needs "
                                                          "--out away from runs/e016")
     ap.add_argument("--no-snapshots", action="store_true",
@@ -1735,10 +1773,14 @@ def main() -> None:
         print(f"world: {len(jobs)} runs, {time.time() - t_all:.0f} s")
         return
 
+    if a.stage == "screen" and a.nbhd_ins:
+        nbhd_screen(exe, out, arms or ["tierra_n0", "std_n0"], tax, a.harness_ticks, a.jobs, a.force,
+                    a.nbhd_dir or NBHD_INS, ins=True)
+        return
     arms = arms or present
     if a.stage == "screen":
         if not a.no_nbhd:
-            nbhd_screen(exe, out, arms or FIRST_ARMS, tax, a.harness_ticks, a.jobs, a.force, a.nbhd_dir)
+            nbhd_screen(exe, out, arms or FIRST_ARMS, tax, a.harness_ticks, a.jobs, a.force, a.nbhd_dir or NBHD)
         rows = []
         for x in arms:
             ref = None

@@ -17,9 +17,18 @@ Stages (§1, the insertion screen, is `e016_defence.py screen --nbhd-ins`):
   (the ancestor: ancestor.csv), then E016's screen test with G's own label
   flip as the probe (the first byte of the label G's `searchf` finds in G,
   nop0 <-> nop1, the analogue of the registered probe), and writes
-  runs/e016/own_nbhd/summary.md and own.csv.
+  runs/e016/own_nbhd/summary.md and own.csv. The closure number is the
+  label-flip rows (`parasite_jump` rows on G's own label bytes); the spec's
+  stop rule (a tenth of the ancestor's rows, or immune to the own flip) is
+  kept beside it.
+- `eject` (§3, reduced to the eject by the coordinator's decision of
+  2026-10-15: evolution found closure itself, the redundant label): the
+  hand-written eject body (EJECT_HEX, pinned by
+  evo-core/tests/closed_defence.rs) screened as `own` screens a candidate,
+  plus E016's rule under tierra_n0 and tierra_t50; runs/e016/designed/.
 
     uv run --project analysis analysis/t11_closed.py own [--threads 12]
+    uv run --project analysis analysis/t11_closed.py eject [--threads 12]
 
 `--threads` defaults to 12 when other evo-core processes are running (the
 E016 replay stage), else to the machine's parallelism. Resumable: a
@@ -252,48 +261,57 @@ def yn(b: bool) -> str:
     return "yes" if b else "no"
 
 
+def screen_bodies(exe: Path, bodies: list[tuple[str, str]], outdir: Path, threads: int, ticks: int, jobs: int,
+                  force: bool, ref: e16.Ref) -> list[dict]:
+    """§2's screen of each (name, hex): its own neighbourhood (outdir/<name>.csv)
+    with the label-flip rows (`parasite_jump` rows on its own label bytes,
+    `on_label`), the own-flip probe and the E016 probe. One dict per body."""
+    stats = {}
+    for name, hx in bodies:
+        run_nbhd(exe, hx, outdir / f"{name}.csv", threads, ticks, force)
+        lab = own_label(bytes.fromhex(hx))
+        stats[name] = jump_stats(outdir / f"{name}.csv", (lab[0], lab[1]) if lab else None)
+    hexes = [h for _, h in bodies]
+    sc = screen_own(exe, hexes, ticks, jobs, ref)
+    e = screen_e016(exe, hexes, ticks, jobs, ref)
+    rows = []
+    for name, hx in bodies:
+        g = bytes.fromhex(hx)
+        lab = own_label(g)
+        s = stats[name]
+        rows.append(dict(
+            func_hash=name, len=len(g), addressing=addressing(g), template=nop_digits(g, *TEMPLATE),
+            l1=nop_digits(g, *L1), label_first=lab[0] if lab else None, label_last=lab[1] if lab else None,
+            **s, on_label_frac=s["on_label"] / s["parasite_jump"] if s["parasite_jump"] else None,
+            **sc[hx], **e[hx], hex=hx))
+    return rows
+
+
 def stage_own(exe: Path, out: Path, seeds: int, threads: int, ticks: int, jobs: int, force: bool) -> None:
     OWN.mkdir(parents=True, exist_ok=True)
     cand = rank_candidates(load_complete(out, seeds))
     cand.write_csv(OWN / "candidates.csv")
     print(f"own: {cand.height} candidates ({(cand['len'] != ANC_LEN).sum()} of another length); "
           f"{OWN / 'candidates.csv'}", flush=True)
-    anc = HEX["tierra"]
     ref = e16.reference(exe, REF_ARM, None, ticks)
     print(f"own: reference {REF_ARM}: {ref}", flush=True)
-    jobs_hex = [("ancestor", anc)] + list(zip(cand["func_hash"].to_list(), cand["hex"].to_list()))
-    stats = {}
-    for name, hx in jobs_hex:
-        run_nbhd(exe, hx, OWN / f"{name}.csv", threads, ticks, force)
-        lab = own_label(bytes.fromhex(hx))
-        stats[name] = jump_stats(OWN / f"{name}.csv", (lab[0], lab[1]) if lab else None)
-    hexes = [h for _, h in jobs_hex]
-    sc = screen_own(exe, hexes, ticks, jobs, ref)
-    e = screen_e016(exe, hexes, ticks, jobs, ref)
-    anc_pj = stats["ancestor"]["parasite_jump"]
-    rows = []
-    for k, (name, hx) in enumerate(jobs_hex):
-        g = bytes.fromhex(hx)
-        lab = own_label(g)
-        c = cand.filter(pl.col("func_hash") == name).row(0, named=True) if name != "ancestor" else None
-        s = stats[name]
-        few = s["parasite_jump"] < CLOSED_FRAC * anc_pj
-        closed = name != "ancestor" and (few or bool(sc[hx]["own_immune"]))
-        rows.append(dict(
-            rank=c["rank"] if c else 0, func_hash=name, len=len(g), births=c["births"] if c else None,
-            runs_n0=c["runs_n0"] if c else None, runs_t50=c["runs_t50"] if c else None,
-            addressing=addressing(g), template=nop_digits(g, *TEMPLATE), l1=nop_digits(g, *L1),
-            label_first=lab[0] if lab else None, label_last=lab[1] if lab else None,
-            **s, on_label_frac=s["on_label"] / s["parasite_jump"] if s["parasite_jump"] else None,
-            **sc[hx], **e[hx], few_jumps=few, closed=closed, hex=hx))
-    df = pl.DataFrame(rows, infer_schema_length=None)
+    bodies = [("ancestor", HEX["tierra"])] + list(zip(cand["func_hash"].to_list(), cand["hex"].to_list()))
+    rows = screen_bodies(exe, bodies, OWN, threads, ticks, jobs, force, ref)
+    anc_pj = rows[0]["parasite_jump"]
+    for r in rows:
+        c = cand.filter(pl.col("func_hash") == r["func_hash"]).row(0, named=True) if r["func_hash"] != "ancestor" else None
+        r.update(rank=c["rank"] if c else 0, births=c["births"] if c else None,
+                 runs_n0=c["runs_n0"] if c else None, runs_t50=c["runs_t50"] if c else None)
+        # The spec's stop rule, kept beside the closure number (label-flip rows).
+        r["few_jumps"] = r["parasite_jump"] < CLOSED_FRAC * anc_pj
+        r["closed"] = c is not None and (r["few_jumps"] or bool(r["own_immune"]))
+    first = ["rank", "func_hash", "len", "births", "runs_n0", "runs_t50"]
+    df = pl.DataFrame([{k: r[k] for k in first} | {k: v for k, v in r.items() if k not in first} for r in rows],
+                      infer_schema_length=None)
     df.write_csv(OWN / "own.csv")
     text = own_summary(df, ref, anc_pj, ticks)
     (OWN / "summary.md").write_text(text, encoding="utf-8", newline="")
     print(text)
-    if df["closed"].any():
-        print("CLOSED DEFENCE FOUND (T11 §2): " + ", ".join(df.filter(pl.col("closed"))["func_hash"].to_list())
-              + "; stop for a decision", flush=True)
 
 
 def own_summary(df: pl.DataFrame, ref: e16.Ref, anc_pj: int, ticks: int) -> str:
@@ -309,43 +327,101 @@ def own_summary(df: pl.DataFrame, ref: e16.Ref, anc_pj: int, ticks: int) -> str:
         f"and 18-21 as nop digits (x = not a nop). Own flip: G with its label's first byte flipped (nop0 <-> nop1), "
         f"placed before G; immune per E016 §1 against {REF_ARM}'s reference (the ancestor with the registered "
         f"probe: b_alone {ref.b_alone}, b_probed {ref.b_probed}, p_probed {ref.p_probed}; immune needs p_probed < "
-        f"{CLOSED_FRAC * ref.p_probed:g}). E016 probe: the registered probe before G (G's E016 status).", "",
-        "| rank | func_hash | len | births | addressing | template / L1 | label bytes | parasite_jump rows | "
-        "on own label | parasite_fallthrough rows | own flip p_probed (entry) | immune to own flip | "
-        "E016 probe p_probed |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+        f"{CLOSED_FRAC * ref.p_probed:g}). E016 probe: the registered probe before G (G's E016 status). The "
+        f"closure number is the label-flip rows: `parasite_jump` rows whose mutation sits on G's own label bytes "
+        f"(0 for a body with no label). \"Old rule\" is the spec's stop rule (fewer than a tenth of the ancestor's "
+        f"`parasite_jump` rows, {CLOSED_FRAC * anc_pj:g}, or immune to its own flip), kept for the record.", "",
+        "| rank | func_hash | len | births | addressing | template / L1 | label bytes | label-flip rows | "
+        "all parasite_jump rows | parasite_fallthrough rows | own flip p_probed (entry) | immune to own flip | "
+        "E016 probe p_probed | old rule |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for r in df.iter_rows(named=True):
         lab = f"{r['label_first']}-{r['label_last']}" if r["label_first"] is not None else "none"
-        on = f"{r['on_label']} ({100 * r['on_label_frac']:.0f}%)" if r["on_label_frac"] is not None else "0"
         births = f"{r['births']:,}" if r["births"] is not None else "ancestor"
         flip = f"{r['p_probed_own']} ({r['own_entry_off']})" if r["p_probed_own"] is not None else "n/a"
         imm = yn(r["own_immune"]) if r["own_immune"] is not None else "n/a"
+        old = "-" if not r["rank"] else ("flagged" if r["closed"] else "no")
         lines.append(f"| {r['rank'] or '-'} | `{r['func_hash']}` | {r['len']} | {births} | {r['addressing']} | "
-                     f"{r['template']} / {r['l1']} | {lab} | {r['parasite_jump']:,} | {on} | "
-                     f"{r['parasite_fallthrough']:,} | {flip} | {imm} | {r['p_probed_e016']} |")
+                     f"{r['template']} / {r['l1']} | {lab} | {r['on_label']:,} | {r['parasite_jump']:,} | "
+                     f"{r['parasite_fallthrough']:,} | {flip} | {imm} | {r['p_probed_e016']} | {old} |")
     c = df.filter(pl.col("func_hash") != "ancestor")
     lab = c.filter(pl.col("label_first").is_not_null())
+    zero = c.filter(pl.col("on_label") == 0)
+    open_ = c.filter(pl.col("on_label") > 0)
+    anc_on = df.filter(pl.col("func_hash") == "ancestor")["on_label"][0]
     pj = c["parasite_jump"]
     lines += ["",
-              f"Candidates {c.height} ({lab.height} with an own label, {c.height - lab.height} without). "
-              f"`parasite_jump` rows: all {pj.min()}-{pj.max()} (median {pj.median():g}); with an own label "
-              f"{lab['parasite_jump'].min()}-{lab['parasite_jump'].max()} (median {lab['parasite_jump'].median():g}); "
-              f"ancestor {anc_pj}. On own label {lab['on_label'].sum():,} of {lab['parasite_jump'].sum():,} rows of "
-              f"the labelled candidates. Immune to own flip {int(lab['own_immune'].sum())} of {lab.height}; immune to "
-              f"the E016 probe {int(c['e016_immune'].sum())} of {c.height}; below a tenth of the ancestor's "
-              f"`parasite_jump` rows {int(c['few_jumps'].sum())}.",
-              f"Own flip entered G (entry_off >= 0) in {int((lab['own_entry_off'] >= 0).sum())} of {lab.height} "
-              f"labelled candidates (ranks {', '.join(str(x) for x in lab.filter(pl.col('own_entry_off') >= 0)['rank'])}); "
-              f"in the others it never ran a byte of G. `parasite_fallthrough` rows: candidates "
-              f"{c['parasite_fallthrough'].min()}-{c['parasite_fallthrough'].max()} (median "
-              f"{c['parasite_fallthrough'].median():g}), ancestor "
+              f"Label-flip rows: ancestor {anc_on:,}; 0 in {zero.height} of {c.height} candidates "
+              f"({zero.height - (c.height - lab.height)} of the {lab.height} with an own label, and the "
+              f"{c.height - lab.height} without one); {open_['on_label'].min()}-{open_['on_label'].max()} in the "
+              f"other {open_.height} (ranks {', '.join(str(x) for x in open_['rank'])}).",
+              f"All `parasite_jump` rows: candidates {pj.min()}-{pj.max()} (median {pj.median():g}), ancestor "
+              f"{anc_pj} ({anc_pj - anc_on} off the label). Immune to own flip {int(lab['own_immune'].sum())} of "
+              f"{lab.height}; the own flip entered G (entry_off >= 0) in {int((lab['own_entry_off'] >= 0).sum())} "
+              f"(ranks {', '.join(str(x) for x in lab.filter(pl.col('own_entry_off') >= 0)['rank'])}), and in the "
+              f"others never ran a byte of G. Immune to the E016 probe {int(c['e016_immune'].sum())} of {c.height}. "
+              f"`parasite_fallthrough` rows: candidates {c['parasite_fallthrough'].min()}-"
+              f"{c['parasite_fallthrough'].max()} (median {c['parasite_fallthrough'].median():g}), ancestor "
               f"{df.filter(pl.col('func_hash') == 'ancestor')['parasite_fallthrough'][0]}.",
-              f"Flagged by T11 §2's stop rule (fewer than a tenth of the ancestor's `parasite_jump` rows, or immune "
-              f"to its own flip), {int(c['closed'].sum())}: "
-              f"{', '.join(c.filter(pl.col('closed'))['func_hash'].to_list()) or 'none'}.",
+              f"Old rule: {int(c['closed'].sum())} flagged ({int(c['few_jumps'].sum())} below a tenth of the "
+              f"ancestor's `parasite_jump` rows).",
               "", "Positions of the `parasite_jump` rows (pos:count) are in `own.csv`.", ""]
     return "\n".join(lines)
+
+
+# ---- §3: the eject ----------------------------------------------------------------------
+
+# evo-core/tests/closed_defence.rs builds and pins this body: the ancestor with
+# `self 1 ; sub B ; lit D 25 ; sub D ; skipz A ; jmpa D` inserted before byte 25
+# (`alloc C`), seven bytes; that file says why not E009b's six verbatim in the
+# copy loop.
+EJECT_HEX = "0101030351fc117f1605084c0a010301036d03010301133252332f71196f086d5a71fc1845486c11101c0b030301016d"
+DESIGNED = OUT / "designed"
+T50 = "tierra_t50"
+
+
+def stage_eject(exe: Path, threads: int, ticks: int, jobs: int, force: bool) -> None:
+    """§3, reduced to the eject: screened as §2 screens a candidate, plus
+    E016's rule (immune, tolerant) under tierra_n0 and tierra_t50 against
+    each arm's reference, and its edit distance from the ancestor."""
+    DESIGNED.mkdir(parents=True, exist_ok=True)
+    ref = e16.reference(exe, REF_ARM, None, ticks)
+    row = screen_bodies(exe, [("eject", EJECT_HEX)], DESIGNED, threads, ticks, jobs, force, ref)[0]
+    anc = bytes.fromhex(HEX["tierra"])
+    edits = lod.edit_script(anc, bytes.fromhex(EJECT_HEX))
+    row["edits"] = len(edits)
+    row["edit_kinds"] = " ".join(sorted({k for k, *_ in edits}))
+    for arm in (REF_ARM, T50):
+        r_arm = e16.reference(exe, arm, None, ticks)
+        h = e16.harness_rows(exe, [EJECT_HEX], arm, None, ticks, jobs)[EJECT_HEX]
+        imm, tol = e16.is_defence(h["class_alone"], h["b_alone"], h["b_probed"], h["p_probed"], r_arm)
+        row |= {f"{arm}_{k}": v for k, v in dict(b_alone=h["b_alone"], b_probed=h["b_probed"], p_probed=h["p_probed"],
+                                                 entry_off=h["entry_off"], ticks_run=h["ticks_run"], immune=imm,
+                                                 tolerant=tol, ref=f"{r_arm.b_alone}/{r_arm.b_probed}/{r_arm.p_probed}"
+                                                 ).items()}
+    pl.DataFrame([row], infer_schema_length=None).write_csv(DESIGNED / "eject.csv")
+    viable = row["class_alone"] == "replicator" and row["b_alone"] >= e16.FLOOR_FRAC * ref.b_alone
+    text = "\n".join([
+        "# T11 §3: the eject (reduced from three designed candidates)", "",
+        "The ancestor with `self 1 ; sub B ; lit D 25 ; sub D ; skipz A ; jmpa D` before `alloc C` (byte 25): "
+        "evo-core/tests/closed_defence.rs. Screened as T11 §2 screens a candidate (own neighbourhood under "
+        f"{REF_ARM}'s physics, own-flip probe, E016 probe) and by E016's rule under {REF_ARM} and {T50} (each "
+        "arm's reference b_alone/b_probed/p_probed in brackets). Viable: replicator-class alone with b_alone >= "
+        f"{e16.FLOOR_FRAC:g} x the ancestor's {ref.b_alone}; E016's immune and tolerant both need it, so a probe "
+        "that makes no copy still reads `no` on a body that is not viable.", "",
+        "| body | edits from the ancestor | viable alone (b_alone) | E016 immune (probe copies, entry) | "
+        "immune to own flip (flip copies) | tolerant n0 / t50 (b_probed) | label-flip rows | all parasite_jump rows | "
+        "parasite_fallthrough rows |",
+        "|---|---|---|---|---|---|---|---|---|",
+        f"| eject, {row['len']} bytes | {row['edits']} ({row['edit_kinds']}) | {yn(viable)} ({row['b_alone']}) | "
+        f"{yn(row[f'{REF_ARM}_immune'])} ({row[f'{REF_ARM}_p_probed']}, {row[f'{REF_ARM}_entry_off']}) | "
+        f"{yn(bool(row['own_immune']))} ({row['p_probed_own']}) | {yn(row[f'{REF_ARM}_tolerant'])} / "
+        f"{yn(row[f'{T50}_tolerant'])} ({row[f'{REF_ARM}_b_probed']} / {row[f'{T50}_b_probed']}; refs "
+        f"{row[f'{REF_ARM}_ref']}, {row[f'{T50}_ref']}) | {row['on_label']} | {row['parasite_jump']} | "
+        f"{row['parasite_fallthrough']} |", ""])
+    (DESIGNED / "summary.md").write_text(text, encoding="utf-8", newline="")
+    print(text)
 
 
 # ---- main --------------------------------------------------------------------------------
@@ -353,7 +429,7 @@ def own_summary(df: pl.DataFrame, ref: e16.Ref, anc_pj: int, ticks: int) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("stage", choices=["own"])
+    ap.add_argument("stage", choices=["own", "eject"])
     ap.add_argument("--evo-bin", help="evo-core binary (default $EVO_BIN, else evo-core/target/release)")
     ap.add_argument("--out", type=Path, default=OUT, help="E016 output root (default runs/e016)")
     ap.add_argument("--seeds", type=int, default=e16.SEEDS)
@@ -368,6 +444,8 @@ def main() -> None:
     threads = a.threads or threads_default()
     if a.stage == "own":
         stage_own(exe, a.out, a.seeds, threads, a.harness_ticks, a.jobs, a.force)
+    else:
+        stage_eject(exe, threads, a.harness_ticks, a.jobs, a.force)
 
 
 if __name__ == "__main__":

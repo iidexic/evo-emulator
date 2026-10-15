@@ -380,8 +380,8 @@ Added 2026-10-13 (T03, E015; `harness::neighbours`). Classifies every
 single-byte mutant of HEX alone and before a host:
 
     evo-core --neighbours HEX [--host-body HEX2] [--harness-ticks N]
-             [--neighbours-out FILE] [--neighbours-pad-only] [--threads T]
-             [physics flags]
+             [--neighbours-out FILE] [--neighbours-pad-only | --neighbours-ins]
+             [--threads T] [physics flags]
 
 Mutant set, in file order: position by position, at each position the
 255 substitutions by every other byte value in ascending order, then the
@@ -389,7 +389,18 @@ deletion of that byte (256 rows per position; a deletion that would
 leave no body, from a one-byte HEX, is left out). With
 `--neighbours-pad-only`, only the substitution by `pad` (byte 0) at each
 position, one row per position (T05's knockout set; where HEX already
-holds 0 the row is HEX itself). Insertions are not in this cut.
+holds 0 the row is HEX itself). Insertions are not in the default cut.
+With `--neighbours-ins` (T11, 2026-10-15; `harness::MutantSet::WithIns`)
+each position's deletion is followed by the 256 bodies with every byte
+value (ascending) inserted before that position, and the 256 with a byte
+appended after the last come last: 256 x (len + 1) more rows, `kind`
+`ins`, `pos` the byte the insertion goes before, `byte` the value
+(inserting `HEX[p]` before p and before p + 1 give the same body; both
+rows are kept). The substitution and deletion rows are the same rows in
+the same order as without the flag, and the stdout summary adds the
+counts by label of the insertions alone. Ignored with
+`--neighbours-pad-only`. The 41-byte body's 21,248 rows take about 8 s
+on 12 threads.
 
 Each mutant runs twice in the quiet harness (noise off, the physics
 flags given, `--harness-ticks` ticks, default 3,000): `run_alone`, and
@@ -408,7 +419,7 @@ current directory), one row per mutant:
 
 | column | meaning |
 |---|---|
-| `pos`, `kind`, `byte` | the mutation: `sub` of `byte` (decimal) at `pos`, or `del` of `pos` (`byte` empty) |
+| `pos`, `kind`, `byte` | the mutation: `sub` of `byte` (decimal) at `pos`, `del` of `pos` (`byte` empty), or `ins` of `byte` before `pos` (`--neighbours-ins`) |
 | `hex`, `raw_hash`, `func_hash` | the mutant's bytes and its two hashes |
 | `class_alone`, `births_alone`, `exact_alone`, `alive_alone` | the classifier's result alone (`--classify`'s columns) |
 | `births_host`, `exact_host` | before the host: children whose `divide` the mutant executed, and of those the ones equal to the mutant |

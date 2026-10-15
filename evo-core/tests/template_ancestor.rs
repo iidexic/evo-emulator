@@ -203,31 +203,144 @@ fn neighbours_of_the_std_ancestor_jumps_only_by_fixed_offsets() {
 fn neighbours_file_is_thread_count_independent() {
     // T03 §3 test 4: the CLI at T = 1 and T = 4 writes the same file and
     // prints the same summary. Three `pad`s before the 21-byte ancestor,
-    // 300 harness ticks: 768 mutants of every kind.
+    // 300 harness ticks: 768 mutants of every kind; with `--neighbours-ins`
+    // (T11 §1) 1,792, the first 768 of them in the same order as without.
     let exe = env!("CARGO_BIN_EXE_evo-core");
     let dir = std::env::temp_dir().join(format!("evo-test-neighbours-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let run = |t: u32| {
-        let out = dir.join(format!("t{t}.csv"));
-        let o = std::process::Command::new(exe)
-            .args(["--neighbours", "000000", "--host-body", &hex(&ancestor(64, 16)), "--harness-ticks", "300",
-                   "--threads", &t.to_string(), "--neighbours-out"])
-            .arg(&out)
-            .output()
-            .unwrap();
+    let run = |t: u32, ins: bool| {
+        let out = dir.join(format!("t{t}-{ins}.csv"));
+        let mut cmd = std::process::Command::new(exe);
+        cmd.args(["--neighbours", "000000", "--host-body", &hex(&ancestor(64, 16)), "--harness-ticks", "300",
+                  "--threads", &t.to_string(), "--neighbours-out"])
+            .arg(&out);
+        if ins {
+            cmd.arg("--neighbours-ins");
+        }
+        let o = cmd.output().unwrap();
         assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
-        (std::fs::read(&out).unwrap(), o.stdout)
+        (String::from_utf8(std::fs::read(&out).unwrap()).unwrap(), o.stdout)
     };
-    let (f1, s1) = run(1);
-    let (f4, s4) = run(4);
-    let text = String::from_utf8(f1.clone()).unwrap();
-    assert_eq!(text.lines().count(), 1 + 3 * 255 + 3);
-    assert_eq!(text.lines().next().unwrap(), harness::NEIGHBOURS_HEADER);
-    assert!(text.lines().skip(1).any(|l| l.ends_with(",parasite_fallthrough")), "no parasite: the test is weak");
+    let (f1, s1) = run(1, false);
+    let (f4, s4) = run(4, false);
+    assert_eq!(f1.lines().count(), 1 + 3 * 255 + 3);
+    assert_eq!(f1.lines().next().unwrap(), harness::NEIGHBOURS_HEADER);
+    assert!(f1.lines().skip(1).any(|l| l.ends_with(",parasite_fallthrough")), "no parasite: the test is weak");
     assert!(f1 == f4, "neighbours.csv differs between 1 and 4 threads");
     assert_eq!(s1, s4);
+    let (i1, si1) = run(1, true);
+    let (i4, si4) = run(4, true);
+    assert_eq!(i1.lines().count(), 1 + 3 * 255 + 3 + 4 * 256);
+    assert!(i1 == i4, "neighbours.csv with insertions differs between 1 and 4 threads");
+    assert_eq!(si1, si4);
+    let ins: Vec<&str> = i1.lines().filter(|l| l.split(',').nth(1) == Some("ins")).collect();
+    assert_eq!(ins.len(), 4 * 256);
+    let no_ins: Vec<&str> = i1.lines().filter(|l| l.split(',').nth(1) != Some("ins")).collect();
+    assert_eq!(no_ins, f1.lines().collect::<Vec<_>>(), "the substitutions and deletions changed with the flag");
+    // The flag is ignored with --neighbours-pad-only.
+    let o = std::process::Command::new(exe)
+        .args(["--neighbours", "000000", "--harness-ticks", "300", "--neighbours-pad-only", "--neighbours-ins",
+               "--neighbours-out"])
+        .arg(dir.join("pad.csv"))
+        .output()
+        .unwrap();
+    assert!(o.status.success());
+    assert_eq!(std::fs::read_to_string(dir.join("pad.csv")).unwrap().lines().count(), 1 + 3);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn insertions_count_and_order() {
+    // T11 §1: a 3-byte genome gives 3 x 255 substitutions + 3 deletions +
+    // 4 x 256 insertions. At each position p: the 255 substitutions in
+    // ascending byte order, the deletion of p, then the 256 bodies with
+    // byte v (ascending) inserted before p; the 256 insertions after the
+    // last byte come last.
+    use harness::{mutants, MutantSet};
+    let g = vec![0x10u8, 0x20, 0x30];
+    let ms = mutants(&g, MutantSet::WithIns);
+    assert_eq!(ms.len(), 3 * 255 + 3 + 4 * 256);
+    let mut k = 0;
+    for p in 0..=g.len() {
+        if p < g.len() {
+            for v in (0..=255u8).filter(|&v| v != g[p]) {
+                let mut want = g.clone();
+                want[p] = v;
+                assert_eq!((ms[k].pos, ms[k].kind, ms[k].byte, &ms[k].genome), (p, "sub", Some(v), &want), "row {k}");
+                k += 1;
+            }
+            let mut want = g.clone();
+            want.remove(p);
+            assert_eq!((ms[k].pos, ms[k].kind, ms[k].byte, &ms[k].genome), (p, "del", None, &want), "row {k}");
+            k += 1;
+        }
+        for v in 0..=255u8 {
+            let mut want = g.clone();
+            want.insert(p, v);
+            assert_eq!((ms[k].pos, ms[k].kind, ms[k].byte, &ms[k].genome), (p, "ins", Some(v), &want), "row {k}");
+            k += 1;
+        }
+    }
+    assert_eq!(k, ms.len());
+    // Without insertions the set is the T03 one, in the same order.
+    let subdel: Vec<_> = ms.iter().filter(|m| m.kind != "ins").map(|m| (m.pos, m.kind, m.byte)).collect();
+    let t03: Vec<_> = mutants(&g, MutantSet::SubDel).iter().map(|m| (m.pos, m.kind, m.byte)).collect();
+    assert_eq!(subdel, t03);
+    assert_eq!(mutants(&g, MutantSet::PadOnly).len(), 3);
+}
+
+#[test]
+fn insertions_in_l1_follow_the_search_rule() {
+    // T11 §1, the spec's `insertion_of_pad_is_a_knockout_of_nothing` as
+    // found. The search rule is in sim.rs (`Op::Searchf | Op::Searchb` in
+    // `Sim::step`), not isa.rs: the template is the run of nops after the
+    // search, and a candidate matches when the template's length of bytes
+    // there are its complement, whatever follows. So the match is not
+    // exact-length: a five-nop label that contains `1010` still answers the
+    // four-nop template `0101`. But `pad` is not a nop (`Op::is_nop` is
+    // `nop0 | nop1`), so a `pad` inserted inside L1 splits the run. Three
+    // cases, at the default physics:
+    // - `pad` beside L1 (inserted before byte 18 or before byte 22) changes
+    //   nothing: L1 is intact, and the 42-byte body makes the ancestor's
+    //   119 exact children alone (the `searchf` lands on the `pad` before
+    //   `self 0` when it follows L1).
+    // - `pad` inside L1 (before byte 19, 20 or 21) breaks the label: alone
+    //   it finds no L1 and dies without a child; before the ancestor it
+    //   finds the host's L1 and is the label-flip parasite (entry 22).
+    // - Of the six nops inserted inside L1, exactly `nop1` before 19
+    //   (`11010`) and `nop0` before 21 (`10100`) keep `1010` contiguous and
+    //   replicate (119 exact children); the other four break the label.
+    let g = ancestor_t(ANCESTOR_T_K, 16);
+    let cfg = Config::default();
+    let ins = |p: usize, v: u8| {
+        let mut m = g.clone();
+        m.insert(p, v);
+        m
+    };
+    let alone = |m: &[u8]| run_alone_with(m, 3000, &cfg);
+    let (pad, nop0, nop1) = (0x00u8, 0x01u8, 0x03u8);
+    for p in [18, 22] {
+        let r = alone(&ins(p, pad));
+        assert_eq!((r.class(), r.exact_births), ("replicator", 119), "pad before {p}");
+    }
+    for p in [19, 20, 21] {
+        let m = ins(p, pad);
+        let a = alone(&m);
+        assert_eq!((a.class(), a.births), ("dies", 0), "pad before {p}");
+        let h = run_with_host(&m, &g, 3000, &cfg);
+        assert_eq!((harness::label(&a, &h), h.entry_off), ("parasite_jump", 22), "pad before {p}");
+        assert!(h.host_alive);
+    }
+    for (p, v, works) in [(19, nop0, false), (19, nop1, true), (20, nop0, false), (20, nop1, false),
+                          (21, nop0, true), (21, nop1, false)] {
+        let r = alone(&ins(p, v));
+        if works {
+            assert_eq!((r.class(), r.exact_births), ("replicator", 119), "byte {v} before {p}");
+        } else {
+            assert_ne!(r.class(), "replicator", "byte {v} before {p}");
+        }
+    }
 }
 
 #[test]
