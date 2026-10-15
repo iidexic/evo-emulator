@@ -277,6 +277,8 @@ pub enum Event {
         /// Hash of the body bytes at death.
         now_hash: u64,
         stats: OrgStats,
+        /// `Org::taxed_for_life` (T10): the body was drawn taxed for life.
+        taxed_for_life: bool,
     },
 }
 
@@ -311,6 +313,12 @@ pub struct Org {
     /// the rest carries over). 0 at birth. Part of the physics, so it is
     /// in `state_hash`.
     pub cycle_debt: i64,
+    /// Taxed for life under `cycle_tax_life_frac` / `cycle_tax_life_pct`
+    /// (T10): drawn once in `seed`, which every creation goes through
+    /// (seeding, founders, injection, division), never inherited and never
+    /// changed after. A taxed body loses `cycle_tax_life_pct`% of its cap
+    /// every tick. Physics state: in the snapshot and in `state_hash`.
+    pub taxed_for_life: bool,
     /// Where this organism first ran another living organism's byte (T03):
     /// set by `step` the first time it executes a byte owned by another
     /// living organism (body or pending region), to the IP's offset from
@@ -478,7 +486,13 @@ impl Sim {
     // ---- seeding --------------------------------------------------------
 
     /// Place a genome at `start` as a living organism with `energy` milli-units.
+    /// Every organism is created here (the founder, `seed_founders`,
+    /// `inject`, a child at `divide`), so this is where the lifelong tax
+    /// (T10) is drawn: one `chance(F)` before the body is written, only
+    /// when 0 < F < 1 and P > 0; F >= 1 taxes the body with no draw.
     pub fn seed(&mut self, start: u32, genome: &[u8], energy: i64, parent: u32) -> u32 {
+        let f = self.cfg.cycle_tax_life_frac;
+        let taxed_for_life = self.cfg.cycle_tax_life_pct > 0 && f > 0.0 && (f >= 1.0 || self.rng.chance(f));
         let id = self.next_id;
         self.next_id += 1;
         self.index.push(self.orgs.len() as u32);
@@ -507,6 +521,7 @@ impl Sim {
             parent,
             stats: OrgStats::new(energy),
             cycle_debt: 0,
+            taxed_for_life,
             first_foreign_off: None,
         });
         id
@@ -1160,6 +1175,7 @@ impl Sim {
             birth_hash: o.genome_hash,
             now_hash: fnv1a(&self.region(o.start, o.len)),
             stats: o.stats,
+            taxed_for_life: o.taxed_for_life,
         };
         let o = &mut self.orgs[i];
         o.alive = false;
@@ -1250,6 +1266,15 @@ impl Sim {
                     debit += taxed;
                     self.orgs[i].stats.cycles_taxed_m += taxed;
                 }
+            }
+            // The lifelong tax (T10): a body drawn taxed at its creation loses
+            // `cycle_tax_life_pct`% of its cap every tick, after the theft
+            // debt and the random tax, never below zero, counted with the
+            // random tax in `cycles_taxed_m`. No PRNG draw here.
+            if self.orgs[i].taxed_for_life {
+                let taxed = (cap * self.cfg.cycle_tax_life_pct / 100).min(cap - debit);
+                debit += taxed;
+                self.orgs[i].stats.cycles_taxed_m += taxed;
             }
             let mut left = cap - debit;
             let mut ran = false;
@@ -1357,6 +1382,12 @@ impl Sim {
             h.u64(o.pending_source.map_or(u64::MAX, |(s, _)| s as u64));
             h.u64(o.alive as u64);
             h.u64(o.cycle_debt as u64);
+            // T10: hashed only when set, so a world with no body taxed for
+            // life keeps the hash it had before the field existed (the
+            // pinned hashes of tests/pending_range.rs still hold).
+            if o.taxed_for_life {
+                h.u64(1);
+            }
         }
         h.0
     }
@@ -1450,10 +1481,22 @@ pub const STATE_MAGIC: &[u8; 8] = b"EVOSTATE";
 
 /// Snapshot format version. A new field in `Sim`, `Org`, `Patch` or
 /// `OrgStats`, or any change to the layout `save_state` writes, is a new
-/// version; the loader refuses every version but its own. `save_state`
-/// destructures each of those types without `..`, so adding a field there
-/// fails to compile until it is written (and this number raised).
-pub const STATE_VERSION: u32 = 1;
+/// version; the loader refuses every version but its own and those listed
+/// in `load_state`. `save_state` destructures each of those types without
+/// `..`, so adding a field there fails to compile until it is written (and
+/// this number raised).
+///
+/// 2 (T10, 2026-10-15): `Org::taxed_for_life`, one byte after
+/// `cycle_debt`, and the config fields `cycle_tax_life_frac` and
+/// `cycle_tax_life_pct`. Version 1 (T04; every E016 snapshot) is still
+/// read, as the world with no lifelong tax: its config text lacks the two
+/// fields, which the run loading it must leave at 0, and no body in it is
+/// taxed.
+pub const STATE_VERSION: u32 = 2;
+
+/// Config fields a version 1 snapshot does not have (T10), with the value
+/// text `Config::fields()` gives them at their defaults (off).
+const NOT_IN_V1: [(&str, &str); 2] = [("cycle_tax_life_frac", "0.0"), ("cycle_tax_life_pct", "0")];
 
 /// `Config::fields()` as the snapshot's config text: one `name=value\n`
 /// line per field, in order.
@@ -1467,11 +1510,24 @@ fn bad(msg: impl Into<String>) -> io::Error {
 
 /// Compare a snapshot's config text with `cfg` field by field, in order,
 /// skipping `seed` (a replay may run under another seed). Returns the
-/// file's seed, or an error naming the first field that differs.
-fn check_config(text: &str, cfg: &Config) -> io::Result<u64> {
+/// file's seed, or an error naming the first field that differs. A
+/// version 1 file has no line for the fields in `NOT_IN_V1`; `cfg` must
+/// have them off.
+fn check_config(text: &str, cfg: &Config, version: u32) -> io::Result<u64> {
     let mut lines = text.lines();
     let mut seed = None;
     for (name, given) in cfg.fields() {
+        if version == 1 {
+            if let Some(&(_, off)) = NOT_IN_V1.iter().find(|(n, _)| *n == name) {
+                if given != off {
+                    return Err(bad(format!(
+                        "snapshot config differs at {name}: the file is format version 1, which has no lifelong \
+                         tax ({name} = {off}), this run {given}"
+                    )));
+                }
+                continue;
+            }
+        }
         let line = lines.next().ok_or_else(|| bad(format!("snapshot config differs at {name}: not in the file")))?;
         let (fname, fv) = line.split_once('=').ok_or_else(|| bad(format!("snapshot config line {line:?} has no '='")))?;
         if fname != name {
@@ -1595,7 +1651,7 @@ impl Sim {
             let Org {
                 id, regs, ip, flag, energy, start, len, pending, pending_source, pending_errors,
                 pending_slips, alive, birth_tick, offspring, genome_hash, genome, parent, stats,
-                cycle_debt, first_foreign_off,
+                cycle_debt, taxed_for_life, first_foreign_off,
             } = org;
             o.u32(*id);
             for &r in regs {
@@ -1622,6 +1678,7 @@ impl Sim {
             o.u64(*genome_hash);
             o.u32(*parent);
             o.i64(*cycle_debt);
+            o.u8(*taxed_for_life as u8);
             o.u8(first_foreign_off.is_some() as u8);
             o.u32(first_foreign_off.unwrap_or(0));
             o.u32(genome.len() as u32);
@@ -1639,9 +1696,10 @@ impl Sim {
     /// field for field, except `seed`, or the load is refused with an
     /// `InvalidData` error naming the first field that differs. The loaded
     /// `Sim` carries the file's seed in `cfg.seed` (its stream continues;
-    /// `reseed` starts a new one). Also refused: another magic or version,
-    /// a world or patch count that does not match `cfg`, a truncated file
-    /// or trailing bytes. `index` is rebuilt from the organism list.
+    /// `reseed` starts a new one). Also refused: another magic or version
+    /// (this build reads `STATE_VERSION` and version 1, see there), a world
+    /// or patch count that does not match `cfg`, a truncated file or
+    /// trailing bytes. `index` is rebuilt from the organism list.
     pub fn load_state(r: &mut impl Read, cfg: Config) -> io::Result<Sim> {
         let mut buf = Vec::new();
         r.read_to_end(&mut buf)?;
@@ -1650,13 +1708,13 @@ impl Sim {
             return Err(bad("not a snapshot file (no EVOSTATE magic)"));
         }
         let version = p.u32()?;
-        if version != STATE_VERSION {
-            return Err(bad(format!("snapshot format version {version}; this build reads {STATE_VERSION}")));
+        if version != STATE_VERSION && version != 1 {
+            return Err(bad(format!("snapshot format version {version}; this build reads {STATE_VERSION} and 1")));
         }
         let cfg_len = p.u32()? as usize;
         let text = std::str::from_utf8(p.take(cfg_len)?).map_err(|_| bad("snapshot config text is not UTF-8"))?;
         let mut cfg = cfg;
-        cfg.seed = check_config(text, &cfg)?;
+        cfg.seed = check_config(text, &cfg, version)?;
         let mut sim = Sim::new(cfg);
         sim.tick = p.u64()?;
         sim.rng = Rng::from_state([p.u64()?, p.u64()?, p.u64()?, p.u64()?]);
@@ -1711,6 +1769,7 @@ impl Sim {
             let genome_hash = p.u64()?;
             let parent = p.u32()?;
             let cycle_debt = p.i64()?;
+            let taxed_for_life = if version >= 2 { p.bool()? } else { false };
             let has_off = p.bool()?;
             let off = p.u32()?;
             let glen = p.u32()?;
@@ -1751,6 +1810,7 @@ impl Sim {
                 parent,
                 stats: OrgStats::from_words(words),
                 cycle_debt,
+                taxed_for_life,
                 first_foreign_off: has_off.then_some(off),
             });
         }
@@ -2772,9 +2832,10 @@ alloc C
         let mut f = file.clone();
         f[0] = b'X';
         assert!(err(&f, &cfg).unwrap().contains("magic"));
+        // Version 2 is this build's (T10) and 1 is still read; 3 is not.
         let mut f = file.clone();
-        f[8] = 2;
-        assert!(err(&f, &cfg).unwrap().contains("version 2"));
+        f[8] = 3;
+        assert!(err(&f, &cfg).unwrap().contains("version 3"));
         assert!(err(&file[..file.len() - 1], &cfg).unwrap().contains("truncated"));
         let mut f = file.clone();
         f.push(0);
