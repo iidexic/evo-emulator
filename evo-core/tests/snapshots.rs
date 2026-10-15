@@ -195,6 +195,21 @@ fn replay_events_match_tierra_theft() {
 }
 
 #[test]
+fn lifelong_tax_survives_snapshot() {
+    // T10 §5 test 4: the continuation under `--cycle-tax-lifelong 0.3 60`.
+    // Each body's lifelong tax is state the snapshot carries (format
+    // version 2); the replay from 2,500 is the straight run's continuation.
+    let mut cfg = Config::default();
+    cfg.cycle_tax_life_frac = 0.3;
+    cfg.cycle_tax_life_pct = 60;
+    let (start, _) = replay_matches("lifelong-tax", &["--cycle-tax-lifelong", "0.3", "60"], &cfg);
+    let living: Vec<_> = start.orgs.iter().filter(|o| o.alive).collect();
+    let taxed = living.iter().filter(|o| o.taxed_for_life).count();
+    assert!(taxed > 0 && taxed < living.len(), "{taxed} of {} living bodies taxed at 2500", living.len());
+    assert!(living.iter().any(|o| o.taxed_for_life && o.stats.cycles_taxed_m > 0));
+}
+
+#[test]
 fn replay_reseed_diverges_deterministically() {
     // T04 §4 test 3: `--seed 2` from the same file twice gives the same
     // state, and not the continuation's; the continuation is the original.

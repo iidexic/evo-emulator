@@ -140,7 +140,8 @@ impl Recorder {
             dir: dir.to_path_buf(),
             info,
             births: csv(dir, "births.csv", "tick,child,executor,source,start,len,copy_errors,slips,endowment_m,raw_hash,parent_hash,parent_now_hash,source_hash")?,
-            deaths: csv(dir, "deaths.csv", &format!("tick,id,cause,age,offspring,len,start,pending_len,ip_off,op_at_ip,energy_m,pool_m,birth_hash,now_hash,{s}"))?,
+            // `taxed_for_life` (T10) last, after the counters.
+            deaths: csv(dir, "deaths.csv", &format!("tick,id,cause,age,offspring,len,start,pending_len,ip_off,op_at_ip,energy_m,pool_m,birth_hash,now_hash,{s},taxed_for_life"))?,
             census: csv(dir, "census.csv", "tick,now_hash,count")?,
             orgs: csv(dir, "orgs.csv", &format!("tick,id,parent,birth_tick,start,len,pending_len,energy_m,ip_off,op_at_ip,birth_hash,now_hash,offspring,{s}"))?,
             patches: csv(dir, "patches.csv", "tick,patch,pool_m,orgs,absorbed_m,overflow_m")?,
@@ -218,12 +219,13 @@ impl Recorder {
                 }
                 Event::Death {
                     tick, id, cause, age, offspring, start, len, pending_len, ip_off,
-                    op_at_ip, energy, pool, birth_hash, now_hash, stats,
+                    op_at_ip, energy, pool, birth_hash, now_hash, stats, taxed_for_life,
                 } => {
                     writeln!(
                         self.deaths,
-                        "{tick},{id},{},{age},{offspring},{len},{start},{pending_len},{ip_off},{},{energy},{pool},{},{},{}",
-                        cause.name(), op_at_ip.name(), hex(birth_hash), hex(now_hash), stats.csv_row()
+                        "{tick},{id},{},{age},{offspring},{len},{start},{pending_len},{ip_off},{},{energy},{pool},{},{},{},{}",
+                        cause.name(), op_at_ip.name(), hex(birth_hash), hex(now_hash), stats.csv_row(),
+                        taxed_for_life as u8
                     )?;
                 }
             }

@@ -18,9 +18,16 @@ Arms (§2), sun S = 2 (resolved 2026-10-13), 30 seeds, 250,000 ticks,
 | tierra_tax | --ancestor tierra --sun 2 --cycle-tax-pct P --cycle-tax-frac F |
 | std_n0 | --ancestor std --sun 2 |
 | std_t50 | --ancestor std --sun 2 --cycle-theft-pct 50 |
+| tierra_taxL | --ancestor tierra --sun 2 --cycle-tax-lifelong F P (T10, E017; F, P in tax_life.json) |
 
 Every harness call (`--classify`, `--host`) gets the arm's physics flags
-(everything above but `--ancestor`; the harness has its noise off).
+(everything above but `--ancestor`; the harness has its noise off), except
+the lifelong tax (`harness_physics`): it is where a body was born, not what
+its genome is, and under the flag the harness bodies would be taxed or not
+by one draw from the harness's fixed seed (seed 1 happens to draw untaxed at
+F = 0.43); taxed for life at P = 66 the tierra ancestor dies alone before
+its first child, so every genome would class `dies`. tierra_taxL's harness is
+therefore tierra_n0's, as tierra_t50's `alone` is unentered.
 
 The probe parasite (§1). For `tierra`: the ancestor body with byte 18 (the
 first byte of L1, `nop1`) changed to `nop0`; its `searchf` then misses its
@@ -78,7 +85,30 @@ Stages (subcommands):
   clamped to 0-100; 0 is refused). Also kept for the record: t50's own
   entered share. Writes runs/e016/tax.json and prints F, r, P (record them
   in the experiment file before launching tierra_tax). An existing tax.json
-  with other values is not overwritten without `--force`.
+  with other values is not overwritten without `--force` (and one with the
+  same values is left as it is). Then the lifelong tax (T10 §2.2), over
+  tierra_t50's same deaths: F = their entered share; P = 100 x (mean of
+  `cycles_lost_m / age` over the entered ones) / 32,000, rounded as above;
+  the mean check F x P against r / 32,000 (within 2%) is recorded and a
+  failure printed, not refused. Also kept: the time-weighted pair (F = the
+  entered deaths' share of all organism-ticks, P = their pooled `sum lost /
+  sum age`), whose product is r / 32,000 by construction. Writes
+  tax_life.json beside tax.json, with the same overwrite rule.
+- `pilot` (T10 §4): tierra_taxL, seeds 1-10, 50,000 ticks, no snapshots, at
+  tax_life.json's F, P or `--life F P`, into
+  <out>/tierra_taxL_pilot/F<F>_P<P>/tierra_taxL/s<seed>/ (classified and
+  gzipped as `world` does). Per seed: persisted (replicator-class bodies at
+  50,000) and the replicator-class population (census bodies whose current
+  genome is replicator-class) averaged over the census ticks 25,000-50,000,
+  against tierra_n0's band: the min and max over its seeds alive at 50,000
+  of the same average. The gate: >= 8 of 10 persist inside the band.
+  The founder draws its lifelong tax too (T10 §2), and taxed at a high P it
+  dies before its first child (tick 73 at P = 66), so each row says whether
+  the founder drew taxed, and beside the registered gate the stage reads
+  E016 §5's rule (seeds that lose the founder are counted and excluded) on
+  the first 10 seeds with an untaxed founder; `--pilot-seeds N` runs seeds
+  1..N for those replacements. Writes pilot.csv and pilot.json there and
+  prints the table.
 - `screen`: first the reachability baseline (§1, §3): every mutant of the
   E015 stage 1 neighbourhood files (runs/e015/nbhd/<ancestor>.csv, every
   substitution and deletion of the ancestor) through the defence rule under
@@ -143,7 +173,10 @@ Stages (subcommands):
   maintained (yes/no): pairs with t50 above, below, tied; a two-sided sign
   test over the untied pairs (binomial, p = 1/2); prediction t50 above in
   >= 20 of 30 pairs each. A pair missing either share (an extinct run) is
-  left out and counted.
+  left out and counted. With tierra_taxL present, the same pairing against
+  it and taxL against n0, read by T10 §3's two predictions (the cost of
+  being entered: t50 above taxL in >= 20, taxL above n0 in <= 18;
+  slowness: taxL above n0 in >= 20, t50 above taxL in 12-18).
 - `lod`: for every run with a structural complete genome, T06's line of
   descent (lod.lod, unchanged logic, with the arm's physics flags and probe
   in its two harness calls) from the founder to the first organism born
@@ -200,6 +233,7 @@ Usage (from the repo root):
     uv run --project analysis analysis/e016_defence.py analyse
     uv run --project analysis analysis/e016_defence.py lod
     uv run --project analysis analysis/e016_defence.py replay
+    uv run --project analysis analysis/e016_defence.py pilot --jobs 6   # T10 §4, before tierra_taxL
     uv run --project analysis analysis/e016_defence.py world --smoke --seeds 2 --ticks 3000 \\
         --out runs/e016_smoke                                           # smoke test only
 """
@@ -271,16 +305,27 @@ BACKGROUND_FROM, BACKGROUND_TO = 25_000, 100_000
 NOP0, NOP1 = 1, 3
 PROBE_POS = 18
 TIERRA_REGIONS = {"template": (13, 16), "label": (18, 21)}
-ARMS = ["tierra_n0", "tierra_t50", "tierra_tax", "std_n0", "std_t50"]
+ARMS = ["tierra_n0", "tierra_t50", "tierra_tax", "std_n0", "std_t50", "tierra_taxL"]
 FIRST_ARMS = ["tierra_n0", "tierra_t50", "std_n0", "std_t50"]
 N0_OF = {"tierra_n0": "tierra_n0", "tierra_t50": "tierra_n0", "tierra_tax": "tierra_n0",
-         "std_n0": "std_n0", "std_t50": "std_n0"}
+         "std_n0": "std_n0", "std_t50": "std_n0", "tierra_taxL": "tierra_n0"}
+# The calibrated arms and their files in --out: (P, F) each.
+TAX_FILE = {"tierra_tax": "tax.json", "tierra_taxL": "tax_life.json"}
+# T10 §2.2 and §4.
+LIFE_CHECK = 0.02  # F x P within 2% of r / cap
+PILOT_SEEDS, PILOT_TICKS, PILOT_NEED, PILOT_FROM = 10, 50_000, 8, 25_000
 # Gzipped after classification; classes.csv last, so an interrupted
 # compression still leaves the run seen as classified. The state/ snapshots
 # are gzipped too (deflate_state) and inflated one at a time for a replay.
 COMPRESS = ("births.csv", "deaths.csv", "orgs.csv", "census.csv", "world.bin", "genomes.csv", "classes.csv")
 
-Tax = tuple[int, float]
+# A calibration (P, F). Stages take `tax` as either the arm's own pair or a
+# mapping arm -> pair (`load_tax`); `tax_of` reads both.
+Tax = tuple[int, float] | dict[str, tuple[int, float]]
+
+
+def tax_of(tax: Tax | None, arm: str) -> tuple[int, float] | None:
+    return tax.get(arm) if isinstance(tax, dict) else tax
 
 
 # ---- arms and the probe ----------------------------------------------------------
@@ -309,10 +354,24 @@ def physics(arm: str, tax: Tax | None = None) -> list[str]:
     f = ["--sun", str(SUN)]
     if arm.endswith("_t50"):
         f += ["--cycle-theft-pct", "50"]
-    if arm.endswith("_tax"):
-        if tax is None:
-            raise SystemExit("tierra_tax needs P and F: run `calibrate` first (runs/e016/tax.json)")
-        f += ["--cycle-tax-pct", str(tax[0]), "--cycle-tax-frac", repr(float(tax[1]))]
+    if arm in TAX_FILE:
+        t = tax_of(tax, arm)
+        if t is None:
+            raise SystemExit(f"{arm} needs P and F: run `calibrate` first (runs/e016/{TAX_FILE[arm]})")
+        if arm == "tierra_tax":
+            f += ["--cycle-tax-pct", str(t[0]), "--cycle-tax-frac", repr(float(t[1]))]
+        else:
+            f += ["--cycle-tax-lifelong", repr(float(t[1])), str(t[0])]
+    return f
+
+
+def harness_physics(arm: str, tax: Tax | None = None) -> list[str]:
+    """`physics` for the harness: without the lifelong tax (module docstring),
+    so tierra_taxL's harness is tierra_n0's."""
+    f = physics(arm, tax)
+    if "--cycle-tax-lifelong" in f:
+        k = f.index("--cycle-tax-lifelong")
+        del f[k:k + 3]
     return f
 
 
@@ -360,7 +419,7 @@ def world_cmd(exe: Path, d: Path, arm: str, seed: int, ticks: int, tax: Tax | No
 
 
 def classify_cmd(exe: Path, d: Path, arm: str, tax: Tax | None) -> list[str]:
-    return [str(exe), "--classify", str(d), "--harness-ticks", str(HARNESS_TICKS), *physics(arm, tax)]
+    return [str(exe), "--classify", str(d), "--harness-ticks", str(HARNESS_TICKS), *harness_physics(arm, tax)]
 
 
 def replay_cmd(exe: Path, snap: Path, d: Path, arm: str, new_seed: int, to_tick: int, tax: Tax | None) -> list[str]:
@@ -403,11 +462,14 @@ def require_replay(exe: Path) -> None:
 
 
 def load_tax(out: Path) -> Tax | None:
-    p = out / "tax.json"
-    if not p.exists():
-        return None
-    c = json.loads(p.read_text())
-    return int(c["P"]), float(c["F"])
+    """Every calibration in `out` (tax.json, tax_life.json) as arm -> (P, F);
+    None with neither."""
+    t = {}
+    for arm, name in TAX_FILE.items():
+        if (out / name).exists():
+            c = json.loads((out / name).read_text())
+            t[arm] = int(c["P"]), float(c["F"])
+    return t or None
 
 
 # ---- meta checks -----------------------------------------------------------------------
@@ -451,10 +513,17 @@ def meta_problems(m: dict, arm: str, ticks: int | None = None, tax: Tax | None =
     if c.get("cycle_theft_pct") != theft:
         p.append(f"cycle_theft_pct {c.get('cycle_theft_pct')}, not {theft}")
     if arm.endswith("_tax"):
-        if tax is None or c.get("cycle_tax_pct") != tax[0] or float(c.get("cycle_tax_frac", -1)) != float(tax[1]):
-            p.append(f"cycle tax {c.get('cycle_tax_pct')} / {c.get('cycle_tax_frac')}, not {tax}")
+        t = tax_of(tax, arm)
+        if t is None or c.get("cycle_tax_pct") != t[0] or float(c.get("cycle_tax_frac", -1)) != float(t[1]):
+            p.append(f"cycle tax {c.get('cycle_tax_pct')} / {c.get('cycle_tax_frac')}, not {t}")
     elif c.get("cycle_tax_pct") != 0 or float(c.get("cycle_tax_frac", -1)) != 1.0:
         p.append(f"cycle tax {c.get('cycle_tax_pct')} / {c.get('cycle_tax_frac')}, not off")
+    # T10's lifelong tax; runs before it have no keys, and none was taxed.
+    life = (c.get("cycle_tax_life_pct", 0), float(c.get("cycle_tax_life_frac", 0.0)))
+    want = tax_of(tax, arm) if arm == "tierra_taxL" else (0, 0.0)
+    if want is None or life != (want[0], float(want[1])):
+        exp = "off" if arm != "tierra_taxL" else "uncalibrated" if want is None else f"{float(want[1])} / {want[0]}"
+        p.append(f"lifelong tax F / P {life[1]} / {life[0]}, not {exp}")
     return p
 
 
@@ -632,7 +701,57 @@ def tax_calibration(n0: pl.DataFrame, t50: pl.DataFrame) -> dict:
                 F_t50=t50_entered / t50.height if t50.height else None, cap_m=CAP_M, P_exact=p_exact, P=p)
 
 
-def run_calibrate(out: Path, seeds: list[int], ticks: int, force: bool) -> dict:
+def life_calibration(t50: pl.DataFrame) -> dict:
+    """T10 §2.2 over `t50` (tierra_t50's replicator-class deaths after the
+    calibration tick: `age`, `exec_by_others`, `cycles_lost_m`): F = the
+    entered share (`exec_by_others` > 0); P = 100 x (mean of `cycles_lost_m /
+    age` over the entered deaths with `age` > 0) / cap, to the nearest whole
+    percent (halves up), clamped to 0-100, 0 refused. Mean check: F x P / 100
+    against r / cap, r = sum `cycles_lost_m` / sum `age` over all of `t50`
+    (E016's r), within LIFE_CHECK relative. Kept beside: the time-weighted
+    pair, F_time = the entered deaths' share of sum `age` and P_time = 100
+    sum `cycles_lost_m` / (sum `age` of the entered x cap); F_time x P_time
+    is r / cap by construction (an unentered death loses nothing)."""
+    n = t50.height
+    ent = t50.filter(pl.col("exec_by_others") > 0)
+    if n == 0 or ent.height == 0:
+        raise SystemExit(f"life calibration: tierra_t50 has {n} replicator-class deaths, {ent.height} entered")
+    pos = ent.filter(pl.col("age") > 0)
+    rate_sum = float((pos["cycles_lost_m"] / pos["age"]).sum())
+    mean_rate = rate_sum / pos.height
+    p_exact = 100 * mean_rate / CAP_M
+    p = min(100, max(0, math.floor(p_exact + 0.5)))
+    if p == 0:
+        raise SystemExit(f"life calibration: P = {p_exact:.3f} rounds to 0")
+    f = ent.height / n
+    lost, age = int(t50["cycles_lost_m"].sum()), int(t50["age"].sum())
+    lost_e, age_e = int(ent["cycles_lost_m"].sum()), int(ent["age"].sum())
+    r = lost / age
+    target = r / CAP_M
+    rel = (f * p / 100) / target - 1
+    return dict(F=f, deaths_t50=n, entered_t50=ent.height, entered_age_pos=pos.height, rate_sum=rate_sum,
+                mean_rate_entered=mean_rate, cap_m=CAP_M, P_exact=p_exact, P=p, cycles_lost_m=lost, age=age,
+                r=r, target=target, mean=f * p / 100, mean_exact=f * p_exact / 100, mean_rel=rel,
+                mean_check_ok=abs(rel) <= LIFE_CHECK, cycles_lost_m_entered=lost_e, age_entered=age_e,
+                F_time=age_e / age, P_time_exact=100 * lost_e / (age_e * CAP_M), unentered_lost_m=lost - lost_e)
+
+
+def write_calibration(p: Path, c: dict, force: bool, arm: str) -> None:
+    """Write `c` to `p` unless it holds another (P, F) (then only with
+    `force`); a file with the same text is left untouched."""
+    text = json.dumps(c, indent=2) + "\n"
+    if p.exists():
+        if p.read_text(encoding="utf-8") == text:
+            return
+        old = json.loads(p.read_text())
+        if (old.get("P"), old.get("F")) != (c["P"], c["F"]) and not force:
+            raise SystemExit(f"{p} holds P = {old.get('P')}, F = {old.get('F')!r}; this calibration gives P = {c['P']}, "
+                             f"F = {c['F']!r}. --force overwrites (only before any {arm} run).")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(text, encoding="utf-8", newline="")
+
+
+def run_calibrate(out: Path, seeds: list[int], ticks: int, force: bool) -> tuple[dict, dict]:
     parts = {"tierra_n0": [], "tierra_t50": []}
     for arm in parts:
         for s in seeds:
@@ -641,17 +760,28 @@ def run_calibrate(out: Path, seeds: list[int], ticks: int, force: bool) -> dict:
                 raise SystemExit(f"calibrate: {arm}/s{s} is not finished; calibrate reads all {len(seeds)} seeds")
             check_meta(d, arm, ticks, None, False)
             parts[arm].append(rep_deaths_after(d, after(ticks)))
-    c = tax_calibration(pl.concat(parts["tierra_n0"]), pl.concat(parts["tierra_t50"]))
+    t50 = pl.concat(parts["tierra_t50"])
+    c = tax_calibration(pl.concat(parts["tierra_n0"]), t50)
     c = dict(source="tierra_n0 (F), tierra_t50 (r)", seeds=seeds, after=after(ticks), **c)
-    p = out / "tax.json"
-    if p.exists() and not force:
-        old = json.loads(p.read_text())
-        if (old.get("P"), old.get("F")) != (c["P"], c["F"]):
-            raise SystemExit(f"{p} holds P = {old.get('P')}, F = {old.get('F')!r}; this calibration gives P = {c['P']}, "
-                             f"F = {c['F']!r}. --force overwrites (only before any tierra_tax run).")
-    out.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(c, indent=2) + "\n", encoding="utf-8", newline="")
-    return c
+    write_calibration(out / "tax.json", c, force, "tierra_tax")
+    life = dict(source="tierra_t50 (T10 §2.2)", seeds=seeds, after=after(ticks), **life_calibration(t50))
+    write_calibration(out / "tax_life.json", life, force, "tierra_taxL")
+    return c, life
+
+
+def life_text(c: dict) -> str:
+    return (f"Lifelong tax calibration (T10 §2.2), tierra_t50 seeds {c['seeds'][0]}-{c['seeds'][-1]} pooled, "
+            f"replicator-class deaths after tick {c['after']:,}: F = {c['entered_t50']:,} / {c['deaths_t50']:,} entered "
+            f"= {c['F']!r}; mean of cycles_lost_m / age over the {c['entered_age_pos']:,} entered = "
+            f"{c['rate_sum']:,.1f} / {c['entered_age_pos']:,} = {c['mean_rate_entered']:,.1f} milli-units per tick; "
+            f"P = 100 x that / {c['cap_m']:,} = {c['P_exact']:.4f}, rounded P = {c['P']}. Mean check: F x P = "
+            f"{100 * c['mean']:.2f}% of cap (exact P: {100 * c['mean_exact']:.2f}%) against r / cap = "
+            f"{c['cycles_lost_m']:,} / {c['age']:,} / {c['cap_m']:,} = {100 * c['target']:.2f}%: "
+            f"{100 * c['mean_rel']:+.1f}%, {'within' if c['mean_check_ok'] else 'NOT within'} "
+            f"{100 * LIFE_CHECK:.0f}%. Time-weighted pair: F_time = {c['age_entered']:,} / {c['age']:,} = "
+            f"{c['F_time']:.4f} of organism-ticks in entered bodies, P_time = 100 x {c['cycles_lost_m_entered']:,} / "
+            f"({c['age_entered']:,} x {c['cap_m']:,}) = {c['P_time_exact']:.4f} (product r / cap). tierra_taxL runs "
+            f"with --cycle-tax-lifelong {c['F']!r} {c['P']}.")
 
 
 def calib_text(c: dict) -> str:
@@ -713,7 +843,7 @@ def harness_rows(exe: Path, hexes: list[str], arm: str, tax: Tax | None, ticks: 
     """Both §1 harness runs for each distinct body hex: alone (one
     `--classify` over all of them) and probed (`--host PROBE --host-body G`,
     in parallel), under the arm's physics."""
-    flags = tuple(physics(arm, tax))
+    flags = tuple(harness_physics(arm, tax))
     uniq = list(dict.fromkeys(hexes))
     keys = {f"g{i}": h for i, h in enumerate(uniq)}
     alone = lod.harness_alone(exe, keys, ticks, flags=flags)
@@ -805,7 +935,7 @@ def screen_run(exe: Path, d: Path, arm: str, tax: Tax | None, ref: Ref, ticks: i
                     base(arm), "bytes_hex")
     df = df.select(DEFENCE_COLS).sort("first_tick", "func_hash")
     df.write_csv(d / "defence.csv")
-    (d / "defence_ref.json").write_text(json.dumps(dict(arm=arm, probe=PROBE[base(arm)], flags=physics(arm, tax),
+    (d / "defence_ref.json").write_text(json.dumps(dict(arm=arm, probe=PROBE[base(arm)], flags=harness_physics(arm, tax),
                                                         harness_ticks=ticks, **ref.__dict__), indent=2) + "\n",
                                         encoding="utf-8", newline="")
     return df
@@ -1211,7 +1341,9 @@ def paired_lines(runs: pl.DataFrame, n_seeds: int) -> list[str]:
              f"the run's last {BIN:,}-tick bin and on maintained (yes/no). Sign test over untied pairs (two-sided, "
              f"binomial p = 1/2). Prediction: t50 above in >= {need} of {n_seeds} pairs each (the share)."]
     have = lambda a: runs.filter(pl.col("arm") == a).height > 0
-    for other in ("tierra_n0", "tierra_tax"):
+    for other in ("tierra_n0", "tierra_tax", "tierra_taxL"):
+        if other == "tierra_taxL" and not have(other):
+            continue  # T10's arm, read in e017_lines once it has run
         if not (have("tierra_t50") and have(other)):
             lines.append(f"- t50 against {other}: not readable (an arm missing).")
             continue
@@ -1272,15 +1404,44 @@ def predictions(runs: pl.DataFrame, n_seeds: int) -> list[str]:
     return lines
 
 
+def e017_lines(runs: pl.DataFrame, n_seeds: int, ticks: int) -> list[str]:
+    """T10 §3, once tierra_taxL has run: its survivability gate (>= 24 of 30
+    seeds persist to the run's end) and the paired reading on the structural
+    share in the last bin, read by the two predictions."""
+    arm = lambda a: runs.filter(pl.col("arm") == a)
+    if not arm("tierra_taxL").height:
+        return []
+    up, down = lambda k: math.ceil(k * n_seeds / 30), lambda k: math.floor(k * n_seeds / 30)
+    x = arm("tierra_taxL")
+    alive = int(((x["final_tick"] >= ticks) & (x["pop_end"] > 0)).sum())
+    lines = ["", f"E017 (T10 §3): tierra_taxL persists to {ticks:,} in {alive} of {x.height} seeds [>= {up(24)}]: "
+                 f"{yn(alive >= up(24))}."]
+    if not (arm("tierra_t50").height and arm("tierra_n0").height):
+        return lines + ["- the paired reading: not readable (tierra_t50 or tierra_n0 missing)."]
+    a = paired(runs, "tierra_t50", "tierra_taxL", "structural_share_end")
+    b = paired(runs, "tierra_taxL", "tierra_n0", "structural_share_end")
+    cost = a["plus"] >= up(20) and b["plus"] <= down(18)
+    slow = b["plus"] >= up(20) and up(12) <= a["plus"] <= down(18)
+    lines += [f"- t50 above taxL in {a['plus']} of {a['pairs']} pairs (below {a['minus']}, tied {a['ties']}, "
+              f"{a['unpaired']} unpaired; p = {a['p']:.4g}); taxL above n0 in {b['plus']} of {b['pairs']} (below "
+              f"{b['minus']}, tied {b['ties']}, {b['unpaired']} unpaired; p = {b['p']:.4g}).",
+              f"- the cost of being entered [t50 above taxL >= {up(20)}, taxL above n0 <= {down(18)}]: {yn(cost)}; "
+              f"slowness [taxL above n0 >= {up(20)}, t50 above taxL {up(12)}-{down(18)}]: {yn(slow)}."]
+    return lines
+
+
 def summarize(bdf: pl.DataFrame, runs: pl.DataFrame, n_seeds: int, ticks: int, bin_size: int,
-              calib: dict | None) -> str:
+              calib: dict | None, life: dict | None = None) -> str:
     arms = [a for a in ARMS if runs.filter(pl.col("arm") == a).height]
     lines = [f"# E016 defence search: {', '.join(arms)}; {n_seeds} seeds x {ticks:,} ticks, sun {SUN}, bins of "
              f"{bin_size:,}", "",
              "Record: docs/research/experiments/2026-10-13-e016-defence-search.md. Runner: analysis/e016_defence.py "
              "(module docstring for every definition).", ""]
     lines += [calib_text(calib) if calib else "Tax not calibrated yet (no runs/e016/tax.json).", ""]
+    if life:
+        lines += [life_text(life), ""]
     lines += predictions(runs, n_seeds)
+    lines += e017_lines(runs, n_seeds, ticks)
     lines += ["", "## Defence per seed", "",
               "Screened candidates; complete genomes (structural / parameter; immune / tolerant over both); first birth "
               "of a structural and of a parameter one; maintained structural (longest run of windows >= 1%) and "
@@ -1476,7 +1637,7 @@ def lod_run(exe: Path, d: Path, arm: str, tax: Tax | None, ref: Ref, ticks_h: in
     at = next((t for t in rd.census_ticks if t >= first["tick"]), rd.census_ticks[-1])
     out_dir = d / "lod"
     res = lod.lod(d, at=at, pick=f"id:{first['child']}", harness_ticks=ticks_h, out=out_dir, exe=exe, run=rd,
-                  jobs=jobs, flags=tuple(physics(arm, tax)), probe=PROBE[base(arm)], log=lambda *_: None)
+                  jobs=jobs, flags=tuple(harness_physics(arm, tax)), probe=PROBE[base(arm)], log=lambda *_: None)
     g = res.genomes
     kinds = {r["raw_hash"]: is_defence(r["alone_class"], r["alone_exact"], r["entered_host_exact"],
                                        r["entered_pad_exact"], ref) for r in g.iter_rows(named=True)}
@@ -1690,12 +1851,142 @@ def replay_summary(df: pl.DataFrame, notes: list[str]) -> str:
     return "\n".join(lines)
 
 
+# ---- pilot (T10 §4) --------------------------------------------------------------------------------------------
+
+def rep_population(d: Path, lo: int, hi: int) -> pl.DataFrame:
+    """Every census tick in [lo, hi] (a CENSUS multiple), the living bodies
+    (`pop`) and those whose current genome is replicator-class (`rep`), from
+    census.csv and classes.csv; 0 at ticks with no census row (extinct)."""
+    census = read_cols(d, "census", ["tick", "now_hash", "count"]).filter(pl.col("tick").is_between(lo, hi))
+    c = with_class(census, read_cols(d, "classes", ["raw_hash", "class"]), "now_hash")
+    got = c.group_by("tick").agg(pop=pl.col("count").sum(),
+                                 rep=pl.col("count").filter(pl.col("class") == "replicator").sum())
+    ticks = pl.DataFrame({"tick": list(range(lo, hi + 1, CENSUS))}, schema={"tick": got.schema["tick"]})
+    return ticks.join(got, on="tick", how="left").fill_null(0).sort("tick")
+
+
+def population_row(d: Path, lo: int, hi: int) -> dict:
+    """Persistence (replicator-class bodies alive at `hi`) and the
+    replicator-class population over the census ticks [lo, hi]."""
+    x = rep_population(d, lo, hi)
+    end = x.filter(pl.col("tick") == hi)
+    rep_end = int(end["rep"][0]) if end.height else 0
+    return dict(ticks_run=json.loads((d / "meta.json").read_text()).get("ticks_run"), persisted=rep_end > 0,
+                rep_end=rep_end, pop_end=int(end["pop"][0]) if end.height else 0, rep_mean=float(x["rep"].mean()),
+                rep_min=int(x["rep"].min()), rep_max=int(x["rep"].max()))
+
+
+def taxed_deaths(d: Path, after_tick: int) -> dict:
+    """Replicator-class deaths after `after_tick` of a lifelong-tax run: the
+    taxed share and the debit per organism-tick over cap (sum
+    `cycles_taxed_m` / sum `age` / cap), the world's own mean check."""
+    deaths = read_cols(d, "deaths", ["tick", "id", "age", "birth_hash", "cycles_taxed_m", "taxed_for_life"])
+    x = with_class(deaths, read_cols(d, "classes", ["raw_hash", "class"]), "birth_hash").filter(
+        (pl.col("class") == "replicator") & (pl.col("tick") > after_tick))
+    age = int(x["age"].sum())
+    # The founder (the first id) draws too; taxed for life at a high P it dies before its first child.
+    f = deaths.filter(pl.col("id") == 2)["taxed_for_life"]
+    return dict(rep_deaths=x.height, taxed_share=float(x["taxed_for_life"].mean()) if x.height else None,
+                debit=int(x["cycles_taxed_m"].sum()) / age / CAP_M if age else None, age=age,
+                cycles_taxed_m=int(x["cycles_taxed_m"].sum()), founder_taxed=bool(f[0]) if f.len() else None,
+                births=read_cols(d, "births", ["tick"]).height)
+
+
+def n0_band(out: Path, seeds: list[int], lo: int, hi: int) -> dict:
+    """tierra_n0's band: min and max over its seeds that persist to `hi` of
+    the replicator-class population averaged over the census ticks [lo, hi].
+    Cached in <out>/tierra_taxL_pilot/n0_band.json."""
+    p = out / "tierra_taxL_pilot" / "n0_band.json"
+    if p.exists():
+        b = json.loads(p.read_text())
+        if (b["lo_tick"], b["hi_tick"], b["seeds"]) == (lo, hi, seeds):
+            return b
+    rows = {}
+    for s in seeds:
+        d = run_dir(out, "tierra_n0", s)
+        if has(d, "classes.csv"):
+            rows[s] = population_row(d, lo, hi)
+    per = {s: r["rep_mean"] for s, r in rows.items() if r["persisted"]}
+    if not per:
+        raise SystemExit(f"pilot: no tierra_n0 run under {out} persists to {hi:,}; no band")
+    v = sorted(per.values())
+    b = dict(lo_tick=lo, hi_tick=hi, seeds=seeds, persisted=len(per), extinct=sorted(set(rows) - set(per)),
+             lo=v[0], hi=v[-1], median=v[len(v) // 2] if len(v) % 2 else (v[len(v) // 2 - 1] + v[len(v) // 2]) / 2,
+             per_seed={str(s): m for s, m in per.items()})
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(b, indent=2) + "\n", encoding="utf-8", newline="")
+    return b
+
+
+def run_pilot(exe: Path, out: Path, life: tuple[int, float], n0_seeds: list[int], jobs: int, force: bool,
+              compress: bool, n_seeds: int = PILOT_SEEDS) -> dict:
+    """T10 §4: tierra_taxL at (P, F) = `life`, seeds 1-10, 50,000 ticks, no
+    snapshots; per seed persistence and the replicator-class population over
+    25,000-50,000 against tierra_n0's band; the gate is >= 8 of 10 inside.
+    Beside it, E016 §5's rule (seeds that lose the founder are counted and
+    excluded): the first 10 seeds whose founder did not draw taxed, for which
+    `n_seeds` > 10 runs replacement seeds."""
+    p, f = life
+    root = out / "tierra_taxL_pilot" / f"F{f:.4f}_P{p}"
+    tax = {"tierra_taxL": (p, f)}
+    seeds = list(range(1, max(n_seeds, PILOT_SEEDS) + 1))
+    print(f"pilot: tierra_taxL --cycle-tax-lifelong {f!r} {p}, seeds 1-{seeds[-1]}, {PILOT_TICKS:,} ticks -> {root}",
+          flush=True)
+    with ThreadPoolExecutor(jobs) as ex:
+        for msg in ex.map(lambda s: run_world(exe, root, "tierra_taxL", s, PILOT_TICKS, tax, False, force, compress),
+                          seeds):
+            print(msg, flush=True)
+    band = n0_band(out, n0_seeds, PILOT_FROM, PILOT_TICKS)
+    rows = []
+    for s in seeds:
+        d = run_dir(root, "tierra_taxL", s)
+        r = dict(seed=s, **population_row(d, PILOT_FROM, PILOT_TICKS), **taxed_deaths(d, PILOT_FROM))
+        r["in_band"] = r["persisted"] and band["lo"] <= r["rep_mean"] <= band["hi"]
+        rows.append(r)
+    reg = rows[:PILOT_SEEDS]
+    passed = sum(r["in_band"] for r in reg)
+    kept = [r for r in rows if not r["founder_taxed"]][:PILOT_SEEDS]
+    res = dict(F=f, P=p, seeds=seeds, ticks=PILOT_TICKS, window=[PILOT_FROM, PILOT_TICKS], band=band,
+               persisted=sum(r["persisted"] for r in reg), in_band=passed, need=PILOT_NEED,
+               gate=passed >= PILOT_NEED, founder_lost=[r["seed"] for r in reg if r["founder_taxed"]],
+               excl_seeds=[r["seed"] for r in kept], excl_in_band=sum(r["in_band"] for r in kept),
+               excl_gate=len(kept) == PILOT_SEEDS and sum(r["in_band"] for r in kept) >= PILOT_NEED, rows=rows)
+    pl.DataFrame(rows, infer_schema_length=None).write_csv(root / "pilot.csv")
+    (root / "pilot.json").write_text(json.dumps(res, indent=2) + "\n", encoding="utf-8", newline="")
+    return res
+
+
+def pilot_text(res: dict) -> str:
+    b = res["band"]
+    lines = [f"T10 pilot: tierra_taxL --cycle-tax-lifelong {res['F']!r} {res['P']}, {len(res['seeds'])} seeds x "
+             f"{res['ticks']:,} ticks. tierra_n0 band (replicator-class population, mean over census ticks "
+             f"{res['window'][0]:,}-{res['window'][1]:,}, {b['persisted']} seeds persisting): {b['lo']:,.0f}-"
+             f"{b['hi']:,.0f} (median {b['median']:,.0f}).", "",
+             "| seed | founder taxed | births | persisted to 50,000 | rep. pop. mean (min-max) | in band "
+             "| rep. at 50,000 | taxed share of rep. deaths | debit / cap |", "|---|---|---|---|---|---|---|---|---|"]
+    for r in res["rows"]:
+        ft = "–" if r["founder_taxed"] is None else "yes" if r["founder_taxed"] else "no"
+        lines.append(f"| {r['seed']} | {ft} | {r['births']:,} | {'yes' if r['persisted'] else 'no'} (ticks "
+                     f"{r['ticks_run']:,}) | {r['rep_mean']:,.0f} ({r['rep_min']:,}-{r['rep_max']:,}) "
+                     f"| {'yes' if r['in_band'] else 'no'} | {r['rep_end']:,} | {pct(r['taxed_share'])} "
+                     f"| {pct(r['debit'])} |")
+    n = min(len(res["seeds"]), PILOT_SEEDS)
+    lines += ["", f"As registered (seeds 1-{n}): persisted {res['persisted']} of {n}; inside the band {res['in_band']} "
+                  f"[>= {res['need']}]: gate {yn(res['gate'])}. Founder drew taxed in seeds {res['founder_lost'] or 'none'}.",
+              f"E016 §5's founder-loss exclusion (the first {PILOT_SEEDS} seeds whose founder was untaxed: "
+              f"{res['excl_seeds']}): inside the band {res['excl_in_band']} of {len(res['excl_seeds'])} "
+              f"[>= {res['need']} of {PILOT_SEEDS}]: "
+              + (yn(res["excl_gate"]) if len(res["excl_seeds"]) == PILOT_SEEDS else
+                 f"not readable, {len(res['excl_seeds'])} such seeds (run more with --pilot-seeds)") + "."]
+    return "\n".join(lines)
+
+
 # ---- driver --------------------------------------------------------------------------------------------------
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("stage", choices=["world", "calibrate", "screen", "analyse", "lod", "replay"])
+    ap.add_argument("stage", choices=["world", "calibrate", "screen", "analyse", "lod", "replay", "pilot"])
     ap.add_argument("--evo-bin", help="evo-core binary (default $EVO_BIN, else evo-core/target/release; not built)")
     ap.add_argument("--out", type=Path, default=OUT, help="output root (default runs/e016)")
     ap.add_argument("--arms", help="comma list (default: world the first four, then every arm present)")
@@ -1720,6 +2011,9 @@ def main() -> None:
                     help="world: drop --state-every; other stages: the runs were made so (with --smoke only)")
     ap.add_argument("--replays", type=int, default=len(REPLAY_SEEDS), help="replay: replays per source (10; "
                                                                           "fewer with --smoke only)")
+    ap.add_argument("--life", nargs=2, metavar=("F", "P"), help="pilot: this F and P instead of tax_life.json's")
+    ap.add_argument("--pilot-seeds", type=int, default=PILOT_SEEDS,
+                    help="pilot: seeds 1..N (10; more replace founder-loss seeds in the exclusion reading)")
     a = ap.parse_args()
     for stream in (sys.stdout, sys.stderr):  # a Windows console may not encode the record's characters
         if hasattr(stream, "reconfigure"):
@@ -1746,25 +2040,48 @@ def main() -> None:
             raise SystemExit(f"unknown arm {x} (one of {', '.join(ARMS)})")
 
     if a.stage == "calibrate":
-        c = run_calibrate(out, seeds, a.ticks, a.force)
+        c, life = run_calibrate(out, seeds, a.ticks, a.force)
         print(calib_text(c))
         print("Record F, r and P in the experiment file before launching tierra_tax.")
+        print(life_text(life))
+        if not life["mean_check_ok"]:
+            print(f"WARNING: the lifelong calibration fails T10 §2.2's mean check (F x P {100 * life['mean']:.2f}% of cap "
+                  f"against {100 * life['target']:.2f}%); recorded in tax_life.json, decide before tierra_taxL",
+                  file=sys.stderr, flush=True)
         return
 
     present = [x for x in ARMS if (out / x).is_dir()]
     exe = None
-    if a.stage in ("world", "screen", "lod", "replay"):
+    if a.stage in ("world", "screen", "lod", "replay", "pilot"):
         exe = evo_bin(a.evo_bin)
         check_binary(exe)
 
+    if a.stage == "pilot":
+        if a.life:
+            life = int(a.life[1]), float(a.life[0])
+        elif tax_of(tax, "tierra_taxL") is None:
+            raise SystemExit("pilot needs tax_life.json (`calibrate`) or --life F P")
+        else:
+            life = tax_of(tax, "tierra_taxL")
+        print(pilot_text(run_pilot(exe, out, life, seeds, a.jobs, a.force, not a.no_compress, a.pilot_seeds)))
+        print(f"pilot: {time.time() - t_all:.0f} s")
+        return
+
     if a.stage == "world":
         arms = arms or FIRST_ARMS
-        if "tierra_tax" in arms and tax is None:
-            raise SystemExit("tierra_tax needs the calibration: run `calibrate` after tierra_n0 and tierra_t50")
+        for x in arms:
+            if x in TAX_FILE and tax_of(tax, x) is None:
+                raise SystemExit(f"{x} needs the calibration: run `calibrate` after tierra_n0 and tierra_t50")
         if snapshots:
             require_snapshots(exe)
-        if tax and "tierra_tax" in arms:
-            print(f"tierra_tax: --cycle-tax-pct {tax[0]} --cycle-tax-frac {tax[1]!r} ({out / 'tax.json'})", flush=True)
+        if "tierra_tax" in arms:
+            t = tax_of(tax, "tierra_tax")
+            print(f"tierra_tax: --cycle-tax-pct {t[0]} --cycle-tax-frac {t[1]!r} ({out / 'tax.json'})", flush=True)
+        if "tierra_taxL" in arms:
+            t = tax_of(tax, "tierra_taxL")
+            ok = json.loads((out / "tax_life.json").read_text()).get("mean_check_ok")
+            print(f"tierra_taxL: --cycle-tax-lifelong {t[1]!r} {t[0]} ({out / 'tax_life.json'}; T10 mean check "
+                  f"{'passed' if ok else 'FAILED'}; T10 §4: the pilot first)", flush=True)
         jobs = [(x, s) for x in arms for s in seeds]
         with ThreadPoolExecutor(a.jobs) as ex:
             for msg in ex.map(lambda j: run_world(exe, out, j[0], j[1], a.ticks, tax, snapshots, a.force,
@@ -1823,7 +2140,8 @@ def main() -> None:
         bdf.write_csv(out / "bins.csv")
         runs.write_csv(out / "runs.csv")
         calib = json.loads((out / "tax.json").read_text()) if (out / "tax.json").exists() else None
-        text = summarize(bdf, runs, len(seeds), a.ticks, a.bin, calib)
+        life = json.loads((out / "tax_life.json").read_text()) if (out / "tax_life.json").exists() else None
+        text = summarize(bdf, runs, len(seeds), a.ticks, a.bin, calib, life)
         (out / "summary.md").write_text(text + "\n", encoding="utf-8", newline="")
         print(text)
         print(f"analyse: {len(jobs)} runs, {time.time() - t_all:.0f} s")

@@ -8,6 +8,7 @@
 //!          [--locality N] [--out DIR] [--census N] [--sun N] [--rot P]
 //!          [--self-owner] [--charge-owner] [--charge-owner-pct N] [--transfer-pct N]
 //!          [--cycle-theft-pct N] [--cycle-tax-pct P] [--cycle-tax-frac F]
+//!          [--cycle-tax-lifelong F P]
 //!          [--world-e001] [--founder HEX:COUNT]... [--inject TICK:HEX:COUNT]...
 //!          [--state-every N] [--replay-from FILE]
 //! evo-core --classify DIR [--harness-ticks N] [--classes-out NAME] [physics flags]
@@ -84,6 +85,18 @@
 //! every tick with no PRNG draw; 0 < F < 1 draws once per organism per tick
 //! (after upkeep, in the shuffled order). The three flags combine with each
 //! other and with any energy rule; nothing is refused.
+//! --cycle-tax-lifelong F P (T10; F 0-1, P 0-100, default off) is the
+//! control shaped like the theft: when an organism is created (seeded,
+//! founder, injected, or born at `divide`) one PRNG draw makes it taxed
+//! for life with probability F, and a body taxed for life loses P% of its
+//! cap every tick before it runs (after any theft debt and random tax,
+//! never below zero; counted in `cycles_taxed_m`). The state is not
+//! inherited: each child draws for itself. A body born into a slow slot of
+//! the machine that stays there, as the control for a body born next to a
+//! parasite that stays entered. F = 0 or P = 0 taxes nobody and draws
+//! nothing (bit-identical to no flag); F = 1 taxes every body with no
+//! draw. deaths.csv's `taxed_for_life` column (0/1) says which bodies were
+//! taxed. It combines with the other two cost rules; nothing is refused.
 //!
 //! --founder HEX:COUNT (repeatable, E009a) seeds COUNT copies of the genome
 //! HEX, 100 units each, instead of the one ancestor. All copies from all
@@ -328,6 +341,14 @@ fn main() {
                 cfg.cycle_tax_frac = next().parse().expect("--cycle-tax-frac F must be a number");
                 assert!((0.0..=1.0).contains(&cfg.cycle_tax_frac), "--cycle-tax-frac must be 0-1");
                 i += 1;
+            }
+            "--cycle-tax-lifelong" => {
+                cfg.cycle_tax_life_frac = next().parse().expect("--cycle-tax-lifelong F P: F must be a number");
+                assert!((0.0..=1.0).contains(&cfg.cycle_tax_life_frac), "--cycle-tax-lifelong F must be 0-1");
+                let p = args.get(i + 2).expect("--cycle-tax-lifelong wants F and P");
+                cfg.cycle_tax_life_pct = p.parse().expect("--cycle-tax-lifelong F P: P must be a whole number");
+                assert!((0..=100).contains(&cfg.cycle_tax_life_pct), "--cycle-tax-lifelong P must be 0-100");
+                i += 2;
             }
             "--world-e001" => {}
             "--no-protect" => cfg.write_protection = false,

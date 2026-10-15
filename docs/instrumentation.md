@@ -71,7 +71,7 @@ Genotype counts in the census use raw hashes (as Tierra did); grouping by
 | `overwritten` | writes by other organisms that landed on this organism's body or pending region, the victim-side counterpart of `writes_foreign` (2026-10-12, E012). Summed over all organisms the two agree (tested); 0 with protection on |
 | `cycles_lost_m` | execution budget debited from this organism by intruders' instructions under `--cycle-theft-pct N` (2026-10-13, E014): `floor(cost × N / 100)` per instruction another organism ran on its body or pending region, in the budget's own milli-units, cumulative. Not energy: it is in no ledger. 0 without the flag |
 | `cycles_taken_m` | budget this organism's instructions debited from the owners of the bytes it ran under `--cycle-theft-pct N`, the counterpart of `cycles_lost_m`. Summed over all organisms the two agree (tested); 0 without the flag |
-| `cycles_taxed_m` | budget debited by the random cycle tax, `--cycle-tax-pct P` with `--cycle-tax-frac F` (2026-10-13, E014's control): `floor(cap × P / 100)` per taxed tick, less if theft debt already took most of that tick's cap. 0 without the flag |
+| `cycles_taxed_m` | budget debited by the random cycle tax, `--cycle-tax-pct P` with `--cycle-tax-frac F` (2026-10-13, E014's control): `floor(cap × P / 100)` per taxed tick, less if theft debt already took most of that tick's cap; and by the lifelong tax, `--cycle-tax-lifelong F P` (2026-10-15, T10): `floor(cap × P / 100)` every tick of a body taxed for life, after the theft debt and the random tax, again never more than they left. 0 without either flag |
 | `exec_by_others` | instructions other organisms executed at bytes this organism owned (body or pending region), the victim-side counterpart of `exec_foreign` (2026-10-13, E014; the last column). Counted whatever the flags, so "entered" can be read in a world with no cost rule. Summed over all organisms it equals the sum of `exec_foreign` (tested, with and without theft) |
 
 Ledger identity (tested): for a living organism, and for a dead one with
@@ -126,6 +126,27 @@ tick with no PRNG draw; 0 < F < 1 draws one `chance(F)` per organism per
 tick in the shuffled order (organisms killed by upkeep that tick draw
 nothing); with P = 0 the stream is unchanged. The three flags combine
 with each other and with any energy rule.
+
+`--cycle-tax-lifelong F P` (`Config.cycle_tax_life_frac` and
+`cycle_tax_life_pct`, T10, 2026-10-15, F 0–1 and P 0–100, defaults 0):
+the control shaped like the theft. When an organism is created
+(`Sim::seed`, which the founder, `--founder`, `--inject` and every birth
+at `divide` go through) one `chance(F)` makes it taxed for life
+(`Org.taxed_for_life`); a body taxed for life loses `floor(cap × P /
+100)` of its budget every tick it runs, after upkeep, the theft debit
+and the random tax (never more than they left), counted in
+`cycles_taxed_m`. The state is not inherited: each child draws for
+itself. Physical reading: a body born into a slow slot of the machine
+that stays there, the control for a body born next to a parasite that
+stays entered. F = 0 or P = 0 taxes nobody and draws nothing, so the run
+is bit-identical to no flag (tested); F = 1 taxes every body with no
+draw. `taxed_for_life` is in `Sim::state_hash` (only when set, so a
+world with no taxed body hashes as before the field) and in the
+snapshot. It combines with the other two flags. In the harness
+(`--classify`, `--host`) the flag taxes the tested bodies by the same
+draw from the harness's fixed seed, so a caller that wants a definite
+state should pass F = 0 or F = 1 (`analysis/e016_defence.py` passes the
+harness no lifelong tax).
 
 `--legacy-pending-range` (`Config.legacy_pending_range`, T08,
 2026-10-13, default off) restores the `alloc`/`copy` range edge every
@@ -222,7 +243,7 @@ All CSV with a header row. Written by `record.rs` (`Recorder`).
   `null` when the stream continued); see "Snapshots and replay". Runs
   before have neither key.
 - `births.csv`: `tick,child,executor,source,start,len,copy_errors,slips,endowment_m,raw_hash,parent_hash,parent_now_hash,source_hash`
-- `deaths.csv`: `tick,id,cause,age,offspring,len,start,pending_len,ip_off,op_at_ip,energy_m,pool_m,birth_hash,now_hash,` then every `OrgStats` field.
+- `deaths.csv`: `tick,id,cause,age,offspring,len,start,pending_len,ip_off,op_at_ip,energy_m,pool_m,birth_hash,now_hash,` then every `OrgStats` field, then `taxed_for_life` (0/1, the body was taxed for life under `--cycle-tax-lifelong`; since 2026-10-15, T10; runs before have no column, and none of their bodies was).
 - `census.csv` (every census tick): `tick,now_hash,count`. Hash of current body bytes.
 - `orgs.csv` (every census tick, one row per living organism): `tick,id,parent,birth_tick,start,len,pending_len,energy_m,ip_off,op_at_ip,birth_hash,now_hash,offspring,` then every `OrgStats` field.
 - `patches.csv` (every census tick): `tick,patch,pool_m,orgs,absorbed_m,overflow_m`. `orgs` counts living body starts in the patch; `absorbed_m` and `overflow_m` are totals since the previous census row.
@@ -261,11 +282,11 @@ recorder's genome store (output). Size: 680–700 KB in the default world
 run cost 0.12 s of 15 s. The loader reads the plain file only: gunzip a
 compressed snapshot before replaying from it.
 
-Format (`STATE_VERSION` 1), little-endian:
+Format (`STATE_VERSION` 2 since 2026-10-15, T10; 1 before), little-endian:
 
 ```
 magic      8 bytes  "EVOSTATE"
-version    u32      1
+version    u32      2
 cfg_len    u32      then cfg_len bytes: Config::fields() as UTF-8
                     "name=value\n" lines, in order (sim::config_text)
 tick       u64
@@ -283,6 +304,7 @@ norgs      u32      then per organism, in `orgs` order (the dead since
   pending_source: u8 present, u32 owner, u64 owner's birth hash;
   pending_errors u32; pending_slips u32; alive u8; birth_tick u64;
   offspring u32; genome_hash u64; parent u32; cycle_debt i64;
+  taxed_for_life u8 (version 2 only);
   first_foreign_off: u8 present, u32;
   glen u32 then glen genome bytes (the birth genome);
   stats: the 31 OrgStats fields in CSV_HEADER order, 8 bytes each
@@ -298,6 +320,16 @@ order; the error names the first that differs, e.g. `snapshot config
 differs at cycle_theft_pct: the file has 50, this run 0`), a world or
 patch count that does not match, a truncated file and trailing bytes. It
 rebuilds the id index from the organism list.
+
+Version 1 (T04 to T10, every E016 snapshot) differs from 2 only in the
+lifelong tax: its config text has no `cycle_tax_life_frac` or
+`cycle_tax_life_pct` line and its organisms no `taxed_for_life` byte.
+This build still reads it, as the world with no lifelong tax: the
+loading run must leave both fields at 0 (else the load is refused,
+naming the field), and every body is untaxed. Saved again it is a
+version 2 file. Tested against a version 1 file written by the engine
+before T10 (`evo-core/tests/data/`), which this build also reaches
+bit for bit by running the same command.
 
 `--replay-from FILE [--seed S]` starts the run from FILE instead of
 seeding tick 0. Give the original run's physics flags: the config they

@@ -91,6 +91,21 @@ pub struct Config {
     /// Probability per organism per tick that the cycle tax applies.
     /// 1.0 (default) taxes every organism every tick with no PRNG draw.
     pub cycle_tax_frac: f64,
+    /// Lifelong cycle tax (T10, the control for the theft in E017):
+    /// probability 0-1 that an organism is taxed for life, drawn once when
+    /// it is created (seeding, founders, injection, division) and never
+    /// inherited; each child draws for itself. A body taxed for life loses
+    /// `cycle_tax_life_pct`% of its cap every tick before it runs, as the
+    /// random tax debits. A body born into a slow slot of the machine that
+    /// stays there: the control for a body born next to a parasite that
+    /// stays entered. 0.0 (default) is off. The draw is made only when
+    /// both this and `cycle_tax_life_pct` are above 0 and this is below 1
+    /// (1.0 taxes every body with no draw), so with the tax off the PRNG
+    /// stream is unchanged. CLI `--cycle-tax-lifelong F P`.
+    pub cycle_tax_life_frac: f64,
+    /// Percent 0-100 of the per-tick cap taken every tick from a body taxed
+    /// for life (`Org::taxed_for_life`). 0 (default) is off.
+    pub cycle_tax_life_pct: i64,
 
     // Costs (milli-units)
     pub cost_simple: i64,
@@ -125,6 +140,7 @@ impl Config {
             store_cap_per_byte, cap_c0, cap_c1, write_protection, alloc_far,
             legacy_pending_range, absorb_proportional, self_owner, charge_owner,
             charge_owner_pct, transfer_pct, cycle_theft_pct, cycle_tax_pct, cycle_tax_frac,
+            cycle_tax_life_frac, cycle_tax_life_pct,
             cost_simple, cost_load, cost_store, cost_copy, cost_search_base,
             cost_search_per16, cost_alloc_base, cost_alloc_per_byte, cost_divide,
             cost_absorb, p_write_flip, q_slip, p_bit_rot, p_debris_decay,
@@ -154,6 +170,8 @@ impl Config {
             ("cycle_theft_pct", cycle_theft_pct.to_string()),
             ("cycle_tax_pct", cycle_tax_pct.to_string()),
             ("cycle_tax_frac", format!("{cycle_tax_frac:?}")),
+            ("cycle_tax_life_frac", format!("{cycle_tax_life_frac:?}")),
+            ("cycle_tax_life_pct", cycle_tax_life_pct.to_string()),
             ("cost_simple", cost_simple.to_string()),
             ("cost_load", cost_load.to_string()),
             ("cost_store", cost_store.to_string()),
@@ -221,6 +239,8 @@ impl Default for Config {
             cycle_theft_pct: 0,
             cycle_tax_pct: 0,
             cycle_tax_frac: 1.0,
+            cycle_tax_life_frac: 0.0,
+            cycle_tax_life_pct: 0,
             cost_simple: MILLI,
             cost_load: 2 * MILLI,
             cost_store: 2 * MILLI,
