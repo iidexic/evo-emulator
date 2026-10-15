@@ -400,7 +400,7 @@ def stage_eject(exe: Path, threads: int, ticks: int, jobs: int, force: bool) -> 
                                                  entry_off=h["entry_off"], ticks_run=h["ticks_run"], immune=imm,
                                                  tolerant=tol, ref=f"{r_arm.b_alone}/{r_arm.b_probed}/{r_arm.p_probed}"
                                                  ).items()}
-    pl.DataFrame([row], infer_schema_length=None).write_csv(DESIGNED / "eject.csv")
+    pl.DataFrame([row], infer_schema_length=None).write_csv(DESIGNED / "eject_screen.csv")
     viable = row["class_alone"] == "replicator" and row["b_alone"] >= e16.FLOOR_FRAC * ref.b_alone
     text = "\n".join([
         "# T11 §3: the eject (reduced from three designed candidates)", "",
