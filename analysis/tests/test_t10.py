@@ -74,19 +74,22 @@ def deaths(entered: list[int], lost: list[int], age: list[int]) -> pl.DataFrame:
 
 
 def test_life_calibration_arithmetic_and_mean_check():
-    # Two entered deaths of 10 and 30 ticks losing 16,000 and 8,000 a tick, two unentered of 10 and 30: F = 1/2,
-    # mean rate (16,000 + 8,000) / 2 = 12,000, P = 37.5 -> 38; r = (160,000 + 240,000) / 80 = 5,000 a tick.
-    t50 = deaths([4, 1, 0, 0], [160_000, 240_000, 0, 0], [10, 30, 10, 30])
+    # Entered deaths of 10 and 50 ticks losing 16,000 and 8,000 a tick, unentered of 10 and 10: r = (160,000 +
+    # 400,000) / 80 = 7,000 a tick. Per organism-tick (the corrected rule): F = 60 / 80 = 0.75, P = 100 x 560,000 /
+    # (60 x 32,000) = 29.17 -> 29, F x P = 21.75% against 21.875%. Per death (the rule first given): F = 1/2,
+    # P = 100 x 12,000 / 32,000 = 37.5, F x P = 18.75%, -14%: entered bodies live longer.
+    t50 = deaths([4, 1, 0, 0], [160_000, 400_000, 0, 0], [10, 50, 10, 10])
     c = e.life_calibration(t50)
-    assert (c["F"], c["P_exact"], c["P"]) == (0.5, pytest.approx(37.5), 38)
-    assert c["r"] == 5_000 and c["target"] == pytest.approx(5_000 / 32_000)
-    assert c["mean"] == pytest.approx(0.5 * 0.38) and c["mean_rel"] == pytest.approx(0.19 / 0.15625 - 1)
-    assert not c["mean_check_ok"]                                                    # +21.6%
-    assert c["F_time"] == pytest.approx(0.5) and c["P_time_exact"] == pytest.approx(100 * 400_000 / (40 * 32_000))
-    assert c["F_time"] * c["P_time_exact"] / 100 == pytest.approx(c["target"])       # the time-weighted pair is exact
-    # Equal ages and rates: the count-weighted pair matches the mean.
-    even = e.life_calibration(deaths([1, 1, 0, 0], [80_000, 80_000, 0, 0], [10, 10, 10, 10]))
-    assert (even["P"], even["mean_check_ok"]) == (25, True)
+    assert (c["F"], c["P_exact"], c["P"]) == (0.75, pytest.approx(100 * 560_000 / (60 * 32_000)), 29)
+    assert c["r"] == 7_000 and c["target"] == pytest.approx(7_000 / 32_000)
+    assert c["mean_exact"] == pytest.approx(c["target"])                              # exact before rounding
+    assert c["mean"] == pytest.approx(0.75 * 0.29) and c["mean_check_ok"]               # -0.6%
+    assert (c["F_deaths"], c["P_deaths_exact"]) == (0.5, pytest.approx(37.5))
+    assert c["mean_deaths_rel"] == pytest.approx(0.1875 / 0.21875 - 1)
+    assert (c["mean_age_entered"], c["mean_age_unentered"]) == (30, 10)
+    # Rounding can fail the check: F = 1/3 of organism-ticks at P_exact 1.5 -> 2 is +33%.
+    off = e.life_calibration(deaths([1, 0, 0], [4_800, 0, 0], [10, 10, 10]))
+    assert (off["P"], off["mean_check_ok"]) == (2, False)
     with pytest.raises(SystemExit):
         e.life_calibration(deaths([0, 0], [0, 0], [5, 5]))                            # nobody entered
 
@@ -154,25 +157,22 @@ def test_e017_paired_reading():
     assert e.e017_lines(runs.filter(pl.col("arm") != "tierra_taxL"), 30, 250_000) == []
 
 
-def test_harness_under_the_lifelong_flag_is_a_draw_from_the_harness_seed():
-    # Why harness_physics drops the flag: in the harness the tested body's tax is one chance(F) from the fixed
-    # seed. At seed 1 (what every harness call uses) the tierra ancestor draws untaxed at F = 0.43; taxed for
-    # life at P = 66 (F = 1) it dies alone before its first child.
+def test_harness_bodies_are_founders_and_never_taxed():
+    # The harness seeds its bodies, and founders are never taxed (T10 §2), so at F = 1 (no draw) the harness under
+    # the flag is the harness without it; children, removed the tick they are born, never run. harness_physics
+    # drops the flag anyway: at 0 < F < 1 the children's draws would move the shuffle order.
     try:
         exe = e.evo_bin(None)
     except SystemExit:
         pytest.skip("no evo-core binary")
-    probe = subprocess.run([str(exe), "--host", e.PROBE["tierra"], "--host-body", e.HEX["tierra"], "--harness-ticks",
-                            "3000", "--cycle-tax-lifelong", "0.5", "1"], capture_output=True, text=True)
-    if probe.returncode != 0:
-        pytest.skip("binary without --cycle-tax-lifelong (T10)")
 
     def host(*flags: str) -> list[str]:
         r = subprocess.run([str(exe), "--host", e.PROBE["tierra"], "--host-body", e.HEX["tierra"], "--harness-ticks",
-                            "3000", "--sun", "2", *flags], capture_output=True, text=True, check=True)
+                            "3000", "--sun", "2", *flags], capture_output=True, text=True)
+        if r.returncode != 0:
+            pytest.skip("binary without --cycle-tax-lifelong (T10)")
         return r.stdout.strip().splitlines()[-1].split(",")
 
     plain = host()
-    assert host("--cycle-tax-lifelong", "0.43", "66") == plain                   # seed 1: both bodies untaxed
-    taxed = host("--cycle-tax-lifelong", "1", "66")
-    assert (taxed[4], taxed[6]) == ("0", "false")                                 # host_exact_births, host_alive
+    assert int(plain[4]) > 100                                                    # host_exact_births
+    assert host("--cycle-tax-lifelong", "1", "66") == plain

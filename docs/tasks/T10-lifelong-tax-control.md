@@ -2,12 +2,13 @@
 
 Status: specified 2026-10-15 (Fable, from E016 record §8.1 and §8.7
 item 2); built 2026-10-15 (Opus; `749f8ae` engine and tests, `3272adf`
-runner and calibration; §7 below). The §2.2 mean check **fails** (F =
-0.4299, P = 66: F × P = 28.4% of cap against 21.1%), and the §4 pilot
-gate **fails as registered** at both pairs (6 and 7 of 10 inside
-tierra_n0's band), every miss but one a founder that drew taxed and died
-before its first child; with E016 §5's founder-loss exclusion both hold
-(9 of 10). The 30 seeds are not launched. Builder: Opus. Argument: E016's random per-tick tax
+runner and calibration; founders exempt `8ef2f7f`, calibration per
+organism-tick `e72de6b`; §7 below). Calibrated F = 0.79995, P = 26:
+mean check holds (F × P 20.80% of cap against 21.06%). Pilot at that
+pair, founders exempt (§7.2): persists **10 of 10**, but only **7 of
+10** inside tierra_n0's band (s2 118, s5 184, s8 183 against 189–253):
+gate **fails by one seed**, realised debit 17.3–19.3% of cap. The 30
+seeds are not launched; a decision. Builder: Opus. Argument: E016's random per-tick tax
 at the calibrated rate (P = 88, F = 0.2398) killed 25 of 30 seeds where
 the targeted theft killed none, so the one control H16 has cannot be
 read. This task gives the control the shape of the treatment, so that
@@ -38,8 +39,8 @@ numbers in the E016 record; the pilot in §4 checks it.)
 
 ## 2. Rule
 
-`--cycle-tax-lifelong F P`: at each organism's creation (seed, founder
-set, injection, division) one PRNG draw; with probability F the
+`--cycle-tax-lifelong F P`: at each organism's birth (division) and
+at each injection (`inject_due`) one PRNG draw; with probability F the
 organism is **taxed for life**: every tick, before it runs, `cap × P /
 100` milli-units are debited from its budget, exactly as the per-tick
 tax debits (`sim.rs`, the `cycle_tax_pct` block: the debit is
@@ -54,6 +55,13 @@ heritable tax would be selected against as a trait, which is not the
 control; being entered is not heritable either, it is where a child
 lands.)
 
+Founders never draw (amended 2026-10-15, after the first pilot): the
+founder is the one body that is not born next to anything, so nothing
+could enter it. `seed`, `seed_founders` and `inject` called directly
+create untaxed bodies. As first written the founder drew too, and at
+P = 66 a taxed founder died at tick 73 before its first child, which
+decided 4 of the first pilot's 10 seeds before the control could act.
+
 Physical reading, for the doc comment: a lifelong tax is a body that
 was born into a slow slot of the machine and stays there, the control
 for a body that was born next to a parasite and stays entered.
@@ -65,9 +73,10 @@ for a body that was born next to a parasite and stays entered.
 `meta.json` carries them. CLI `--cycle-tax-lifelong F P` with the
 range checks the other flags have (F in 0–1, P in 0–100).
 
-`Org` gains `pub taxed_for_life: bool`, set at creation in `seed`,
-`seed_founders`, `inject`, `inject_due` and at division, wherever an
-`Org` is built (grep `cycle_debt: 0` for every site). It is physics
+`Org` gains `pub taxed_for_life: bool`, false when `seed` builds the
+`Org` (the one site) and drawn by `Sim::draw_life_tax` for each child at
+division and each copy `inject_due` places (amended 2026-10-15; founders
+are untaxed). It is physics
 state: in the full-state snapshot (T04) and in `state_hash`, so a
 replay from a snapshot continues bit-identically (test this with the
 T04 continuation test pattern on a short lifelong-tax run). The PRNG
@@ -84,11 +93,27 @@ Against `tierra_t50`'s own numbers, over replicator-class deaths after
 tick 25,000, seeds 1–30 pooled (the values are in E016 `runs.csv`
 and `tax.json`; recompute them in the runner, do not copy them):
 
-- F = the entered share of replicator-class deaths in `tierra_t50`
-  (0.4299 in E016 §2's calibration note).
-- P = 100 × (mean `cycles_lost_m` per organism-tick among **entered**
-  replicator-class deaths) / 32,000 (E016 §8.3: 21,194 milli-units,
-  so about 66).
+- F = the share of organism-ticks spent in **entered** bodies: Σ `age`
+  of the entered replicator-class deaths over Σ `age` of all of them.
+- P = 100 × Σ `cycles_lost_m` of the entered / (their Σ `age` ×
+  32,000), the debit per tick of an entered body's life, to the nearest
+  whole percent.
+
+Corrected 2026-10-15 (the first pilot's calibration). As first written
+the rule matched per death: F = the entered share of deaths (0.4299)
+and P from the mean of `cycles_lost_m / age` over the entered (21,080
+milli-units, P = 66). That pair gives F × P = 28.4% of cap, 35% above
+the theft's 21.1%, because entered hosts live about five times longer
+than unentered ones (mean age 708 ticks against 133): 43% of the deaths
+hold 80% of the organism-ticks. The lifelong tax draws at birth,
+independent of lifespan, so a taxed body is expected to live as long as
+an untaxed one and F must be the share of time, not of deaths. With the
+E016 numbers (tierra_t50 seeds 1–30, replicator-class deaths after
+25,000): F = 3,764,424,123 / 4,705,804,390 = 0.79995; P = 100 ×
+31,718,765,563,000 / (3,764,424,123 × 32,000) = 26.33, rounded to 26;
+F × P = 20.80% against r / cap = 31,718,765,563,000 / 4,705,804,390 /
+32,000 = 21.06%, −1.3%. (An unentered death loses nothing, so F × P is
+exactly r / cap before rounding.)
 
 This differs from T02 §4.2's rule, which took F from the no-cost arm
 and r over all deaths; that rule matched the mean only. Record F, P and
@@ -222,3 +247,35 @@ bodies) should draw at all, since no parasite can enter a body before
 one exists, or be counted out under E016 §5; and which pair is the
 control (the calibrated one, E016's, or the time-weighted one, which
 slows 80% of bodies by 26% and may fail as the per-tick tax did).
+
+### 7.2 Second pilot: founders exempt, the organism-tick pair (2026-10-15)
+
+Decisions after the first pilot (coordinator): founders never draw
+(§2, `8ef2f7f`), and the control pair is the one matched per
+organism-tick (§2.2, `e72de6b`): F = 0.7999533790651251, P = 26. Same
+pilot, 10 seeds, 50,000 ticks, `runs/e016/tierra_taxL_pilot/f80p26/`;
+and 3 seeds at F = 1, P = 21 (every body taxed, the per-tick tax's mean
+in lifelong form), `f100p21/`, for the "any shape" comparison. Band
+and debit measured as in §7 (tierra_n0 band 189–253, median 230; debit
+= Σ `cycles_taxed_m` / Σ `age` / 32,000 over replicator-class deaths
+after 25,000).
+
+| pair | persisted to 50,000 | replicator-class population, mean 25,000–50,000 | inside the band | taxed share of rep. deaths | realised debit / cap |
+|---|---|---|---|---|---|
+| F 0.80, P 26 (10 seeds) | 10 of 10 | 118–233, median 210 | 7 (s2 118, s5 184, s8 183 below) | 79.6–80.2% | 17.3–19.3% |
+| F 1.0, P 21 (3 seeds) | 3 of 3 | 104, 107, 161 | 0 | 100% | 20.9% |
+| first pilot, F 0.43, P 66, untaxed founders | 13 of 13 | 204–254 | 9 of 10 | 42.6–43.4% | 5.3–6.7% |
+| first pilot, F 0.24, P 88, untaxed founders | 12 of 12 | 221–259 | 9 of 10 | 23.8–24.3% | 0.5–0.8% |
+
+Reading: no shape of this mean kills the population in 50,000 ticks
+(13 of 13 at the two organism-tick-matched rows), so §1's inference
+that the per-tick tax killed by spreading the cost evenly does not
+survive as stated: the lifelong all-bodies form at 21% persists. What
+the shape changes is the population: the more evenly the slowdown is
+spread, the lower the replicator-class population (F = 1: about half
+of tierra_n0's; F = 0.8: a median 210, 9% under n0's 230 and three
+seeds below the band; the sterile-minority forms sit at n0's level
+because they barely debit at all). The registered gate fails by one
+seed at the chosen pair. 21 of the per-tick tax's 25 extinctions came
+between 35,690 and 54,330 (E016 §8.1), at the end of this window, so 50,000 ticks
+does not show whether these pairs survive to 250,000.

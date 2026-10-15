@@ -93,8 +93,9 @@ pub struct Config {
     pub cycle_tax_frac: f64,
     /// Lifelong cycle tax (T10, the control for the theft in E017):
     /// probability 0-1 that an organism is taxed for life, drawn once when
-    /// it is created (seeding, founders, injection, division) and never
-    /// inherited; each child draws for itself. A body taxed for life loses
+    /// it is born (at `divide`) or injected (`--inject`), never inherited;
+    /// each child draws for itself. Founders are never taxed: the founder is
+    /// the one body not born next to anything. A body taxed for life loses
     /// `cycle_tax_life_pct`% of its cap every tick before it runs, as the
     /// random tax debits. A body born into a slow slot of the machine that
     /// stays there: the control for a body born next to a parasite that
