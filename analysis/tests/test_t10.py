@@ -154,25 +154,22 @@ def test_e017_paired_reading():
     assert e.e017_lines(runs.filter(pl.col("arm") != "tierra_taxL"), 30, 250_000) == []
 
 
-def test_harness_under_the_lifelong_flag_is_a_draw_from_the_harness_seed():
-    # Why harness_physics drops the flag: in the harness the tested body's tax is one chance(F) from the fixed
-    # seed. At seed 1 (what every harness call uses) the tierra ancestor draws untaxed at F = 0.43; taxed for
-    # life at P = 66 (F = 1) it dies alone before its first child.
+def test_harness_bodies_are_founders_and_never_taxed():
+    # The harness seeds its bodies, and founders are never taxed (T10 §2), so at F = 1 (no draw) the harness under
+    # the flag is the harness without it; children, removed the tick they are born, never run. harness_physics
+    # drops the flag anyway: at 0 < F < 1 the children's draws would move the shuffle order.
     try:
         exe = e.evo_bin(None)
     except SystemExit:
         pytest.skip("no evo-core binary")
-    probe = subprocess.run([str(exe), "--host", e.PROBE["tierra"], "--host-body", e.HEX["tierra"], "--harness-ticks",
-                            "3000", "--cycle-tax-lifelong", "0.5", "1"], capture_output=True, text=True)
-    if probe.returncode != 0:
-        pytest.skip("binary without --cycle-tax-lifelong (T10)")
 
     def host(*flags: str) -> list[str]:
         r = subprocess.run([str(exe), "--host", e.PROBE["tierra"], "--host-body", e.HEX["tierra"], "--harness-ticks",
-                            "3000", "--sun", "2", *flags], capture_output=True, text=True, check=True)
+                            "3000", "--sun", "2", *flags], capture_output=True, text=True)
+        if r.returncode != 0:
+            pytest.skip("binary without --cycle-tax-lifelong (T10)")
         return r.stdout.strip().splitlines()[-1].split(",")
 
     plain = host()
-    assert host("--cycle-tax-lifelong", "0.43", "66") == plain                   # seed 1: both bodies untaxed
-    taxed = host("--cycle-tax-lifelong", "1", "66")
-    assert (taxed[4], taxed[6]) == ("0", "false")                                 # host_exact_births, host_alive
+    assert int(plain[4]) > 100                                                    # host_exact_births
+    assert host("--cycle-tax-lifelong", "1", "66") == plain

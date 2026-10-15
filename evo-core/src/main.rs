@@ -86,9 +86,10 @@
 //! (after upkeep, in the shuffled order). The three flags combine with each
 //! other and with any energy rule; nothing is refused.
 //! --cycle-tax-lifelong F P (T10; F 0-1, P 0-100, default off) is the
-//! control shaped like the theft: when an organism is created (seeded,
-//! founder, injected, or born at `divide`) one PRNG draw makes it taxed
-//! for life with probability F, and a body taxed for life loses P% of its
+//! control shaped like the theft: when an organism is born at `divide` or
+//! placed by --inject, one PRNG draw makes it taxed for life with
+//! probability F (founders are never taxed: the founder is the one body
+//! not born next to anything), and a body taxed for life loses P% of its
 //! cap every tick before it runs (after any theft debt and random tax,
 //! never below zero; counted in `cycles_taxed_m`). The state is not
 //! inherited: each child draws for itself. A body born into a slow slot of

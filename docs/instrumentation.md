@@ -129,10 +129,13 @@ with each other and with any energy rule.
 
 `--cycle-tax-lifelong F P` (`Config.cycle_tax_life_frac` and
 `cycle_tax_life_pct`, T10, 2026-10-15, F 0–1 and P 0–100, defaults 0):
-the control shaped like the theft. When an organism is created
-(`Sim::seed`, which the founder, `--founder`, `--inject` and every birth
-at `divide` go through) one `chance(F)` makes it taxed for life
-(`Org.taxed_for_life`); a body taxed for life loses `floor(cap × P /
+the control shaped like the theft. When an organism is born at `divide`
+or placed by `--inject` (`Sim::draw_life_tax`, called after `Sim::seed`
+places the body; in `inject_due` in placement order) one `chance(F)`
+makes it taxed for life (`Org.taxed_for_life`). Founders (the ancestor,
+`--founder`) are never taxed: the founder is the one body not born next
+to anything, and a founder taxed at a high P dies before its first child
+(tick 73 at P = 66); a body taxed for life loses `floor(cap × P /
 100)` of its budget every tick it runs, after upkeep, the theft debit
 and the random tax (never more than they left), counted in
 `cycles_taxed_m`. The state is not inherited: each child draws for
@@ -143,10 +146,10 @@ is bit-identical to no flag (tested); F = 1 taxes every body with no
 draw. `taxed_for_life` is in `Sim::state_hash` (only when set, so a
 world with no taxed body hashes as before the field) and in the
 snapshot. It combines with the other two flags. In the harness
-(`--classify`, `--host`) the flag taxes the tested bodies by the same
-draw from the harness's fixed seed, so a caller that wants a definite
-state should pass F = 0 or F = 1 (`analysis/e016_defence.py` passes the
-harness no lifelong tax).
+(`--classify`, `--host`) the tested bodies are seeded, so they are never
+taxed; their children draw, which moves the PRNG stream (the shuffle
+order) at 0 < F < 1 (`analysis/e016_defence.py` passes the harness no
+lifelong tax, so tierra_taxL's harness is exactly tierra_n0's).
 
 `--legacy-pending-range` (`Config.legacy_pending_range`, T08,
 2026-10-13, default off) restores the `alloc`/`copy` range edge every

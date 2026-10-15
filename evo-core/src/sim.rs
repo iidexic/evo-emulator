@@ -314,8 +314,9 @@ pub struct Org {
     /// in `state_hash`.
     pub cycle_debt: i64,
     /// Taxed for life under `cycle_tax_life_frac` / `cycle_tax_life_pct`
-    /// (T10): drawn once in `seed`, which every creation goes through
-    /// (seeding, founders, injection, division), never inherited and never
+    /// (T10): drawn once when the organism is born at `divide` or injected
+    /// by `inject_due` (`draw_life_tax`); false for founders and for bodies
+    /// placed by `seed` or `inject` directly. Never inherited, never
     /// changed after. A taxed body loses `cycle_tax_life_pct`% of its cap
     /// every tick. Physics state: in the snapshot and in `state_hash`.
     pub taxed_for_life: bool,
@@ -486,13 +487,11 @@ impl Sim {
     // ---- seeding --------------------------------------------------------
 
     /// Place a genome at `start` as a living organism with `energy` milli-units.
-    /// Every organism is created here (the founder, `seed_founders`,
-    /// `inject`, a child at `divide`), so this is where the lifelong tax
-    /// (T10) is drawn: one `chance(F)` before the body is written, only
-    /// when 0 < F < 1 and P > 0; F >= 1 taxes the body with no draw.
+    /// The body is never taxed for life (T10): the founder, `seed_founders`
+    /// and `inject` place bodies that are not born next to anything. The
+    /// lifelong tax is drawn by `draw_life_tax`, at `divide` and in
+    /// `inject_due`.
     pub fn seed(&mut self, start: u32, genome: &[u8], energy: i64, parent: u32) -> u32 {
-        let f = self.cfg.cycle_tax_life_frac;
-        let taxed_for_life = self.cfg.cycle_tax_life_pct > 0 && f > 0.0 && (f >= 1.0 || self.rng.chance(f));
         let id = self.next_id;
         self.next_id += 1;
         self.index.push(self.orgs.len() as u32);
@@ -521,10 +520,27 @@ impl Sim {
             parent,
             stats: OrgStats::new(energy),
             cycle_debt: 0,
-            taxed_for_life,
+            taxed_for_life: false,
             first_foreign_off: None,
         });
         id
+    }
+
+    /// The lifelong tax's draw (T10) for organism `id`, just created: with
+    /// probability `cycle_tax_life_frac` it is taxed for life. One
+    /// `chance(F)` only when 0 < F < 1 and P > 0; F >= 1 taxes with no draw;
+    /// F = 0 or P = 0 draws nothing and taxes nobody. Called for every
+    /// child at `divide` (after `seed` places it) and for every copy
+    /// `inject_due` places, in order. Founders are never drawn: the founder
+    /// is the one body not born next to anything, and a taxed founder at a
+    /// high P dies before its first child (tick 73 at P = 66), which
+    /// decides the seed instead of the control.
+    pub fn draw_life_tax(&mut self, id: u32) {
+        let f = self.cfg.cycle_tax_life_frac;
+        if self.cfg.cycle_tax_life_pct > 0 && f > 0.0 && (f >= 1.0 || self.rng.chance(f)) {
+            let k = self.org_index(id).expect("draw_life_tax on a retired organism");
+            self.orgs[k].taxed_for_life = true;
+        }
     }
 
     /// Seed several founders (`--founder`, E009a): `founders` is a list of
@@ -1011,6 +1027,7 @@ impl Sim {
                     st.endowed_m += give;
                     st.last_divide_tick = self.tick as i64;
                     let child = self.seed(ps, &genome, give, parent_id);
+                    self.draw_life_tax(child);
                     self.events.push(Event::Birth {
                         tick: self.tick,
                         child,
@@ -1467,6 +1484,10 @@ impl Sim {
         for (index, inj) in injections.iter().enumerate() {
             if inj.tick == next {
                 let (starts, ids) = self.inject(&inj.genome, inj.count, energy, next);
+                // T10: injected copies draw the lifelong tax, in placement order.
+                for &id in &ids {
+                    self.draw_life_tax(id);
+                }
                 done.push(Injected { index, starts, ids });
             }
         }
