@@ -14,6 +14,10 @@
 //! evo-core --host HEX [--host-body HEX] [--host-pad] [--harness-ticks N] [physics flags]
 //! evo-core --neighbours HEX [--host-body HEX] [--harness-ticks N] [--neighbours-out FILE]
 //!          [--neighbours-pad-only | --neighbours-ins] [--threads T] [physics flags]
+//! evo-core --density LEN:N [--density-ticks T] [--density-out FILE] [--threads K]
+//!          [--seed S] [physics flags]
+//! evo-core --enumerate LEN [--density-ticks T] [--density-out FILE] [--threads K]
+//!          [physics flags]
 //! evo-core --disasm HEX
 //!
 //! --ancestor NAME (T03) picks the seeded ancestor: `std` (default, the
@@ -180,6 +184,24 @@
 //! label and the `parasite_jump` rows by position. --threads T (default:
 //! the available parallelism) runs the mutants on T threads; the file is
 //! the same at any T.
+//!
+//! --density LEN:N (T07, line B step B0) tests N bodies of LEN random
+//! bytes: body i is draws i * LEN to (i + 1) * LEN - 1 of
+//! `Rng::new(S).below(256)` (S from --seed, default 1), so the first n
+//! bodies of a larger N are the same. Each runs alone in the quiet harness
+//! (noise off, 100 units of seed energy, children removed every tick) for
+//! --density-ticks ticks (default 1,000; the run stops on death) in a ring
+//! of 8,192 bytes, 16 patches of 512 (`harness::density_config`: income and
+//! cap per patch rescaled as --patch does, every other physics flag as
+//! given). stdout: `len,n,ticks,replicator,one_shot,inexact,loafer,dies,
+//! seconds` (`harness::HarnessResult::class`). --density-out FILE writes
+//! one row per body that is neither `dies` nor `loafer`:
+//! `index,hex,class,births,exact_births,first_birth_tick,executed`
+//! (`index` the body's place in the sample), in sample order; stderr lists
+//! every replicator's index and hex. --threads K as for --neighbours: the
+//! file and the counts are the same at any K. --enumerate LEN (LEN 1-3)
+//! tests every body of LEN bytes instead (256^LEN, body i is i in base
+//! 256, most significant byte first), with the same output.
 
 use evo_core::config::{Config, MILLI};
 use evo_core::harness;
@@ -209,6 +231,11 @@ fn main() {
     let mut neighbours_pad_only = false;
     let mut neighbours_ins = false;
     let mut threads: Option<usize> = None;
+    // T07: --density LEN:N, --enumerate LEN and their options.
+    let mut density: Option<(usize, u64)> = None;
+    let mut enumerate: Option<usize> = None;
+    let mut density_ticks: u64 = 1000;
+    let mut density_out: Option<String> = None;
     let mut kind = AncestorKind::Std;
     // --k defaults by ancestor (resolved after parsing).
     let mut k: Option<i8> = None;
@@ -250,6 +277,27 @@ fn main() {
             "--neighbours-out" => { neighbours_out = next(); i += 1; }
             "--neighbours-pad-only" => neighbours_pad_only = true,
             "--neighbours-ins" => neighbours_ins = true,
+            "--density" => {
+                let v = next();
+                let (l, n) = v.split_once(':').expect("--density wants LEN:N");
+                let l: usize = l.parse().expect("--density LEN must be a whole number");
+                let n: u64 = n.parse().expect("--density N must be a whole number");
+                assert!(l > 0 && n > 0, "--density wants LEN >= 1 and N >= 1");
+                density = Some((l, n));
+                i += 1;
+            }
+            "--enumerate" => {
+                let l: usize = next().parse().expect("--enumerate LEN must be a whole number");
+                assert!((1..=3).contains(&l), "--enumerate LEN must be 1, 2 or 3 (256^LEN bodies)");
+                enumerate = Some(l);
+                i += 1;
+            }
+            "--density-ticks" => {
+                density_ticks = next().parse().expect("--density-ticks T must be a whole number");
+                assert!(density_ticks > 0, "--density-ticks must be at least 1");
+                i += 1;
+            }
+            "--density-out" => { density_out = Some(next()); i += 1; }
             "--threads" => {
                 let t: usize = next().parse().expect("--threads T must be a whole number");
                 assert!(t > 0, "--threads must be at least 1");
@@ -357,6 +405,26 @@ fn main() {
 
     if let Some(dir) = classify {
         run_classify(Path::new(&dir), &classes_out, harness_ticks, &cfg);
+        return;
+    }
+    if density.is_some() || enumerate.is_some() {
+        if density.is_some() && enumerate.is_some() {
+            eprintln!("error: give --density or --enumerate, not both");
+            std::process::exit(2);
+        }
+        let spec = match (density, enumerate) {
+            (Some((len, n)), _) => harness::DensitySpec {
+                len, n, ticks: density_ticks, source: harness::DensitySource::Uniform { seed: cfg.seed },
+                plant: None, keep_all: false,
+            },
+            (_, Some(len)) => harness::DensitySpec {
+                len, n: 1u64 << (8 * len), ticks: density_ticks, source: harness::DensitySource::Every,
+                plant: None, keep_all: false,
+            },
+            _ => unreachable!(),
+        };
+        let t = threads.unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()));
+        run_density(&spec, &cfg, t, density_out.as_deref());
         return;
     }
     if let Some(hex) = neighbours {
@@ -577,6 +645,34 @@ fn parse_hex(hex: &str) -> Vec<u8> {
 /// The `bytes_hex` form of a genome (inverse of `parse_hex`).
 fn to_hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// `--density LEN:N` / `--enumerate LEN` (T07): count the bodies of `spec`
+/// by harness class, print the summary row, list the replicators on
+/// stderr, and write the kept rows to `out` if given.
+fn run_density(spec: &harness::DensitySpec, cfg: &Config, threads: usize, out: Option<&str>) {
+    let t0 = std::time::Instant::now();
+    let res = harness::density(spec, cfg, threads);
+    let secs = t0.elapsed().as_secs_f64();
+    if let Some(path) = out {
+        let mut w = std::io::BufWriter::new(std::fs::File::create(path).expect("create density file"));
+        harness::write_density(&mut w, &res.rows).expect("write density file");
+        w.flush().expect("write density file");
+    }
+    println!("{}", harness::DENSITY_SUMMARY_HEADER);
+    println!("{}", harness::density_summary(spec, &res, secs));
+    for r in res.rows.iter().filter(|r| r.result.class() == "replicator") {
+        eprintln!("# replicator {} {}", r.index, to_hex(&r.genome));
+    }
+    let what = match spec.source {
+        harness::DensitySource::Uniform { seed } => format!("random bodies (seed {seed})"),
+        harness::DensitySource::Every => "bodies (every one)".to_string(),
+    };
+    eprintln!(
+        "# {} {what} of {} bytes x {} ticks on {threads} threads in {secs:.2}s ({:.1} us per body){}",
+        spec.n, spec.len, spec.ticks, 1e6 * secs / spec.n as f64,
+        out.map_or(String::new(), |p| format!("; wrote {} rows to {p}", res.rows.len()))
+    );
 }
 
 /// `--classify DIR`: label every genome in DIR/genomes.csv with the
