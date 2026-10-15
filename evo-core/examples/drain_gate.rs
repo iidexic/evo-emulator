@@ -8,7 +8,8 @@
 use evo_core::config::Config;
 use evo_core::harness::{run_alone_with, run_with_host, HostResult};
 use evo_core::isa::Isa;
-use evo_core::sim::{ancestor_t, ANCESTOR_T_K};
+use evo_core::config::MILLI;
+use evo_core::sim::{ancestor_t, Event, Sim, ANCESTOR_T_K};
 
 fn drainer(isa: &Isa, k: i8) -> Vec<u8> {
     isa.assemble(&format!(
@@ -55,6 +56,42 @@ fn main() {
                 row(&format!("flip before anc, op {op}"), &r);
                 let s = run_alone_with(&m, ticks, &cfg(op, 50, 50));
                 println!("  alone op {op}: class {} births {} exact {} alive {}", s.class(), s.births, s.exact_births, s.alive);
+            }
+        }
+        // The host seeded at its store cap instead of 100 units: is the
+        // first-cycle death the harness's seed or the rule?
+        "full" => {
+            let k: i8 = a.get(1).and_then(|t| t.parse().ok()).unwrap_or(120);
+            let isa = Isa::new(23);
+            let d = drainer(&isa, k);
+            println!("host seeded full; drainer K {k}");
+            println!("   P   L | drainer_births host_births host_alive host_death_tick | host_drained drain_gain");
+            for (p, l) in [(0, 50), (5, 50), (10, 50), (25, 0), (25, 50), (25, 90), (50, 50), (100, 50)] {
+                let c = evo_core::harness::quiet(cfg(if p == 0 { 0 } else { 23 }, p, l));
+                let mut sim = Sim::new(c.clone());
+                let mid = c.world_size / 2;
+                let full = c.store_cap_per_byte * host.len() as i64;
+                let hid = sim.seed(mid, &host, full, 0);
+                let mid_d = sim.seed(mid - d.len() as u32, &d, 100 * MILLI, 0);
+                let (mut db, mut hb, mut death) = (0, 0, None);
+                for t in 1..=ticks {
+                    sim.run_tick();
+                    for ev in sim.events.drain(..) {
+                        match ev {
+                            Event::Birth { executor, .. } if executor == hid => hb += 1,
+                            Event::Birth { executor, .. } if executor == mid_d => db += 1,
+                            Event::Death { id, .. } if id == hid => death = Some(t),
+                            _ => {}
+                        }
+                    }
+                    sim.cull_except(&[hid, mid_d]);
+                }
+                let (hd, dg) = (
+                    sim.genome_of(hid).map_or(-1.0, |o| o.stats.drained_m as f64 / 1e3),
+                    sim.genome_of(mid_d).map_or(-1.0, |o| o.stats.drain_gain_m as f64 / 1e3),
+                );
+                println!("{p:>4} {l:>3} | {db:>14} {hb:>11} {:>10} {:>15} | {hd:>12.1} {dg:>10.1}",
+                         death.is_none(), death.map_or("-".to_string(), |t| t.to_string()));
             }
         }
         "k" => {

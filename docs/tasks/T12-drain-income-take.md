@@ -3,11 +3,12 @@
 Status: specified 2026-10-15 (Fable; Derek accepted the memo's
 recommendation the same night: `docs/research/drain-decision-memo-2026-10-15.md`
 §4). Built 2026-10-15 (Opus, engine commit `724f91d`, gate G1/G2 in
-the commit after it; branch `worktree-agent-af767620b674b761b`, not
+the two commits after it; branch `worktree-agent-af767620b674b761b`, not
 merged; four deviations from §1, listed in §5). G1 and G2 run (§5):
 **G2 fails** at every tabled (P, L) under both opcodes: the drained
 ancestor dies before its first child from P = 25 (from P = 10 in
-fact); at P = 5 it keeps all 119 births but the drainer gains under
+fact; seeded at its store cap it dies later, after 3–64 children);
+at P = 5 it keeps all 119 births but the drainer gains under
 2% of its income by `drain` and makes exactly its lone count. G3 not
 run. pseudo.py's `drain` and the `docs/instrumentation.md` rows not
 done. Builder: Opus. Argument: PLAN §5.5 (the energy
@@ -247,8 +248,13 @@ P = 5 and dead from P = 10. That row meets the pass rule's letter
 (+14%, victim at 100%) and not its sense: the 14% is the shorter body,
 the drain gives 1.7% of its income.
 
+The first-cycle death is not the harness's seed. With the ancestor
+seeded at its store cap (2,624 units; `drain_gate full 120`, same
+drainer, op 23): P = 5, 119 births, alive; P = 10, 64 births, dead at
+tick 1,627; P = 25 (any L), 15 births, dead at tick 401; P = 50, 7,
+dead at 198; P = 100, 3, dead at 97. The store only delays the death;
+the drainer makes 120 in every row.
+
 **G2 fails** at every (P, L) in the table, under both opcodes. Per §3
 the memo's branch C (scavenging) is next; `drain` stays as a flag.
-Not measured: a host seeded at its store cap rather than with 100
-units (the first-cycle death may be the harness's seed, not the rule),
-and G3.
+G3 not run.
