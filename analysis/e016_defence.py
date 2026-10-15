@@ -1545,7 +1545,13 @@ def replay_one(exe: Path, out: Path, arm: str, job: Replay, tax: Tax | None, ref
     rep = None if founder else dict(tick=snap, reseed=new_seed)
     ticks = to_tick if founder else None
     if force or not has(d, "classes.csv"):
-        mj = json.loads((d / "meta.json").read_text()) if (d / "meta.json").exists() else {}
+        # A meta.json that does not parse (NTFS zero-fills a file that was
+        # open when the machine went down; seen 2026-10-15 in three replays)
+        # counts as missing, and the run is redone.
+        try:
+            mj = json.loads((d / "meta.json").read_text()) if (d / "meta.json").exists() else {}
+        except ValueError:
+            mj = {}
         if force or not has(d, "genomes.csv") or mj.get("ticks_run") is None:
             if d.exists():
                 shutil.rmtree(d)
