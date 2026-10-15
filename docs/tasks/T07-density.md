@@ -1,6 +1,22 @@
 # T07. Replicator density by uniform sampling (line B, step B0)
 
-Status: specified 2026-10-13. Not built. Argument: synthesis §3.6
+Status: specified 2026-10-13; built 2026-10-15 (Opus, `226169e` engine
+and tests, `761423d` runner; docs/instrumentation.md, "Density"), full
+sweep pending. `--density`, `--enumerate` (LEN 1-3) and the runner as
+below; `--density-out` has a leading `index` column (the body's place
+in the sample). `cargo test` 80 passed (§4's two tests plus
+`enumerate_covers_every_body`); the density world gives the lone
+ancestor the same run as the default world (tested). Smoke at N =
+10,000, seed 1, 8 threads on a loaded desktop: no replicator or
+one-shot at LEN 8, 16, 21 (inexact 7, 64, 93; loafer 3, 4, 7), 0.02-0.03
+s per 10,000 bodies, so 10^6 per cell is a few seconds and the whole §2
+sweep a few minutes; `--enumerate 1` and `2`: every body `dies`. Two
+points for the reader of §3: its second bullet's "zero hits at 10^7 for
+every LEN <= 32" needs 10^7 at LEN 21-32, which §2 does not run
+(`b0_density.py --big-max-len 32` adds it); and a zero count bounds the
+density at about 3.7 / N, so at 10^7 it is still 3.7 orders above BFF's
+7.1e-11 and "three orders below" cannot be shown by zero hits at any N
+this sweep reaches. Argument: synthesis §3.6
 line B, PLAN §8.4 B0, `notes/recent-5-soup-emergence-isal.md` (Dušek
 et al. 2026's U control: uniform sampling with a fixed test). Needs
 no GPU and no new physics. Answers, before the cubff work: how rare
