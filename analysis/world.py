@@ -85,7 +85,19 @@ def _():
 
 
 @app.cell
-def _(CLASS_COLOR, GRAY_LIGHT, GRID, INK, INK_2, SEQ_STEPS, SURFACE, alt, class_order, decode, functools):
+def _(
+    CLASS_COLOR,
+    GRAY_LIGHT,
+    GRID,
+    INK,
+    INK_2,
+    SEQ_STEPS,
+    SURFACE,
+    alt,
+    class_order,
+    decode,
+    functools,
+):
     # Small helpers used by the cells below.
 
     # The five kinds of address, in stacking order (alive at the bottom,
@@ -130,7 +142,7 @@ def _(CLASS_COLOR, GRAY_LIGHT, GRID, INK, INK_2, SEQ_STEPS, SURFACE, alt, class_
             off += i.size
         return tuple(ins)
 
-    return KINDS, KIND_COLOR, STATE_LETTER, class_color, dis, look
+    return KINDS, KIND_COLOR, STATE_LETTER, dis, look
 
 
 @app.cell
@@ -299,7 +311,19 @@ def _(mo, snap_ticks):
 
 
 @app.cell
-def _(INK, INK_2, KINDS, KIND_COLOR, alt, composition, look, mo, offbody, pl, tick_pick):
+def _(
+    INK,
+    INK_2,
+    KINDS,
+    KIND_COLOR,
+    alt,
+    composition,
+    look,
+    mo,
+    offbody,
+    pl,
+    tick_pick,
+):
     # Memory by kind at every snapshot, and where off-body IPs were. The
     # dashed line marks the snapshot picked above; hover for the counts.
     _rank = {k: i for i, k in enumerate(KINDS)}
@@ -339,7 +363,23 @@ def _(INK, INK_2, KINDS, KIND_COLOR, alt, composition, look, mo, offbody, pl, ti
 
 
 @app.cell
-def _(CLASS_COLOR, GRAY_LIGHT, INK, KINDS, KIND_COLOR, alt, class_order, layout, look, mo, n, np, pl, ps, tick_pick):
+def _(
+    CLASS_COLOR,
+    GRAY_LIGHT,
+    INK,
+    KINDS,
+    KIND_COLOR,
+    alt,
+    class_order,
+    layout,
+    look,
+    mo,
+    n,
+    np,
+    pl,
+    ps,
+    tick_pick,
+):
     # The world at the picked snapshot, as rows of memory read left to
     # right, top to bottom. With up to 160 rows, one row is one patch;
     # bigger worlds put several patches in a row. Each run of addresses
@@ -446,7 +486,21 @@ def _(get_span, mo, n, set_span):
 
 
 @app.cell
-def _(STATE_LETTER, dis, explain, get_span, layout, mo, n, np, orgs, pl, run, snaps, tick_pick):
+def _(
+    STATE_LETTER,
+    dis,
+    explain,
+    get_span,
+    layout,
+    mo,
+    n,
+    np,
+    orgs,
+    pl,
+    run,
+    snaps,
+    tick_pick,
+):
     # The span at the picked snapshot, decoded from its first byte, one row
     # per instruction. Decoding is linear from the start you give, so a
     # start in the middle of a `lit` reads its operand as an instruction.
