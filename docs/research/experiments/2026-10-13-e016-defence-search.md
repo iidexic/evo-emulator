@@ -553,3 +553,49 @@ anticipated for t ≤ 2,500. The table is added here when the stage ends.
    away.
 5. Not decided here: `drain` (PLAN §8.3, §6 above). The write-up of
    E016 and the `drain` decision go to Derek with this record.
+
+### 8.8 What the immune class is, measured (T11 §2, 2026-10-15)
+
+§8.7 item 4 said "every new label has its own one-hop parasite". T11
+§2 (`analysis/t11_closed.py own`, `runs/e016/own_nbhd/`, commit
+`ceda9e7`) measured it on the 34 most common structural complete
+genomes of the two non-tax arms (the top 20 of the ancestor's length
+and the 14 other lengths in the overall top 20, ranked by
+replicator-class exact births over all runs), each run through
+`--neighbours G` against itself under `tierra_n0`'s physics and probed
+with its own label flip. The sentence is wrong for 28 of the 34.
+
+- **15 have no label.** 32–36 bytes, no `searchf` or one with an empty
+  template; the procedure is reached by running straight on, as the
+  21-byte body does. Immune to the registered probe because the probe's
+  search finds no label to enter. By births this class is 40% of the
+  immune structural class: 761,276 of 1,884,620 replicator-class exact
+  births in `tierra_n0` from bodies shorter than 41 bytes (8,116 of
+  20,741 genomes), 1,107,125 of 2,842,736 in `tierra_t50` (10,984 of
+  29,737); bodies longer than 41 are 0.1%. The relabelling of §8.2 is
+  the other 60%.
+- **12 of the 19 labelled bodies are closed against their own flip.**
+  The template is down to 1–2 nops and a second copy of the label sits
+  later in the body (in 11 of the 12 inside the `searchb` template), so
+  a flipped mutant's search finds that copy inside itself and never
+  runs a byte of G: 0 `parasite_jump` rows on the label, against the
+  ancestor's 996 of 1,121 under the same physics.
+- **6 stay open** (ranks 6, 21, 22, 25, 31, 32): the flip finds G's L1
+  (entry 20–22) or L0 (entry 3), 489–498 rows on the label.
+
+Every body keeps the fall-through parasites (median 228
+`parasite_fallthrough` rows; ancestor 228) and 60–140 fixed-offset
+`parasite_jump` rows (ancestor 125 off the label). All 34 are immune to
+the registered probe. All but one `func_hash` occurs in one run only.
+
+Reading: Tierra's immunity by relabelling is the minority of what
+arose. The common outcomes are the loss of template addressing (the
+world walks back to the straight-line body, which has no one-hop
+parasite by search) and a redundant label that closes the search
+against a single flip. §8.7 item 4's "moving target" holds for 6 of 34
+top bodies; for the rest the defence is closed against the label
+parasite and open only to the fall-through one, which every body in
+this world has. The record's claim that no closed defence exists one
+substitution away stands (the neighbourhood screen); the claim that
+none arose does not.
+
