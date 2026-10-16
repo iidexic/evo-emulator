@@ -554,6 +554,12 @@ S it regenerates the body); the rest are the classifier's columns.
   debris or free; world map per snapshot; an address inspector across
   snapshots; and off-body IPs (organisms whose IP is outside their own
   body at a census) with the kind of address they are at.
+- `leaders.py` (2026-10-15): a marimo notebook ranking one run's
+  organisms (every death row plus the last census row of the living)
+  and genotypes (`raw_hash` or `func_hash`) by lifetime counters,
+  children by birth kind, generation depth, child and IP distance from
+  the body, census population and patch spread, with E005's parasite
+  rule for genotypes.
 - `traits.py` (2026-10-07, E007 follow-ups; extended 2026-10-08, E009):
   trait bytes over replicator-class exact births per window. `track()`
   reads the absorb count (byte 6) and the endowment (byte 17, where byte

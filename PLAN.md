@@ -595,6 +595,11 @@ H3 (§11).
   the world snapshots (world map by class per snapshot, intact dead
   bodies in free memory, address inspector, off-body IPs), a first cut
   of the §7 lineage image colored by class rather than lineage.
+  2026-10-15: `leaders.py` ranks one run's organisms and genotypes
+  (`raw_hash` or `func_hash`) in about 40 categories: size, energy,
+  lifespan, children by kind, generation depth, distance, spread over
+  patches, parasites and hosts; `world.py` gained step buttons (1, 16
+  or 128 snapshots) above the world map.
 
 ### 6.3 Interface between them
 

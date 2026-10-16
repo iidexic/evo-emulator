@@ -221,6 +221,29 @@ the world map step the snapshot back or forward by 1, 16 or 128
 snapshots (one snapshot per census, so a step is `census_every` ticks);
 the slider at the top follows them.
 
+`leaders.py` ranks one run (same two-step picker, every complete run):
+
+```
+uv run marimo edit leaders.py
+```
+
+It builds one row per organism that ever lived (`deaths.csv` plus the
+last census row of the living) and one per genotype, grouped by birth
+`raw_hash` or by `func_hash`, and shows the top few of each in about 40
+categories, in tabs: size, energy absorbed and held, lifespan, children
+(all, live, exact, mutant, stillborn), grandchildren, generation depth
+(the longest chain of exact copies, E005's measure), how far from its
+body an organism placed a child or was seen with its IP (bodies never
+move), population at once and over the run, persistence, genotypes
+founded, spread over patches, and parasites and hosts (E005's parasite
+rule for genotypes; for organisms, exact children while running more
+than 25% foreign code). Selecting a row shows that organism or genotype
+below: its numbers, energy or population over the censuses, its genome
+in pseudo-code, and buttons to its parent or genotype. The notebook's
+first cell defines every measure. A 250,000-tick E016 run (4 M
+organisms) takes about 9 s and peaks near 4.4 GB; the big CSVs are read
+in polars' streaming mode.
+
 marimo notebooks are plain `.py` files. Cells re-run on their own when a
 value they read changes, so each name may be defined in only one cell;
 prefix cell-local names with `_`.
