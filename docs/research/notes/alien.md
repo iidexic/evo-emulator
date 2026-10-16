@@ -107,9 +107,13 @@ So selection has a slope to climb: one more defender cell is a little more
 protection.
 
 E016's only evolved defence is a relabelling of the copy template, which is
-all-or-nothing, and each new label has its own one-hop parasite
-(`docs/research/e016-writeup-2026-10-15.md` §1). That gives escape, not an
-arms race.
+all-or-nothing (`docs/research/e016-writeup-2026-10-15.md` §1). Caveat
+(Fable, 2026-10-15): "each new label has its own one-hop parasite" is the
+E016 record's first reading; T11 §2 then found 28 of the 34 most common
+immune bodies closed against their own label flip (15 label-free, 13 with
+a 1–2-nop label and a second copy behind it), so the class is mostly
+closed, not a moving target. The contrast with ALIEN stands either way:
+evo's defence is a step, ALIEN's is a slope.
 
 ALIEN proves nothing about evo here, because its gradient is designed in: a
 defender is one cell-type mutation away, and full immunity to injection is a
@@ -165,10 +169,24 @@ much longer than a rate parameter.
 Cheap check: do any one-hop mutants of the ancestor copy more or less
 faithfully than the ancestor? `neighbours.csv` from `--neighbours` already
 has `births_alone` and `exact_alone` (`docs/tasks/T03-template-ancestor.md:119`),
-so per-mutant fidelity is `exact_alone / births_alone`. No `neighbours*.csv`
-exists under `runs/` or `analysis/` yet. If no one-hop mutant changes
-fidelity, the "fidelity under selection" principle is dormant in practice,
-however true in principle.
+so per-mutant fidelity is `exact_alone / births_alone`. If no one-hop
+mutant changes fidelity, the "fidelity under selection" principle is
+dormant in practice, however true in principle.
+
+**Checked 2026-10-15 (Fable), on `runs/e015/nbhd/std.csv` and
+`tierra.csv`** (E015 stage 1; the files exist, the sentence above that
+said otherwise was wrong). Among mutants with at least 5 births alone
+(879 of 5,376 std, 2,287 of 10,496 tierra), `exact_alone / births_alone`
+is exactly 0 or exactly 1 for every row; no intermediate value. That is
+expected: the harness runs quiet (noise off), so the ratio measures
+whether the program copies itself correctly, not how it fares under
+noise. The check as stated cannot see fidelity. A real version needs
+the neighbourhood run with the world's `--p` and `--rot`, comparing each
+mutant's exact share against the ancestor's under the same noise, and
+even then a one-hop mutant that proofreads is implausible. Dropped as an
+action item; the E016 line of descent (195 of 196 repairs carrying no
+copy error, T06 note in `docs/tasks/README.md`) is the existing evidence
+on copy fidelity.
 
 ### 2.5 Paying for complexity was tried, then removed
 
@@ -221,9 +239,9 @@ but no kernel reads it; the injector uses a hard-coded 0.5
 
 1. T12 / E018: log drainer–victim relatedness per drain (parent, child,
    same `func_hash`). Small; belongs in T12 §1.1's ledger.
-2. One-hop fidelity check from `--neighbours` output
-   (`exact_alone / births_alone` per mutant against the ancestor). An
-   afternoon's analysis once a `neighbours.csv` exists.
+2. ~~One-hop fidelity check from `--neighbours` output~~ Done
+   2026-10-15, uninformative: the quiet harness gives 0 or 1 for every
+   mutant (§2.4). Dropped.
 3. Register the probabilistic-matching hypothesis (§2.2) in
    `docs/research/hypotheses.md` if Line A is going to try graded binding.
 4. Add the §4 row to PLAN §2.
