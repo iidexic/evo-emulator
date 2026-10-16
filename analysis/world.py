@@ -301,13 +301,39 @@ def _(composition, mo, n, offbody, ps, run, snap_ticks):
 
 @app.cell
 def _(mo, snap_ticks):
+    # The picked snapshot tick, shared by the slider below and the step
+    # buttons above the world map. A new run starts at its middle snapshot.
+    get_tick, set_tick = mo.state(snap_ticks[len(snap_ticks) // 2])
+    return get_tick, set_tick
+
+
+@app.cell
+def _(get_tick, mo, set_tick, snap_ticks):
     # The snapshot every per-tick view below shows.
     tick_pick = mo.ui.slider(
-        steps=snap_ticks, value=snap_ticks[len(snap_ticks) // 2],
+        steps=snap_ticks, value=get_tick(), on_change=set_tick,
         show_value=True, full_width=True, label="snapshot tick",
     )
     tick_pick
     return (tick_pick,)
+
+
+@app.cell
+def _(get_tick, mo, set_tick, snap_ticks):
+    # Buttons that move the picked snapshot back or forward by 1, 16 or 128
+    # snapshots, stopping at the first and the last. world.bin holds one
+    # snapshot per census, so one step is census_every ticks. Shown above
+    # the world map; kept in a global list because marimo holds UI
+    # elements weakly.
+    def _step(k):
+        _i = snap_ticks.index(get_tick()) + k
+        set_tick(snap_ticks[min(max(_i, 0), len(snap_ticks) - 1)])
+
+    step_buttons = [
+        mo.ui.button(label=f"{k:+d}".replace("-", "−"), on_click=lambda _, k=k: _step(k))
+        for k in (-128, -16, -1, 1, 16, 128)
+    ]
+    return (step_buttons,)
 
 
 @app.cell
@@ -378,6 +404,9 @@ def _(
     np,
     pl,
     ps,
+    run,
+    snap_ticks,
+    step_buttons,
     tick_pick,
 ):
     # The world at the picked snapshot, as rows of memory read left to
@@ -385,7 +414,8 @@ def _(
     # bigger worlds put several patches in a row. Each run of addresses
     # with the same kind and owner is one block; bodies are colored by the
     # harness class of their bytes, intact dead bodies faded. Black ticks
-    # are off-body IPs. Click a block or a tick to inspect it.
+    # are off-body IPs. Click a block or a tick to inspect it. The buttons
+    # above it step the snapshot (the slider at the top moves with them).
     _t = tick_pick.value
     _kind, _who, _living, _dead = layout(_t)
     _row = ps
@@ -449,7 +479,13 @@ def _(
         title=f"World at tick {_t:,}: faded blocks are intact dead bodies, black ticks off-body IPs",
     )
     world_map = mo.ui.altair_chart(look(_map), legend_selection=False)
-    mo.vstack([mo.md("## World map"), world_map])
+    _nav = mo.hstack([
+        *step_buttons[:3],
+        mo.md(f"snapshot {snap_ticks.index(_t) + 1:,} of {len(snap_ticks):,} (tick {_t:,}); "
+              f"a step is one snapshot, {run.meta['census_every']:,} ticks"),
+        *step_buttons[3:],
+    ], justify="start", align="center", gap=0.5)
+    mo.vstack([mo.md("## World map"), _nav, world_map])
     return (world_map,)
 
 

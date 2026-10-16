@@ -216,7 +216,10 @@ pseudo-code (as a body when it starts at a living or intact dead body's
 first byte), and the same span at every snapshot. Two tables find what to inspect: organisms whose IP was
 outside their own body at the snapshot, and the addresses where the most
 organisms had an off-body IP across the run (dead-code trampolines).
-Loading a 100-snapshot run takes a few seconds.
+Loading a 100-snapshot run takes a few seconds. The six buttons above
+the world map step the snapshot back or forward by 1, 16 or 128
+snapshots (one snapshot per census, so a step is `census_every` ticks);
+the slider at the top follows them.
 
 marimo notebooks are plain `.py` files. Cells re-run on their own when a
 value they read changes, so each name may be defined in only one cell;
