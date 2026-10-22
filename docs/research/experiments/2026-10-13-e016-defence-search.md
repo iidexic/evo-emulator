@@ -653,3 +653,71 @@ condition holds for the template body only at N ≤ 20; E016 tested the
 premise in the regime where an entered individual is killed. T13's
 arms are N = 10 and N = 20.
 
+
+## 9. Arms added after the first results, pre-registered before launch (2026-10-22)
+
+Both arms were decided 2026-10-15 (PLAN §8.3, the drain memo §4) and
+are launched 2026-10-22 from the master binary rebuilt that day
+(T07, T08, T10 and T11 merged; T12's drain branch not merged, so
+`drain` is absent and every flag below is off by default). Everything
+in §1–§3 applies to them unchanged: 30 seeds, 250,000 ticks, one
+founder at 32,768, `--sun 2`, the fixed edge, snapshots every 2,500,
+the registered probe, the same screen and `lod` stages. Nothing in
+§8 is reread in their light until both have run.
+
+### 9.1 `tierra_taxL`, the lifelong-tax control (T10; E017)
+
+`--cycle-tax-lifelong 0.7999533790651251 26`
+(`runs/e016/tax_life.json`, calibrated per organism-tick over
+`tierra_t50`'s 12,371,784 replicator-class deaths, T10 §2.2: F × P =
+20.80% of the per-tick cap against the theft's realised 21.06%, mean
+check passed). Founders are never taxed (T10 §7.2). The pilot (T10
+§7.2, `runs/e016/tierra_taxL_pilot/f80p26/`) persisted 10 of 10 to
+50,000 with a replicator-class population of median 210 against
+`tierra_n0`'s 230 and three seeds below the 189–253 band, so T10 §4's
+gate failed by one seed and the 30 are launched on a decision, not a
+pass. Pre-registered:
+
+- **Survivability** (T10 §3): persists to 250,000 in ≥ 24 of 30.
+  The per-tick tax's 21 extinctions came in a wave between ticks
+  35,690 and 54,330 (§8.1); the pilot stopped at 50,000, inside that
+  window. The 250,000-tick runs show whether a wave of that kind
+  exists for the lifelong shape. Expected: no wave, population
+  about a tenth below `tierra_n0`'s, as the pilot's band miss says
+  an even slowdown lowers the population without killing it.
+- **The paired reading** (T10 §3, runner `e017_text`): structural
+  complete share of replicator-class exact births in the last bin,
+  `tierra_t50` against `tierra_taxL` and `tierra_taxL` against
+  `tierra_n0`, by seed, seeds with no defence in either counted as
+  ties. Cost-of-being-entered reading: t50 above taxL in ≥ 20 of 30
+  and taxL above n0 in ≤ 18 of 30. Slowness reading: taxL above n0
+  in ≥ 20 of 30 and t50 above taxL in 12–18 of 30. Neither pattern:
+  reported as such; the one-third rise at N = 50 (§8.3) then has no
+  control that separates the two.
+- Everything in §3 for the table, with the arm's own reference run
+  (`defence_ref.json`; the harness is `tierra_n0`'s, since the
+  lifelong tax is not applied in the harness).
+
+### 9.2 `tierra_t10` and `tierra_t20`, the graded regime (T13)
+
+`--cycle-theft-pct 10` and `20`, every other flag as `tierra_t50`.
+From §8.10's curve the entered ancestor keeps 0.90 and 0.79 of its
+rate and lives at these N; at N = 25 and above it dies inside 3,000
+ticks, so §8's N = 50 arm tested the cliff, not the dose. T13 §3's
+reading, paired by seed:
+
+- **Dose on the share.** If the rise at N = 50 is selection on being
+  entered, the structural complete share in the last bin is ordered
+  `n0` < `t10` < `t20` < `t50`, each ordered pair above in ≥ 20 of
+  29 (seed 14 lost its founder in the theft arms and is excluded as
+  in §8.3). If the rise is a slowness effect, §9.1's arm says so and
+  the lower-N arms show no order.
+- **A tolerant defence.** The registered test is §1's, unchanged.
+  Under the premise: a tolerant genome (eject, reset, self-check)
+  arises in ≥ 3 of 30 seeds at one of the two N. Against: 0 of 60,
+  and the negative stands at three N (0, 10 and 20 graded, 50 the
+  cliff).
+- **The kinds** (T11 §2's three): reported for the top 20 of each
+  arm if `t11_closed.py own` runs in the time; no prediction.
+- **Entered share** of replicator-class deaths after 25,000: reported
+  against `tierra_t50`'s 43% (§8.7 item 4); no prediction.
