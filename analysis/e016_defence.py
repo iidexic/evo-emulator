@@ -19,6 +19,7 @@ Arms (§2), sun S = 2 (resolved 2026-10-13), 30 seeds, 250,000 ticks,
 | std_n0 | --ancestor std --sun 2 |
 | std_t50 | --ancestor std --sun 2 --cycle-theft-pct 50 |
 | tierra_taxL | --ancestor tierra --sun 2 --cycle-tax-lifelong F P (T10, E017; F, P in tax_life.json) |
+| tierra_t10, tierra_t20 | --ancestor tierra --sun 2 --cycle-theft-pct 10 / 20 (T13; record §9.2: the graded regime, where the entered ancestor lives) |
 
 Every harness call (`--classify`, `--host`) gets the arm's physics flags
 (everything above but `--ancestor`; the harness has its noise off), except
@@ -245,6 +246,7 @@ import gzip
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -305,10 +307,13 @@ BACKGROUND_FROM, BACKGROUND_TO = 25_000, 100_000
 NOP0, NOP1 = 1, 3
 PROBE_POS = 18
 TIERRA_REGIONS = {"template": (13, 16), "label": (18, 21)}
-ARMS = ["tierra_n0", "tierra_t50", "tierra_tax", "std_n0", "std_t50", "tierra_taxL"]
+ARMS = ["tierra_n0", "tierra_t50", "tierra_tax", "std_n0", "std_t50", "tierra_taxL", "tierra_t10", "tierra_t20"]
 FIRST_ARMS = ["tierra_n0", "tierra_t50", "std_n0", "std_t50"]
 N0_OF = {"tierra_n0": "tierra_n0", "tierra_t50": "tierra_n0", "tierra_tax": "tierra_n0",
-         "std_n0": "std_n0", "std_t50": "std_n0", "tierra_taxL": "tierra_n0"}
+         "std_n0": "std_n0", "std_t50": "std_n0", "tierra_taxL": "tierra_n0", "tierra_t10": "tierra_n0",
+         "tierra_t20": "tierra_n0"}
+# T13 §3: the dose order on the structural share, lowest N first.
+DOSE_ARMS = ["tierra_n0", "tierra_t10", "tierra_t20", "tierra_t50"]
 # The calibrated arms and their files in --out: (P, F) each.
 TAX_FILE = {"tierra_tax": "tax.json", "tierra_taxL": "tax_life.json"}
 # T10 §2.2 and §4.
@@ -335,6 +340,13 @@ def base(arm: str) -> str:
     return arm.split("_")[0]
 
 
+def theft_of(arm: str) -> int:
+    """`--cycle-theft-pct` for an arm: the N of a `_t<N>` suffix, else 0
+    (T13 generalised `_t50`; `tierra_tax` and `tierra_taxL` are 0)."""
+    m = re.fullmatch(r".*_t(\d+)", arm)
+    return int(m.group(1)) if m else 0
+
+
 def probe_hex(ancestor_hex: str) -> str:
     """The tierra probe parasite: byte 18 (L1's first byte) from nop1 to nop0."""
     b = bytearray.fromhex(ancestor_hex)
@@ -352,8 +364,8 @@ def physics(arm: str, tax: Tax | None = None) -> list[str]:
     if arm not in ARMS:
         raise SystemExit(f"unknown arm {arm} (one of {', '.join(ARMS)})")
     f = ["--sun", str(SUN)]
-    if arm.endswith("_t50"):
-        f += ["--cycle-theft-pct", "50"]
+    if theft_of(arm):
+        f += ["--cycle-theft-pct", str(theft_of(arm))]
     if arm in TAX_FILE:
         t = tax_of(tax, arm)
         if t is None:
@@ -509,7 +521,7 @@ def meta_problems(m: dict, arm: str, ticks: int | None = None, tax: Tax | None =
             p.append(f"{k} {c.get(k)}, not the default {v}")
     if c.get("legacy_pending_range", True) is not False:
         p.append(f"legacy_pending_range {c.get('legacy_pending_range', 'absent')}: not T08's fixed edge")
-    theft = 50 if arm.endswith("_t50") else 0
+    theft = theft_of(arm)
     if c.get("cycle_theft_pct") != theft:
         p.append(f"cycle_theft_pct {c.get('cycle_theft_pct')}, not {theft}")
     if arm.endswith("_tax"):
@@ -1437,6 +1449,42 @@ def e017_lines(runs: pl.DataFrame, n_seeds: int, ticks: int) -> list[str]:
     return lines
 
 
+def t13_lines(runs: pl.DataFrame, n_seeds: int) -> list[str]:
+    """Record §9.2 (T13 §3), once tierra_t10 or tierra_t20 has run: the dose
+    order on the structural share in the last bin over every ordered pair
+    of DOSE_ARMS present (each higher-N arm above the lower in >= 20 of
+    the seeds paired; seed 14 drops out as unpaired, its founder lost in
+    the theft arms), the tolerant-defence count at the two N, and the
+    entered share after 25,000 against tierra_t50's."""
+    arm = lambda a: runs.filter(pl.col("arm") == a)
+    new = [a for a in ("tierra_t10", "tierra_t20") if arm(a).height]
+    if not new:
+        return []
+    up = lambda k: math.ceil(k * n_seeds / 30)
+    present = [a for a in DOSE_ARMS if arm(a).height]
+    lines = ["", f"T13 (record §9.2): arms {', '.join(new)}. Dose order on the structural share of replicator-class "
+                 f"exact births in the last bin, each higher N above the lower in >= {up(20)} of the pairs; "
+                 f"sign test two-sided."]
+    ordered = 0
+    pairs = [(present[i], present[j]) for i in range(len(present)) for j in range(i + 1, len(present))]
+    for lo, hi in pairs:
+        r = paired(runs, hi, lo, "structural_share_end")
+        ok = r["plus"] >= up(20)
+        ordered += ok
+        lines.append(f"- {hi} above {lo}: {r['plus']} of {r['pairs']} pairs (below {r['minus']}, tied {r['ties']}, "
+                     f"{r['unpaired']} unpaired; p = {r['p']:.4g}) [>= {up(20)}]: {yn(ok)}.")
+    lines.append(f"- monotone in N [every ordered pair]: {yn(ordered == len(pairs))} ({ordered} of {len(pairs)} pairs).")
+    tol = {a: int((arm(a)["tolerant"].fill_null(0) > 0).sum()) for a in new}
+    lines.append("- a tolerant defence (§1, unchanged) arose in " + ", ".join(
+        f"{a} {tol[a]} of {arm(a).height}" for a in new) + f" seeds [>= {up(3)} at one N under the premise]: "
+        f"{yn(any(v >= up(3) for v in tol.values()))}.")
+    med = lambda a: f"{100 * float(arm(a)['entered_share_post'].drop_nulls().median()):.1f}%" if arm(a)[
+        "entered_share_post"].drop_nulls().len() else "–"
+    lines.append("- entered share of replicator-class deaths after 25,000, median over seeds: " + ", ".join(
+        f"{a} {med(a)}" for a in present) + " (no prediction).")
+    return lines
+
+
 def summarize(bdf: pl.DataFrame, runs: pl.DataFrame, n_seeds: int, ticks: int, bin_size: int,
               calib: dict | None, life: dict | None = None) -> str:
     arms = [a for a in ARMS if runs.filter(pl.col("arm") == a).height]
@@ -1449,6 +1497,7 @@ def summarize(bdf: pl.DataFrame, runs: pl.DataFrame, n_seeds: int, ticks: int, b
         lines += [life_text(life), ""]
     lines += predictions(runs, n_seeds)
     lines += e017_lines(runs, n_seeds, ticks)
+    lines += t13_lines(runs, n_seeds)
     lines += ["", "## Defence per seed", "",
               "Screened candidates; complete genomes (structural / parameter; immune / tolerant over both); first birth "
               "of a structural and of a parameter one; maintained structural (longest run of windows >= 1%) and "

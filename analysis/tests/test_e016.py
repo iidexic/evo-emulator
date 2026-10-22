@@ -233,7 +233,7 @@ def good_meta(arm: str = "tierra_t50") -> dict:
         "ticks_requested": 250_000, "ticks_run": 250_000, "ancestor": b, "founders": [{"hex": e.HEX[b], "count": 1}],
         "founder_starts": [32_768], "state_every": 2_500, "replay_from": None,
         "config": {"patch_income": 512_000, "patch_cap": 8_192_000, "legacy_pending_range": False,
-                   "cycle_theft_pct": 50 if arm.endswith("t50") else 0,
+                   "cycle_theft_pct": e.theft_of(arm),
                    "cycle_tax_pct": 0, "cycle_tax_frac": 1.0, **e.NOISE},
     }
 
@@ -440,3 +440,40 @@ def test_replay_plan_snapshots_founder_and_background(tmp_path):
                                 "tierra_t50")
     assert [p[1] for p in plan if p[0] == "background"] == [4] * 10
     assert any("seeds [3] have no 25,000 snapshot" in n for n in notes)
+
+
+# ---- T13: the graded arms --------------------------------------------------------------------------
+
+def test_theft_from_the_arm_name():
+    assert [e.theft_of(a) for a in ("tierra_n0", "tierra_t10", "tierra_t20", "tierra_t50", "std_t50", "tierra_tax",
+                                    "tierra_taxL")] == [0, 10, 20, 50, 50, 0, 0]
+    assert e.physics("tierra_t10") == ["--sun", "2", "--cycle-theft-pct", "10"]
+    assert e.physics("tierra_t20") == ["--sun", "2", "--cycle-theft-pct", "20"]
+    assert e.harness_physics("tierra_t20") == e.physics("tierra_t20")
+    assert e.N0_OF["tierra_t10"] == e.N0_OF["tierra_t20"] == "tierra_n0"
+    m = good_meta("tierra_t20")
+    assert e.meta_problems(m, "tierra_t20", 250_000) == []
+    assert e.meta_problems(m, "tierra_t10", 250_000) == ["cycle_theft_pct 20, not 10"]
+
+
+def test_t13_dose_reading():
+    seeds = list(range(1, 31))
+    share = lambda v, k=30: [v] * k
+    runs = pl.DataFrame({
+        "arm": ["tierra_n0"] * 30 + ["tierra_t10"] * 30 + ["tierra_t20"] * 30 + ["tierra_t50"] * 30,
+        "seed": seeds * 4,
+        "structural_share_end": share(0.15) + share(0.17) + share(0.19) + share(0.21),
+        "tolerant": [0] * 90 + [0] * 27 + [1, 2, 1],
+        "entered_share_post": share(0.25) + share(0.30) + share(0.35) + share(0.43),
+    })
+    lines = e.t13_lines(runs, 30)
+    assert lines[1].startswith("T13 (record §9.2): arms tierra_t10, tierra_t20.")
+    assert "tierra_t10 above tierra_n0: 30 of 30 pairs" in lines[2] and lines[2].endswith("holds.")
+    assert "tierra_t50 above tierra_t20: 30 of 30" in lines[7]
+    assert "monotone in N [every ordered pair]: holds (6 of 6 pairs)" in lines[8]
+    assert "tierra_t10 0 of 30, tierra_t20 0 of 30 seeds [>= 3 at one N under the premise]: fails" in lines[9]
+    assert "tierra_n0 25.0%, tierra_t10 30.0%, tierra_t20 35.0%, tierra_t50 43.0%" in lines[10]
+    rev = runs.with_columns(pl.when(pl.col("arm") == "tierra_t20").then(0.10).otherwise(
+        pl.col("structural_share_end")).alias("structural_share_end"))
+    assert "monotone in N [every ordered pair]: fails (4 of 6 pairs)" in e.t13_lines(rev, 30)[8]
+    assert e.t13_lines(runs.filter(pl.col("arm").is_in(["tierra_n0", "tierra_t50"])), 30) == []
