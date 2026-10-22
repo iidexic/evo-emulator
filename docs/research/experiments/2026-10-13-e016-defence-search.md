@@ -520,13 +520,68 @@ Over the whole run the parasite share in the last bin is 19.2%
 
 ### 8.6 Replays (`replay` stage)
 
-Pending at the time of writing (the stage runs; about 1,380 replays). What
-the first 290 show: every tierra_n0 replay, from the founder (22
-seeds) or from the 2,500-tick snapshot before the first relabelling (7
-seeds), produces 171–217 structural complete genomes by tick 50,000.
-With an arising rate of 100% the potentiation count against the
-background rate is not informative, as §7.3's "from the founder" clause
-anticipated for t ≤ 2,500. The table is added here when the stage ends.
+Stage finished 2026-10-15 01:57 (1,380 replays, `runs/e016/replay.csv`,
+`replay_summary.md`; written up 2026-10-22). Rule as amended in §7
+item 3: a seed whose first structural complete genome is born at t is
+replayed from the snapshot at the last multiple of 2,500 below t with
+seeds 1001–1010 to t + 50,000 (`potentiation`); t ≤ 2,500 has no
+snapshot and is replayed from tick 0 to 50,000 (`founder`, the arising
+rate); seeds with no structural complete genome by 250,000 are
+replayed from their 25,000 snapshot to 100,000 (`background`). A
+replay counts if a structural complete genome arises in it.
+
+| arm | kind | seeds | replays | with a structural complete genome | structural genomes per replay, median (min–max) |
+|---|---|---|---|---|---|
+| tierra_n0 | founder | 22 | 220 | 220 | 183 (143–205) |
+| tierra_n0 | potentiation | 7 | 70 | 70 | 171 (99–239) |
+| tierra_t50 | founder | 21 | 210 | 210 | 239 (206–276) |
+| tierra_t50 | potentiation | 8 | 80 | 80 | 228 (2–311) |
+| tierra_tax | founder | 5 | 50 | 30 | 1.5 (0–93) |
+| tierra_tax | potentiation | 16 | 160 | 103 | 2 (0–235) |
+| tierra_tax | background | 5 | 10 | 0 | 0 |
+| std_n0 | potentiation | 30 | 300 | 187 | 1 (0–61) |
+| std_t50 | potentiation | 27 | 270 | 165 | 1 (0–35) |
+| std_t50 | background | 3 | 10 | 5 | 0.5 (0–14) |
+
+Per seed, hits of 10: tierra_n0 and tierra_t50 10 in every seed;
+tierra_tax median 7 (0–10); std_n0 median 6 (0–10); std_t50 median 6
+(2–9). Neither tierra arm has a background row: every seed but the
+founder-loss seed 14 arose a structural complete genome, so there is
+no seed without one to replay.
+
+Reading:
+
+1. **Tierra: not a potentiation measure.** The relabelling arises in
+   10 of 10 replays from every snapshot, including the seven and
+   eight seeds replayed from 2,500–7,500 before their first
+   relabelling, and in 10 of 10 from the founder, with about 170–240
+   distinct structural genomes per 50,000-tick replay. The rate is 1
+   in every condition, so the potentiation count has no contrast to
+   read, as §7.3's "from the founder" clause anticipated. This is
+   §8.7 item 1's "mutation supply" said a third way: the class is
+   reached from the founder in every stream, not from a potentiating
+   background.
+2. **std: potentiation equals background.** 62% of std_n0 and 61% of
+   std_t50 potentiation replays reach a structural complete genome,
+   against 50% of std_t50's 10 background replays (3 seeds); the
+   hit rates do not depend on the snapshot tick (seeds replayed from
+   5,000–15,000 and from 200,000–242,500 both span 2–10 of 10). Where
+   a structural genome arises in a std replay it is one or a few
+   `func_hash`es (median 1), the pad-placement immune forms of §8.2,
+   which arise anywhere at a low rate. No potentiated std background.
+3. **tierra_tax: the extinction wave, not potentiation.** The 10
+   background replays from the 25,000 snapshots of five seeds with
+   no structural genome all have 0 candidates: those seeds are
+   extinct before 100,000 (§8.1's wave, 35,690–54,330). The
+   potentiation and founder hit rates (64%, 60%) sit between std's
+   and tierra's because the replays end inside or after the wave;
+   median structural genomes per replay 1.5–2 against 170–240 in
+   the survivable tierra arms.
+
+Potentiation (Escondo & Ferguson 2026) in this substrate therefore
+reads as: for the template body the relabelling is not contingent on
+history at all; for the std body the immune forms are a constant
+low-rate background. Nothing here changes §8.7.
 
 ### 8.7 Reading
 
