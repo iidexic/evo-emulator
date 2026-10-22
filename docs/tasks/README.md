@@ -19,40 +19,85 @@ before the runs, as always.
 | [T07](T07-density.md) | replicator density by uniform sampling (B0) | nothing | built 2026-10-15 (Opus, `226169e` engine and tests, `761423d` runner `b0_density.py`); **sweep run 2026-10-15** (Fable, 3.5 min on 12 threads): 0 replicators and 0 one-shots in 1.26 × 10^8 bodies, bound 1.84 × 10^-7 at LEN ≤ 32; record `experiments/2026-10-15-b0-density.md`; smoke N = 10,000 at LEN 8/16/21: 0 replicators, 0 one-shots, 0.02-0.03 s per 10,000 bodies on 8 threads, so the full §2 sweep is minutes; full sweep pending. §3's zero-hit clause needs 10^7 at LEN 21-32 (`--big-max-len 32`), and zero hits at 10^7 still bound the density 3.7 orders above BFF's |
 | [T08](T08-alloc-copy-edge.md) | `alloc`/`copy` range edge: writes into one's own pending region pass range; `--legacy-pending-range` keeps the old world; four gate arms rerun | T03 | built 2026-10-13 (Opus; `2260b62` engine and tests, `a000687` runner; runs in `runs/e015/world/`); legacy flag reproduces three pinned hashes; under the fixed edge std persists 10 of 10 at sun 1 and 2 (parasite share 0.6%, 1.8%), tierra 1 of 10 at sun 1 and 10 of 10 at sun 2 (20.4%), so E016's S = 2 |
 | [T09](T09-measures-vectorise.md) | `measures.py`: the per-id and per-census Python loops (`_tree`, `_euler`, `_persistence`, `_tree_metrics`, `_series` body) in numpy, output identical | T05 | built 2026-10-15 (Opus, `8e251c6`): output equal to T05's build on E007 s1 and E016 std_t50/s21, tierra_n0/s1 (ints bitwise, floats within 1.6e-14); `_series` 17.5 s → 3.8 s and `analyse_run` 23.8 s → 11.8 s on the E016 std run (tierra 10.9 → 2.8 s, 15.2 → 8.0 s; E007 8.8 → 2.0 s); §5 (E015's `parasite_genomes` depth) done too; 68 tests |
-| [T10](T10-lifelong-tax-control.md) | a survivable matched control: `--cycle-tax-lifelong F P` drawn at birth, E017 arm `tierra_taxL`, pilot gate | T02 | specified 2026-10-15 (Fable); built 2026-10-15 (Opus, `749f8ae` engine, `3272adf` runner; founders exempt `8ef2f7f`, calibration per organism-tick `e72de6b`); F = 0.79995, P = 26, mean check holds (20.80% of cap against 21.06%; the per-death rule first given was +35%, entered hosts live 5x longer); pilot at that pair: persists 10 of 10, **7 of 10** inside tierra_n0's band (gate fails by one seed), realised debit 17.3-19.3% of cap; F = 1, P = 21: 3 of 3 persist, population about half n0's; 30 seeds not launched, a decision (spec §7.2) |
+| [T10](T10-lifelong-tax-control.md) | a survivable matched control: `--cycle-tax-lifelong F P` drawn at birth, E017 arm `tierra_taxL`, pilot gate | T02 | specified 2026-10-15 (Fable); built 2026-10-15 (Opus, `749f8ae` engine, `3272adf` runner; founders exempt `8ef2f7f`, calibration per organism-tick `e72de6b`); F = 0.79995, P = 26, mean check holds (20.80% of cap against 21.06%; the per-death rule first given was +35%, entered hosts live 5x longer); pilot at that pair: persists 10 of 10, **7 of 10** inside tierra_n0's band (gate fails by one seed), realised debit 17.3-19.3% of cap; F = 1, P = 21: 3 of 3 persist, population about half n0's; 30 seeds launched 2026-10-22 on a decision, pre-registered as E016 record §9.1 (`e345cae`); the desktop lost power with 12 of 30 done, rerun on the laptop (hand-off below) |
 | [T11](T11-closed-defence-screen.md) | closed defence for the template body: insertions in `--neighbours`, own-neighbourhood parasites of the relabelled genomes, three designed candidates | T03, E016 screen | built 2026-10-15 (Opus; §2 `ceda9e7`, §1 `03e2b19`, §3 `67c5ce3`; some files landed in `3c01fe3` and `253f73f`). §2: label-flip `parasite_jump` rows 996 → 0 in 28 of the 34 top complete bodies (15 label-free, 13 with a 1–2-nop label and a second copy behind it), open in 6; fall-through rows unchanged (median 228). §1 (`--neighbours-ins`): 10,752 tierra insertions, 0 complete; std 5,632, 6 immune. §3 reduced to the eject (closure arose by itself): 7 insertions, not viable alone (2 of 119 exact births; the length, not the check) |
-| [T12](T12-drain-income-take.md) | `drain` in the narrow form: an income take that cannot kill, opcode 23 or 25 by flag, harness gate G1–G3 before E018 | nothing | built 2026-10-15 (Opus, branch `worktree-agent-af767620b674b761b`, `724f91d`…`f42c9b8`, **not merged**: snapshot v2 clashes with T10's); 84 tests; G1: the bare flip drains nothing (A holds the counter); G2 **fails** for every victim, sun, P, L: in the two-body harness the pool is full, the drainer is not energy-limited and drain is at most 3.2% of its income, a victim lives only at P below its margin (std about 7%, tierra about 4%); G3 not run. Next: G2 under a depleted pool and with an energy-limited drainer, before branch C |
-| [T13](T13-lower-n-arms.md) | E016 arms at a cost the entered individual survives (`tierra_t10`, `tierra_t20`, picked from the harness dose curve), 60 runs | T10 merged (done 64cf742) | specified 2026-10-15 (Fable), curve run; not built |
+| [T12](T12-drain-income-take.md) | `drain` in the narrow form: an income take that cannot kill, opcode 23 or 25 by flag, harness gate G1–G3 before E018 | nothing | built 2026-10-15 (Opus, branch `worktree-agent-af767620b674b761b`, pushed as `t12-drain` 2026-10-22, `724f91d`…`f42c9b8`, **not merged**: snapshot v2 clashes with T10's); 84 tests; G1: the bare flip drains nothing (A holds the counter); G2 **fails** for every victim, sun, P, L: in the two-body harness the pool is full, the drainer is not energy-limited and drain is at most 3.2% of its income, a victim lives only at P below its margin (std about 7%, tierra about 4%); G3 not run. Next: G2 under a depleted pool and with an energy-limited drainer, before branch C |
+| [T13](T13-lower-n-arms.md) | E016 arms at a cost the entered individual survives (`tierra_t10`, `tierra_t20`, picked from the harness dose curve), 60 runs | T10 merged (done 64cf742) | specified 2026-10-15 (Fable), curve run; runner built 2026-10-22 (Fable, `e96d7c3`: arms from the `_t<N>` name, `t13_lines` reading, 35 tests); pre-registered as E016 record §9.2 (`e345cae`); 60 runs not yet run (hand-off below) |
 
-## Open merges and hand-off (2026-10-15, written at 01:20 before the machine slept)
+## Hand-off (2026-10-22): E016's last three arms move to the laptop
 
-- Branch `worktree-agent-af767620b674b761b` (T12 drain engine and gate,
-  commits `724f91d`, `fab7793`, `e219988`, plus a second G2 pass if it
-  finished): **not merged**. It and the merged T10 both bump the
-  full-state snapshot to version 2 with different new fields, so the
-  merge needs one combined version-2 layout (or version 3) and both
-  round-trip tests re-run. Flag off is bit-identical in both. A trial
-  merge at 01:20 gave 18 conflict hunks (sim.rs 12, config.rs 4,
-  main.rs 2) and was aborted; budget an hour with the tests.
-- Branch `worktree-agent-a4532956e0fedf8ee` (T10): merged at `64cf742`
-  and the follow-up at `f09059a`. Second pilot done: founders exempt,
-  the organism-tick pair F = 0.80, P = 26 (mean check holds at 20.8%
-  against 21.1%) persists 10 of 10 to 50,000 with a median population
-  of 210 (band 189–253; 3 seeds below, so the band rule fails by one);
-  even F = 1.0, P = 21 persists 3 of 3 at a lower population. **Decision
-  (Fable, 01:25): E017 launches next session at F = 0.80, P = 26, 30
-  seeds**, with the pilot's band miss written into the §9
-  pre-registration as expected (an even slowdown lowers the population)
-  and the per-tick tax's extinction wave at 35,690–54,330 named as the
-  thing the 250,000-tick run will show or not. `e016_defence.py world
-  --arms tierra_taxL --jobs 16`, then the other stages.
-- E016 replay stage: running (std_t50 arm, the last); `replay.csv` and
-  `replay_summary.md` appear under `runs/e016/` when it ends, and the
-  record's §8.6 table is written from them. If the machine slept
-  mid-run, relaunch `e016_defence.py replay --jobs 16`; the resume
-  handles zero-filled files since `a5aad36`.
-- T13 (lower-N arms) builds next: `physics()` generalised to
-  `tierra_t<N>`, arms `tierra_t10` and `tierra_t20`.
+**What happened.** On 2026-10-22 the E017 world stage
+(`tierra_taxL`, 30 seeds) was launched on the desktop at `--jobs 12`.
+The load tripped the desktop's power and it died. Seeds 1–12 had
+reached tick 250,000; seeds 13–30 had not started. The crash zeroed
+`.git/refs/heads/master`; it was restored by hand from the reflog to
+`e96d7c3` (the T13 runner commit), `git fsck --full` clean, every
+branch resolves, 35 runner tests pass. The 12 finished `tierra_taxL`
+runs stay on the desktop but are not used: they are uncompressed and
+their `--classify` step may have been cut, and the runs are
+deterministic by seed, so the laptop reruns all 30.
+
+**Done this session, on master.** E016 record §9: the
+pre-registration of `tierra_taxL` (E017, T10 §3) and of `tierra_t10`
+and `tierra_t20` (T13 §3), written before any of them ran (`e345cae`).
+Record §8.6 and write-up §5.7: the replay table, which had finished on
+2026-10-15 but was still marked pending (`5ed2ecf`). T13's runner
+change: `--cycle-theft-pct` parsed from a `_t<N>` arm name, the two
+arms in `ARMS`, and `t13_lines` writing §9.2's reading into
+`summary.md` (`e96d7c3`). T13 is built; its 60 runs are not.
+
+**The plan, in order, on the laptop.**
+
+1. Set up. Clone, `cargo build --release` in `evo-core`, `uv sync` in
+   `analysis`. Plug the laptop into AC power and keep it plugged in.
+2. Copy the slim E016 set from the desktop (1.7 GB, not the 125 GB
+   tree). The `analyse` stage reads an old run only if its class list
+   is there, and then uses its cached `analyse.json`, keyed on
+   `defence.csv`'s mtime. `robocopy` keeps mtimes by default; a plain
+   drag-and-drop copy may not. Run on the desktop with `<dest>` a USB
+   drive or the laptop's share, once per arm (`tierra_n0 tierra_t50
+   tierra_tax std_n0 std_t50`), then copy `<dest>\runs` into the
+   laptop's clone the same way:
+
+   ```
+   robocopy C:\dev\dtech\evo\runs\e016\<arm> <dest>\runs\e016\<arm> meta.json defence.csv defence_ref.json analyse.json classes.csv.gz /S /XD state lod measures
+   robocopy C:\dev\dtech\evo\runs\e016 <dest>\runs\e016 *.json *.csv *.md
+   ```
+
+   The second line brings `tax_life.json` (F = 0.7999533790651251,
+   P = 26), which the `world` stage needs, and the neighbourhood
+   screens. If `analyse` later prints `analysed` rather than `analyse
+   cached` for an old arm, the mtime did not survive: stop, it will
+   fail on the missing event files.
+3. E017 world stage, 30 seeds. About 290 MB per run, so 9 GB.
+
+   ```
+   uv run --project analysis analysis/e016_defence.py world --arms tierra_taxL --jobs 4
+   ```
+
+   `--jobs` defaults to every core; always pass it. Four is a guess
+   for a laptop; watch temperatures on the first batch.
+4. T13 world stage, 60 runs, about 17 GB. Same command with
+   `--arms tierra_t10,tierra_t20`. Can run after step 3 or instead of
+   it if time is short; E017 first because the write-up names it as
+   the missing control.
+5. `screen`, then `analyse`, then `lod`, each with `--arms
+   tierra_taxL,tierra_t10,tierra_t20 --jobs 4` for `screen` and
+   `lod`, and no `--arms` for `analyse` so `runs.csv` and
+   `summary.md` hold all eight arms. Keep `--analyse-jobs` at 2 or
+   below (memory).
+6. Read `summary.md`'s E017 and T13 blocks against record §9.1 and
+   §9.2, write the outcomes into the record as §9.3, the write-up's
+   pending rows (§8 table, the T10 row) and this README's T10 and T13
+   rows. One commit per arm's outcome.
+
+**Not on the laptop's list.** T12's drain branch is pushed to origin
+as `t12-drain` (it existed only on the desktop). Its merge into master
+still needs one combined snapshot version-2 layout with T10's fields
+(18 conflict hunks in `sim.rs`, `config.rs`, `main.rs` at the
+2026-10-15 trial), about an hour with the tests; it waits until
+E016's arms are read. The 2026-10-15 note's other items are done:
+T10 merged, the replay stage finished and written up.
 
 ## Order
 

@@ -817,6 +817,13 @@ E018 is pre-registered only if the gate passes). If the gate fails,
 scavenging (the memo's branch C) is next. T07 (line B0) runs now on
 idle CPU; line B proper waits for the engine time.
 
+**Status 2026-10-22.** E017 (`tierra_taxL`) and T13's two arms
+(`tierra_t10`, `tierra_t20`) are pre-registered as E016 record §9;
+T13's runner is built; the replay table is in record §8.6. The 90
+world runs move to the laptop after the desktop lost power under the
+E017 batch; order and commands in `docs/tasks/README.md`'s hand-off.
+T12's gate failed and its branch is pushed unmerged as `t12-drain`.
+
 ### 8.4 Line B — seedless emergence, rule by rule
 
 Nobody has added physics rules one at a time to a random-soup
